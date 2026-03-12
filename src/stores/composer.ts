@@ -16,14 +16,21 @@ const createEmptyDraft = (): DraftMessage => ({
 export const useComposerStore = defineStore('composer', () => {
   const isOpen = ref(false)
   const isSending = ref(false)
+  const isSaving = ref(false)
+  const error = ref<string | null>(null)
+  const successMessage = ref<string | null>(null)
   const draft = ref<DraftMessage>(createEmptyDraft())
 
   const openNew = (accountId: string) => {
+    error.value = null
+    successMessage.value = null
     draft.value = { ...createEmptyDraft(), accountId }
     isOpen.value = true
   }
 
   const openReply = (accountId: string, message: MailMessage) => {
+    error.value = null
+    successMessage.value = null
     draft.value = {
       ...createEmptyDraft(),
       accountId,
@@ -36,6 +43,8 @@ export const useComposerStore = defineStore('composer', () => {
   }
 
   const openForward = (accountId: string, message: MailMessage) => {
+    error.value = null
+    successMessage.value = null
     draft.value = {
       ...createEmptyDraft(),
       accountId,
@@ -47,16 +56,35 @@ export const useComposerStore = defineStore('composer', () => {
   }
 
   const saveDraft = async () => {
-    draft.value = await mailRepository.saveDraft(draft.value)
+    isSaving.value = true
+    error.value = null
+    successMessage.value = null
+
+    try {
+      draft.value = await mailRepository.saveDraft(draft.value)
+      successMessage.value = 'Draft saved'
+      return draft.value
+    } catch (saveError) {
+      error.value = saveError instanceof Error ? saveError.message : 'Unable to save draft'
+      throw saveError
+    } finally {
+      isSaving.value = false
+    }
   }
 
   const sendDraft = async () => {
     isSending.value = true
+    error.value = null
+    successMessage.value = null
 
     try {
       await mailRepository.sendMessage(draft.value)
+      successMessage.value = 'Message sent'
       isOpen.value = false
       draft.value = createEmptyDraft()
+    } catch (sendError) {
+      error.value = sendError instanceof Error ? sendError.message : 'Unable to send message'
+      throw sendError
     } finally {
       isSending.value = false
     }
@@ -66,9 +94,17 @@ export const useComposerStore = defineStore('composer', () => {
     isOpen.value = false
   }
 
+  const clearFeedback = () => {
+    error.value = null
+    successMessage.value = null
+  }
+
   return {
     isOpen,
     isSending,
+    isSaving,
+    error,
+    successMessage,
     draft,
     openNew,
     openReply,
@@ -76,5 +112,6 @@ export const useComposerStore = defineStore('composer', () => {
     saveDraft,
     sendDraft,
     close,
+    clearFeedback,
   }
 })

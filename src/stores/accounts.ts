@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { AccountSetupDraft, MailAccount } from '@/types/account'
+import type { SyncStatus } from '@/types/mail'
 import { mailRepository } from '@/services/mail'
 
 const STORAGE_KEY = 'mailstack.currentAccountId'
@@ -9,7 +10,9 @@ export const useAccountsStore = defineStore('accounts', () => {
   const accounts = ref<MailAccount[]>([])
   const currentAccountId = ref<string | null>(localStorage.getItem(STORAGE_KEY))
   const isLoading = ref(false)
+  const isTestingConnection = ref(false)
   const error = ref<string | null>(null)
+  const connectionStatus = ref<SyncStatus | null>(null)
 
   const currentAccount = computed(() =>
     accounts.value.find((account) => account.id === currentAccountId.value) ?? null,
@@ -48,6 +51,22 @@ export const useAccountsStore = defineStore('accounts', () => {
     localStorage.setItem(STORAGE_KEY, accountId)
   }
 
+  const testAccountConnection = async (draft: AccountSetupDraft) => {
+    isTestingConnection.value = true
+    connectionStatus.value = null
+    error.value = null
+
+    try {
+      connectionStatus.value = await mailRepository.testAccountConnection(draft)
+      return connectionStatus.value
+    } catch (testError) {
+      error.value = testError instanceof Error ? testError.message : 'Unable to connect to mailbox'
+      throw testError
+    } finally {
+      isTestingConnection.value = false
+    }
+  }
+
   const createAccount = async (draft: AccountSetupDraft) => {
     const account = await mailRepository.createAccount(draft)
     accounts.value = [account, ...accounts.value]
@@ -60,9 +79,12 @@ export const useAccountsStore = defineStore('accounts', () => {
     currentAccount,
     currentAccountId,
     isLoading,
+    isTestingConnection,
     error,
+    connectionStatus,
     loadAccounts,
     createAccount,
     selectAccount,
+    testAccountConnection,
   }
 })

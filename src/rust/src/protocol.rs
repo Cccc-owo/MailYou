@@ -12,6 +12,7 @@ pub enum BackendRequest {
     HealthCheck,
     ListAccounts,
     CreateAccount(AccountSetupDraft),
+    TestAccountConnection(AccountSetupDraft),
     ListFolders { account_id: String },
     ListMessages { account_id: String, folder_id: String },
     GetMessage { account_id: String, message_id: String },
@@ -20,6 +21,9 @@ pub enum BackendRequest {
     ToggleStar { account_id: String, message_id: String },
     ToggleRead { account_id: String, message_id: String },
     DeleteMessage { account_id: String, message_id: String },
+    ArchiveMessage { account_id: String, message_id: String },
+    RestoreMessage { account_id: String, message_id: String },
+    MoveMessage { account_id: String, message_id: String, folder_id: String },
     SyncAccount { account_id: String },
     GetMailboxBundle { account_id: String },
 }
@@ -41,6 +45,20 @@ impl BackendError {
     pub fn internal(message: impl Into<String>) -> Self {
         Self {
             code: "internal_error".into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn validation(message: impl Into<String>) -> Self {
+        Self {
+            code: "validation_error".into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self {
+            code: "not_found".into(),
             message: message.into(),
         }
     }
@@ -106,6 +124,8 @@ pub struct SendMessageResult {
 
 #[allow(dead_code)]
 pub type ListAccountsResult = Vec<MailAccount>;
+#[allow(dead_code)]
+pub type TestAccountConnectionResult = SyncStatus;
 #[allow(dead_code)]
 pub type ListFoldersResult = Vec<MailboxFolder>;
 #[allow(dead_code)]

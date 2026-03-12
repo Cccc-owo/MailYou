@@ -20,7 +20,7 @@
       </v-card-text>
 
       <v-card-actions class="justify-space-between px-6 pb-6">
-        <v-btn prepend-icon="mdi-content-save-outline" @click="$emit('save')">Save draft</v-btn>
+        <v-btn prepend-icon="mdi-content-save-outline" :loading="isSaving" @click="$emit('save')">Save draft</v-btn>
         <v-btn color="primary" prepend-icon="mdi-send-outline" :loading="isSending" @click="$emit('send')">
           Send
         </v-btn>
@@ -34,6 +34,7 @@ import type { DraftMessage } from '@/types/mail'
 
 defineProps<{
   draft: DraftMessage
+  isSaving: boolean
   isSending: boolean
   modelValue: boolean
 }>()

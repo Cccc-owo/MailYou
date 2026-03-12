@@ -5,6 +5,7 @@ import type { WindowControlsBridge } from '../shared/window/bridge'
 const mailstack: MailstackBridge = {
   listAccounts: () => ipcRenderer.invoke('mail:listAccounts'),
   createAccount: (draft) => ipcRenderer.invoke('mail:createAccount', draft),
+  testAccountConnection: (draft) => ipcRenderer.invoke('mail:testAccountConnection', draft),
   listFolders: (accountId) => ipcRenderer.invoke('mail:listFolders', accountId),
   listMessages: (accountId, folderId) => ipcRenderer.invoke('mail:listMessages', accountId, folderId),
   getMessage: (accountId, messageId) => ipcRenderer.invoke('mail:getMessage', accountId, messageId),
@@ -12,6 +13,9 @@ const mailstack: MailstackBridge = {
   sendMessage: (draft) => ipcRenderer.invoke('mail:sendMessage', draft),
   toggleStar: (accountId, messageId) => ipcRenderer.invoke('mail:toggleStar', accountId, messageId),
   toggleRead: (accountId, messageId) => ipcRenderer.invoke('mail:toggleRead', accountId, messageId),
+  archiveMessage: (accountId, messageId) => ipcRenderer.invoke('mail:archiveMessage', accountId, messageId),
+  restoreMessage: (accountId, messageId) => ipcRenderer.invoke('mail:restoreMessage', accountId, messageId),
+  moveMessage: (accountId, messageId, folderId) => ipcRenderer.invoke('mail:moveMessage', accountId, messageId, folderId),
   deleteMessage: (accountId, messageId) => ipcRenderer.invoke('mail:deleteMessage', accountId, messageId),
   syncAccount: (accountId) => ipcRenderer.invoke('mail:syncAccount', accountId),
   getMailboxBundle: (accountId) => ipcRenderer.invoke('mail:getMailboxBundle', accountId),

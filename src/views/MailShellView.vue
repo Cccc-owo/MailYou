@@ -1,7 +1,9 @@
 <template>
   <MailShellLayout :search="messagesStore.query" :subtitle="subtitle" @update:search="messagesStore.query = $event">
     <template #actions>
-      <v-btn prepend-icon="mdi-sync" :loading="isSyncing" @click="syncCurrentAccount">Sync</v-btn>
+      <v-btn prepend-icon="mdi-sync" :disabled="!accountsStore.currentAccountId" :loading="isSyncing" @click="syncCurrentAccount">
+        Sync
+      </v-btn>
       <v-btn icon="mdi-theme-light-dark" @click="uiStore.toggleAppearance" />
       <v-btn icon="mdi-cog-outline" @click="router.push('/settings')" />
     </template>
@@ -22,7 +24,9 @@
 
     <template #list>
       <MailList
+        :error="messagesStore.error"
         :is-loading="messagesStore.isLoading"
+        :is-search-result="messagesStore.hasSearchQuery"
         :messages="messagesStore.filteredMessages"
         :selected-message-id="messagesStore.selectedMessageId"
         :title="mailboxesStore.currentFolder?.name ?? 'Mailbox'"
@@ -33,7 +37,10 @@
 
     <template #reader>
       <MailReader
+        :has-messages="messagesStore.filteredMessages.length > 0"
+        :has-search-query="messagesStore.hasSearchQuery"
         :message="messagesStore.selectedMessage"
+        @archive="archiveCurrentMessage"
         @delete="deleteCurrentMessage"
         @forward="forwardCurrentMessage"
         @reply="replyToCurrentMessage"
@@ -44,14 +51,33 @@
 
   <ComposerDialog
     :draft="composerStore.draft"
+    :is-saving="composerStore.isSaving"
     :is-sending="composerStore.isSending"
     :model-value="composerStore.isOpen"
-    @close="composerStore.close"
-    @save="composerStore.saveDraft"
-    @send="composerStore.sendDraft"
+    @close="closeComposer"
+    @save="saveDraft"
+    @send="sendDraft"
     @update:draft="composerStore.draft = $event"
     @update:model-value="composerStore.isOpen = $event"
   />
+
+  <v-snackbar
+    :model-value="Boolean(composerStore.error)"
+    color="error"
+    location="bottom right"
+    @update:model-value="!$event && composerStore.clearFeedback()"
+  >
+    {{ composerStore.error }}
+  </v-snackbar>
+
+  <v-snackbar
+    :model-value="Boolean(composerStore.successMessage)"
+    color="secondary"
+    location="bottom right"
+    @update:model-value="!$event && composerStore.clearFeedback()"
+  >
+    {{ composerStore.successMessage }}
+  </v-snackbar>
 </template>
 
 <script setup lang="ts">
@@ -81,8 +107,12 @@ const { currentAccount } = storeToRefs(accountsStore)
 const { syncStatus } = storeToRefs(messagesStore)
 
 const subtitle = computed(() => {
+  if (!accountsStore.accounts.length) {
+    return 'Add an account to start using MailStack'
+  }
+
   if (!currentAccount.value) {
-    return 'Loading your workspace'
+    return 'Choose an account to load its mailbox'
   }
 
   return syncStatus.value?.message ?? `${currentAccount.value.provider} · ${currentAccount.value.email}`
@@ -97,6 +127,14 @@ const loadMailbox = async (accountId: string) => {
   messagesStore.setMailboxBundle(bundle, mailboxesStore.currentFolderId)
 }
 
+const refreshMailbox = async () => {
+  if (!accountsStore.currentAccountId) {
+    return
+  }
+
+  await loadMailbox(accountsStore.currentAccountId)
+}
+
 const handleAccountChange = async (accountId: string) => {
   accountsStore.selectAccount(accountId)
   await loadMailbox(accountId)
@@ -107,6 +145,7 @@ const handleFolderChange = async (folderId: string) => {
     return
   }
 
+  messagesStore.clearError()
   mailboxesStore.selectFolder(folderId)
   await messagesStore.loadMessages(accountsStore.currentAccountId, folderId)
 }
@@ -116,7 +155,13 @@ const openComposer = () => {
     return
   }
 
+  composerStore.clearFeedback()
   composerStore.openNew(accountsStore.currentAccountId)
+}
+
+const closeComposer = () => {
+  composerStore.close()
+  composerStore.clearFeedback()
 }
 
 const replyToCurrentMessage = () => {
@@ -124,6 +169,7 @@ const replyToCurrentMessage = () => {
     return
   }
 
+  composerStore.clearFeedback()
   composerStore.openReply(accountsStore.currentAccountId, messagesStore.selectedMessage)
 }
 
@@ -132,7 +178,26 @@ const forwardCurrentMessage = () => {
     return
   }
 
+  composerStore.clearFeedback()
   composerStore.openForward(accountsStore.currentAccountId, messagesStore.selectedMessage)
+}
+
+const saveDraft = async () => {
+  if (!accountsStore.currentAccountId) {
+    return
+  }
+
+  await composerStore.saveDraft()
+  await refreshMailbox()
+}
+
+const sendDraft = async () => {
+  if (!accountsStore.currentAccountId) {
+    return
+  }
+
+  await composerStore.sendDraft()
+  await refreshMailbox()
 }
 
 const toggleStar = async (messageId: string) => {
@@ -159,6 +224,14 @@ const deleteCurrentMessage = async () => {
   await messagesStore.deleteMessage(accountsStore.currentAccountId, messagesStore.selectedMessageId)
 }
 
+const archiveCurrentMessage = async () => {
+  if (!accountsStore.currentAccountId || !messagesStore.selectedMessageId) {
+    return
+  }
+
+  await messagesStore.archiveMessage(accountsStore.currentAccountId, messagesStore.selectedMessageId)
+}
+
 const syncCurrentAccount = async () => {
   if (!accountsStore.currentAccountId) {
     return
@@ -171,6 +244,7 @@ const syncCurrentAccount = async () => {
     updatedAt: new Date().toISOString(),
   })
   await messagesStore.syncAccount(accountsStore.currentAccountId)
+  await refreshMailbox()
 }
 
 onMounted(async () => {

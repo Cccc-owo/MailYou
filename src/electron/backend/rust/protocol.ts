@@ -20,6 +20,10 @@ export interface RustBackendMethodMap {
     params: AccountSetupDraft
     result: MailAccount
   }
+  testAccountConnection: {
+    params: AccountSetupDraft
+    result: SyncStatus
+  }
   listFolders: {
     params: { accountId: string }
     result: MailboxFolder[]
@@ -46,6 +50,18 @@ export interface RustBackendMethodMap {
   }
   toggleRead: {
     params: { accountId: string; messageId: string }
+    result: MailMessage | null
+  }
+  archiveMessage: {
+    params: { accountId: string; messageId: string }
+    result: MailMessage | null
+  }
+  restoreMessage: {
+    params: { accountId: string; messageId: string }
+    result: MailMessage | null
+  }
+  moveMessage: {
+    params: { accountId: string; messageId: string; folderId: string }
     result: MailMessage | null
   }
   deleteMessage: {

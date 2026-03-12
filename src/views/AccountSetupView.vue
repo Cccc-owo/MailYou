@@ -11,7 +11,7 @@
         <div class="text-overline mb-2">Account setup</div>
         <div class="text-h4 mb-2">Connect a new mailbox</div>
         <div class="text-body-1 text-medium-emphasis mb-6">
-          This flow is mock-backed for now, but mirrors the fields we will hand to Rust for IMAP/SMTP configuration.
+          Configure IMAP and SMTP manually, test the connection, then save the account.
         </div>
 
         <v-form class="account-setup__form">
@@ -39,7 +39,16 @@
           <v-switch v-model="draft.useTls" label="Use TLS" color="primary" />
 
           <div class="d-flex justify-space-between align-center flex-wrap ga-3 mt-4">
-            <v-chip color="secondary">Credentials will move to Rust keyring handling later</v-chip>
+            <v-chip color="secondary">Backend now validates and persists account settings locally</v-chip>
+            <div class="d-flex ga-3 flex-wrap">
+              <v-btn
+                prepend-icon="mdi-connection"
+                :disabled="!canSave || isSaving"
+                :loading="accountsStore.isTestingConnection"
+                @click="runConnectionTest"
+              >
+                Test connection
+              </v-btn>
             <v-btn
               color="primary"
               prepend-icon="mdi-check"
@@ -47,10 +56,19 @@
               :loading="isSaving"
               @click="saveAccount"
             >
-              Save mock account
+              Save account
             </v-btn>
+            </div>
           </div>
 
+          <v-alert
+            v-if="accountsStore.connectionStatus"
+            class="mt-4"
+            type="success"
+            variant="tonal"
+          >
+            {{ accountsStore.connectionStatus.message }}
+          </v-alert>
           <v-alert v-if="error" class="mt-4" type="error" variant="tonal">{{ error }}</v-alert>
         </v-form>
       </v-card>
@@ -83,7 +101,30 @@ const draft = reactive<AccountSetupDraft>({
   useTls: true,
 })
 
-const canSave = computed(() => Boolean(draft.email.trim() && draft.displayName.trim()))
+const canSave = computed(
+  () =>
+    Boolean(
+      draft.email.trim() &&
+        draft.displayName.trim() &&
+        draft.username.trim() &&
+        draft.incomingHost.trim() &&
+        draft.outgoingHost.trim(),
+    ),
+)
+
+const runConnectionTest = async () => {
+  if (!canSave.value || isSaving.value) {
+    return
+  }
+
+  error.value = null
+
+  try {
+    await accountsStore.testAccountConnection({ ...draft })
+  } catch (testError) {
+    error.value = testError instanceof Error ? testError.message : 'Unable to test account connection'
+  }
+}
 
 const saveAccount = async () => {
   if (!canSave.value || isSaving.value) {

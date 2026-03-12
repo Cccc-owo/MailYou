@@ -11,6 +11,7 @@
         <v-btn prepend-icon="mdi-email-open-outline" @click="$emit('toggle-read')">
           {{ message.isRead ? 'Mark unread' : 'Mark read' }}
         </v-btn>
+        <v-btn prepend-icon="mdi-archive-outline" @click="$emit('archive')">Archive</v-btn>
         <v-btn prepend-icon="mdi-delete-outline" color="error" @click="$emit('delete')">Delete</v-btn>
       </div>
     </div>
@@ -47,9 +48,9 @@
   </div>
 
   <div v-else class="mail-reader__empty">
-    <v-icon icon="mdi-email-outline" size="48" class="mb-4" />
-    <div class="text-h5 mb-2">No message selected</div>
-    <div class="text-body-1 text-medium-emphasis">This folder is empty or no message is currently selected.</div>
+    <v-icon :icon="emptyStateIcon" size="48" class="mb-4" />
+    <div class="text-h5 mb-2">{{ emptyStateTitle }}</div>
+    <div class="text-body-1 text-medium-emphasis">{{ emptyStateDescription }}</div>
   </div>
 </template>
 
@@ -57,13 +58,22 @@
 import { computed } from 'vue'
 import type { MailMessage } from '@/types/mail'
 
-const props = defineProps<{
-  message: MailMessage | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    hasMessages?: boolean
+    hasSearchQuery?: boolean
+    message: MailMessage | null
+  }>(),
+  {
+    hasMessages: false,
+    hasSearchQuery: false,
+  },
+)
 
 defineEmits<{
   reply: []
   forward: []
+  archive: []
   delete: []
   'toggle-read': []
 }>()
@@ -81,6 +91,32 @@ const formattedDate = computed(() => {
     minute: '2-digit',
   }).format(new Date(props.message.receivedAt))
 })
+
+const emptyStateTitle = computed(() => {
+  if (props.hasSearchQuery && !props.hasMessages) {
+    return 'No matching message'
+  }
+
+  if (!props.hasMessages) {
+    return 'No message selected'
+  }
+
+  return 'Select a message'
+})
+
+const emptyStateDescription = computed(() => {
+  if (props.hasSearchQuery && !props.hasMessages) {
+    return 'The current search did not match any cached messages in this folder.'
+  }
+
+  if (!props.hasMessages) {
+    return 'This folder is empty or no message is currently selected.'
+  }
+
+  return 'Choose a message from the list to start reading.'
+})
+
+const emptyStateIcon = computed(() => (props.hasSearchQuery && !props.hasMessages ? 'mdi-magnify' : 'mdi-email-outline'))
 
 const formatSize = (value: number) => {
   if (value < 1024) {

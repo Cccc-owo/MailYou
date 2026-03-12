@@ -8,12 +8,15 @@
       <v-chip size="small" color="secondary">{{ messages.length }} messages</v-chip>
     </div>
 
+    <v-alert v-if="error" class="mb-4" type="error" variant="tonal">{{ error }}</v-alert>
     <v-progress-linear v-if="isLoading" indeterminate color="primary" />
 
     <div v-if="!isLoading && messages.length === 0" class="mail-list__empty">
-      <v-icon icon="mdi-inbox-outline" size="40" class="mb-3" />
-      <div class="text-h6 mb-1">No messages yet</div>
-      <div class="text-body-2 text-medium-emphasis">This folder is empty for now.</div>
+      <v-icon :icon="isSearchResult ? 'mdi-magnify' : 'mdi-inbox-outline'" size="40" class="mb-3" />
+      <div class="text-h6 mb-1">{{ isSearchResult ? 'No search results' : 'No messages yet' }}</div>
+      <div class="text-body-2 text-medium-emphasis">
+        {{ isSearchResult ? 'Try a different keyword or clear the search.' : 'This folder is empty for now.' }}
+      </div>
     </div>
 
     <v-list v-else class="mail-list__items">
@@ -57,7 +60,9 @@
 import type { MailMessage } from '@/types/mail'
 
 defineProps<{
+  error?: string | null
   isLoading: boolean
+  isSearchResult?: boolean
   messages: MailMessage[]
   selectedMessageId: string | null
   title: string

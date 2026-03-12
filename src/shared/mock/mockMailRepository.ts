@@ -41,11 +41,13 @@ const folders: MailboxFolder[] = [
   { id: 'starred-work', accountId: 'acc-work', name: 'Starred', kind: 'starred', unreadCount: 1, totalCount: 5, icon: 'mdi-star-outline' },
   { id: 'sent-work', accountId: 'acc-work', name: 'Sent', kind: 'sent', unreadCount: 0, totalCount: 12, icon: 'mdi-send-outline' },
   { id: 'drafts-work', accountId: 'acc-work', name: 'Drafts', kind: 'drafts', unreadCount: 0, totalCount: 2, icon: 'mdi-file-document-edit-outline' },
+  { id: 'archive-work', accountId: 'acc-work', name: 'Archive', kind: 'archive', unreadCount: 0, totalCount: 0, icon: 'mdi-archive-outline' },
   { id: 'trash-work', accountId: 'acc-work', name: 'Trash', kind: 'trash', unreadCount: 0, totalCount: 1, icon: 'mdi-delete-outline' },
   { id: 'inbox-personal', accountId: 'acc-personal', name: 'Inbox', kind: 'inbox', unreadCount: 3, totalCount: 15, icon: 'mdi-inbox-arrow-down' },
   { id: 'starred-personal', accountId: 'acc-personal', name: 'Starred', kind: 'starred', unreadCount: 1, totalCount: 3, icon: 'mdi-star-outline' },
   { id: 'sent-personal', accountId: 'acc-personal', name: 'Sent', kind: 'sent', unreadCount: 0, totalCount: 8, icon: 'mdi-send-outline' },
   { id: 'drafts-personal', accountId: 'acc-personal', name: 'Drafts', kind: 'drafts', unreadCount: 0, totalCount: 1, icon: 'mdi-file-document-edit-outline' },
+  { id: 'archive-personal', accountId: 'acc-personal', name: 'Archive', kind: 'archive', unreadCount: 0, totalCount: 0, icon: 'mdi-archive-outline' },
   { id: 'trash-personal', accountId: 'acc-personal', name: 'Trash', kind: 'trash', unreadCount: 0, totalCount: 0, icon: 'mdi-delete-outline' },
 ]
 
@@ -198,6 +200,7 @@ const createDefaultFolders = (accountId: string): MailboxFolder[] => [
     totalCount: 0,
     icon: 'mdi-file-document-edit-outline',
   },
+  { id: `archive-${accountId}`, accountId, name: 'Archive', kind: 'archive', unreadCount: 0, totalCount: 0, icon: 'mdi-archive-outline' },
   { id: `trash-${accountId}`, accountId, name: 'Trash', kind: 'trash', unreadCount: 0, totalCount: 0, icon: 'mdi-delete-outline' },
 ]
 
@@ -252,6 +255,21 @@ export const mockMailRepository: MailRepository = {
     folders.unshift(...createDefaultFolders(nextAccount.id))
     syncStates.set(nextAccount.id, createInitialSyncStatus(nextAccount.id, lastSyncedAt))
     return clone(nextAccount)
+  },
+
+  async testAccountConnection(draft: AccountSetupDraft): Promise<SyncStatus> {
+    await delay(150)
+
+    if (!draft.password.trim() || draft.incomingHost.includes('invalid')) {
+      throw new Error('Unable to connect with the provided IMAP settings')
+    }
+
+    return {
+      accountId: 'connection-test',
+      state: 'idle',
+      message: `Connected to ${draft.incomingHost}:${draft.incomingPort} and ${draft.outgoingHost}:${draft.outgoingPort}`,
+      updatedAt: new Date().toISOString(),
+    }
   },
 
   async listFolders(accountId: string): Promise<MailboxFolder[]> {
@@ -328,6 +346,52 @@ export const mockMailRepository: MailRepository = {
       message.folderId = trashFolder.id
       message.isRead = true
     }
+  },
+
+  async archiveMessage(accountId: string, messageId: string): Promise<MailMessage | null> {
+    await delay()
+    const message = messages.find((item) => item.accountId === accountId && item.id === messageId)
+
+    if (!message) {
+      return null
+    }
+
+    const archiveFolder = folders.find((folder) => folder.accountId === accountId && folder.kind === 'archive')
+
+    if (archiveFolder) {
+      message.folderId = archiveFolder.id
+    }
+
+    return clone(message)
+  },
+
+  async restoreMessage(accountId: string, messageId: string): Promise<MailMessage | null> {
+    await delay()
+    const message = messages.find((item) => item.accountId === accountId && item.id === messageId)
+
+    if (!message) {
+      return null
+    }
+
+    const inboxFolder = folders.find((folder) => folder.accountId === accountId && folder.kind === 'inbox')
+
+    if (inboxFolder) {
+      message.folderId = inboxFolder.id
+    }
+
+    return clone(message)
+  },
+
+  async moveMessage(accountId: string, messageId: string, folderId: string): Promise<MailMessage | null> {
+    await delay()
+    const message = messages.find((item) => item.accountId === accountId && item.id === messageId)
+
+    if (!message) {
+      return null
+    }
+
+    message.folderId = folderId
+    return clone(message)
   },
 
   async syncAccount(accountId: string): Promise<SyncStatus> {

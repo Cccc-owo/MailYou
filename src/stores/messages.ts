@@ -55,6 +55,8 @@ export const useMessagesStore = defineStore('messages', () => {
     messages.value.find((message) => message.id === selectedMessageId.value) ?? null,
   )
 
+  const hasSearchQuery = computed(() => query.value.trim().length > 0)
+
   const setSyncStatus = (value: SyncStatus | null) => {
     syncStatus.value = value
   }
@@ -65,6 +67,7 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const setMailboxBundle = (bundle: MailboxBundle, folderId: string | null) => {
+    error.value = null
     syncStatus.value = bundle.syncStatus
     setMessages(getMessagesForFolder(bundle.messages, bundle.folders, folderId))
   }
@@ -87,6 +90,7 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const toggleStar = async (accountId: string, messageId: string) => {
+    error.value = null
     const updated = await mailRepository.toggleStar(accountId, messageId)
 
     if (!updated) {
@@ -97,6 +101,7 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const toggleRead = async (accountId: string, messageId: string) => {
+    error.value = null
     const updated = await mailRepository.toggleRead(accountId, messageId)
 
     if (!updated) {
@@ -107,6 +112,7 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const deleteMessage = async (accountId: string, messageId: string) => {
+    error.value = null
     await mailRepository.deleteMessage(accountId, messageId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
 
@@ -115,8 +121,55 @@ export const useMessagesStore = defineStore('messages', () => {
     }
   }
 
+  const archiveMessage = async (accountId: string, messageId: string) => {
+    error.value = null
+    await mailRepository.archiveMessage(accountId, messageId)
+    messages.value = messages.value.filter((message) => message.id !== messageId)
+
+    if (selectedMessageId.value === messageId) {
+      selectedMessageId.value = messages.value[0]?.id ?? null
+    }
+  }
+
+  const restoreMessage = async (accountId: string, messageId: string) => {
+    error.value = null
+    await mailRepository.restoreMessage(accountId, messageId)
+    messages.value = messages.value.filter((message) => message.id !== messageId)
+
+    if (selectedMessageId.value === messageId) {
+      selectedMessageId.value = messages.value[0]?.id ?? null
+    }
+  }
+
+  const moveMessage = async (accountId: string, messageId: string, folderId: string) => {
+    error.value = null
+    await mailRepository.moveMessage(accountId, messageId, folderId)
+    messages.value = messages.value.filter((message) => message.id !== messageId)
+
+    if (selectedMessageId.value === messageId) {
+      selectedMessageId.value = messages.value[0]?.id ?? null
+    }
+  }
+
   const syncAccount = async (accountId: string) => {
-    syncStatus.value = await mailRepository.syncAccount(accountId)
+    error.value = null
+
+    try {
+      syncStatus.value = await mailRepository.syncAccount(accountId)
+    } catch (syncError) {
+      const message = syncError instanceof Error ? syncError.message : 'Unable to sync mailbox'
+      error.value = message
+      syncStatus.value = {
+        accountId,
+        state: 'error',
+        message,
+        updatedAt: new Date().toISOString(),
+      }
+    }
+  }
+
+  const clearError = () => {
+    error.value = null
   }
 
   return {
@@ -128,6 +181,7 @@ export const useMessagesStore = defineStore('messages', () => {
     query,
     syncStatus,
     error,
+    hasSearchQuery,
     setSyncStatus,
     setMessages,
     setMailboxBundle,
@@ -136,6 +190,10 @@ export const useMessagesStore = defineStore('messages', () => {
     toggleStar,
     toggleRead,
     deleteMessage,
+    archiveMessage,
+    restoreMessage,
+    moveMessage,
     syncAccount,
+    clearError,
   }
 })

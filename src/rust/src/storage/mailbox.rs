@@ -41,6 +41,15 @@ pub fn default_folders_for_account(account_id: &str) -> Vec<MailboxFolder> {
             "mdi-file-document-edit-outline",
         ),
         folder(
+            &format!("archive-{account_id}"),
+            account_id,
+            "Archive",
+            MailFolderKind::Archive,
+            0,
+            0,
+            "mdi-archive-outline",
+        ),
+        folder(
             &format!("trash-{account_id}"),
             account_id,
             "Trash",
@@ -91,6 +100,15 @@ pub fn seeded_folders() -> Vec<MailboxFolder> {
             "mdi-file-document-edit-outline",
         ),
         folder(
+            "archive-work",
+            "acc-work",
+            "Archive",
+            MailFolderKind::Archive,
+            0,
+            0,
+            "mdi-archive-outline",
+        ),
+        folder(
             "trash-work",
             "acc-work",
             "Trash",
@@ -134,6 +152,15 @@ pub fn seeded_folders() -> Vec<MailboxFolder> {
             0,
             1,
             "mdi-file-document-edit-outline",
+        ),
+        folder(
+            "archive-personal",
+            "acc-personal",
+            "Archive",
+            MailFolderKind::Archive,
+            0,
+            0,
+            "mdi-archive-outline",
         ),
         folder(
             "trash-personal",
