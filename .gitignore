@@ -1,8 +1,8 @@
-.claude
-node_modules/
+.claude/
+.vscode/
 dist/
 dist-electron/
-.vite/
+node_modules/
 coverage/
 .DS_Store
 *.log
