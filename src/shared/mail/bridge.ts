@@ -1,0 +1,3 @@
+import type { MailRepository } from '@/shared/mail/mailRepository'
+
+export interface MailstackBridge extends MailRepository {}
