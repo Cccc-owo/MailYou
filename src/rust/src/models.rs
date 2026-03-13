@@ -44,6 +44,8 @@ pub struct MailboxFolder {
     pub unread_count: u32,
     pub total_count: u32,
     pub icon: String,
+    #[serde(default)]
+    pub imap_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +78,8 @@ pub struct MailMessage {
     pub has_attachments: bool,
     pub attachments: Vec<AttachmentMeta>,
     pub labels: Vec<String>,
+    #[serde(default)]
+    pub imap_uid: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

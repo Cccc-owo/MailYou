@@ -15,7 +15,9 @@ export const rustMailBackend: MailBackend = {
   archiveMessage: (accountId, messageId) => invokeRustBackend('archiveMessage', { accountId, messageId }),
   restoreMessage: (accountId, messageId) => invokeRustBackend('restoreMessage', { accountId, messageId }),
   moveMessage: (accountId, messageId, folderId) => invokeRustBackend('moveMessage', { accountId, messageId, folderId }),
+  markAllRead: (accountId, folderId) => invokeRustBackend('markAllRead', { accountId, folderId }),
   deleteMessage: (accountId, messageId) => invokeRustBackend('deleteMessage', { accountId, messageId }),
+  deleteAccount: (accountId) => invokeRustBackend('deleteAccount', { accountId }),
   syncAccount: (accountId) => invokeRustBackend('syncAccount', { accountId }),
   getMailboxBundle: (accountId) => invokeRustBackend('getMailboxBundle', { accountId }),
 }

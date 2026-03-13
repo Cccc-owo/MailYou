@@ -1,7 +1,32 @@
 import { ipcMain } from 'electron'
+import type { AccountSetupDraft } from '@/types/account'
+import type { DraftMessage } from '@/types/mail'
 import { mailBackend } from '../backend/mailBackend'
 
 let registered = false
+
+type IpcArgs = unknown[]
+
+const handle = (channel: string, fn: (...args: IpcArgs) => Promise<unknown>) => {
+  ipcMain.handle(channel, async (_event, ...args: IpcArgs) => {
+    const tag = channel.replace('mail:', '')
+    const argSummary = args
+      .map((a) => (typeof a === 'string' ? a : typeof a === 'object' ? '{...}' : String(a)))
+      .join(', ')
+    console.log(`[ipc] ${tag}(${argSummary})`)
+
+    const start = Date.now()
+    try {
+      const result = await fn(...args)
+      console.log(`[ipc] ${tag} → ok (${Date.now() - start}ms)`)
+      return result
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[ipc] ${tag} → error (${Date.now() - start}ms): ${msg}`)
+      throw err
+    }
+  })
+}
 
 export const registerMailIpc = () => {
   if (registered) {
@@ -10,36 +35,44 @@ export const registerMailIpc = () => {
 
   registered = true
 
-  ipcMain.handle('mail:listAccounts', () => mailBackend.listAccounts())
-  ipcMain.handle('mail:createAccount', (_event, draft) => mailBackend.createAccount(draft))
-  ipcMain.handle('mail:testAccountConnection', (_event, draft) => mailBackend.testAccountConnection(draft))
-  ipcMain.handle('mail:listFolders', (_event, accountId) => mailBackend.listFolders(accountId))
-  ipcMain.handle('mail:listMessages', (_event, accountId, folderId) =>
-    mailBackend.listMessages(accountId, folderId),
+  handle('mail:listAccounts', () => mailBackend.listAccounts())
+  handle('mail:createAccount', (draft) => mailBackend.createAccount(draft as AccountSetupDraft))
+  handle('mail:testAccountConnection', (draft) =>
+    mailBackend.testAccountConnection(draft as AccountSetupDraft),
   )
-  ipcMain.handle('mail:getMessage', (_event, accountId, messageId) =>
-    mailBackend.getMessage(accountId, messageId),
+  handle('mail:listFolders', (accountId) => mailBackend.listFolders(accountId as string))
+  handle('mail:listMessages', (accountId, folderId) =>
+    mailBackend.listMessages(accountId as string, folderId as string),
   )
-  ipcMain.handle('mail:saveDraft', (_event, draft) => mailBackend.saveDraft(draft))
-  ipcMain.handle('mail:sendMessage', (_event, draft) => mailBackend.sendMessage(draft))
-  ipcMain.handle('mail:toggleStar', (_event, accountId, messageId) =>
-    mailBackend.toggleStar(accountId, messageId),
+  handle('mail:getMessage', (accountId, messageId) =>
+    mailBackend.getMessage(accountId as string, messageId as string),
   )
-  ipcMain.handle('mail:toggleRead', (_event, accountId, messageId) =>
-    mailBackend.toggleRead(accountId, messageId),
+  handle('mail:saveDraft', (draft) => mailBackend.saveDraft(draft as DraftMessage))
+  handle('mail:sendMessage', (draft) => mailBackend.sendMessage(draft as DraftMessage))
+  handle('mail:toggleStar', (accountId, messageId) =>
+    mailBackend.toggleStar(accountId as string, messageId as string),
   )
-  ipcMain.handle('mail:archiveMessage', (_event, accountId, messageId) =>
-    mailBackend.archiveMessage(accountId, messageId),
+  handle('mail:toggleRead', (accountId, messageId) =>
+    mailBackend.toggleRead(accountId as string, messageId as string),
   )
-  ipcMain.handle('mail:restoreMessage', (_event, accountId, messageId) =>
-    mailBackend.restoreMessage(accountId, messageId),
+  handle('mail:archiveMessage', (accountId, messageId) =>
+    mailBackend.archiveMessage(accountId as string, messageId as string),
   )
-  ipcMain.handle('mail:moveMessage', (_event, accountId, messageId, folderId) =>
-    mailBackend.moveMessage(accountId, messageId, folderId),
+  handle('mail:restoreMessage', (accountId, messageId) =>
+    mailBackend.restoreMessage(accountId as string, messageId as string),
   )
-  ipcMain.handle('mail:deleteMessage', (_event, accountId, messageId) =>
-    mailBackend.deleteMessage(accountId, messageId),
+  handle('mail:moveMessage', (accountId, messageId, folderId) =>
+    mailBackend.moveMessage(accountId as string, messageId as string, folderId as string),
   )
-  ipcMain.handle('mail:syncAccount', (_event, accountId) => mailBackend.syncAccount(accountId))
-  ipcMain.handle('mail:getMailboxBundle', (_event, accountId) => mailBackend.getMailboxBundle(accountId))
+  handle('mail:markAllRead', (accountId, folderId) =>
+    mailBackend.markAllRead(accountId as string, folderId as string),
+  )
+  handle('mail:deleteMessage', (accountId, messageId) =>
+    mailBackend.deleteMessage(accountId as string, messageId as string),
+  )
+  handle('mail:deleteAccount', (accountId) => mailBackend.deleteAccount(accountId as string))
+  handle('mail:syncAccount', (accountId) => mailBackend.syncAccount(accountId as string))
+  handle('mail:getMailboxBundle', (accountId) =>
+    mailBackend.getMailboxBundle(accountId as string),
+  )
 }

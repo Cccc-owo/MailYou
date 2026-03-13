@@ -42,6 +42,27 @@ export const useComposerStore = defineStore('composer', () => {
     isOpen.value = true
   }
 
+  const openReplyAll = (accountId: string, message: MailMessage, selfEmail: string) => {
+    error.value = null
+    successMessage.value = null
+
+    const self = selfEmail.toLowerCase()
+    const allRecipients = [message.fromEmail, ...message.to, ...message.cc]
+      .map((addr) => addr.trim())
+      .filter((addr) => addr.length > 0 && addr.toLowerCase() !== self)
+    const uniqueRecipients = [...new Set(allRecipients)]
+
+    draft.value = {
+      ...createEmptyDraft(),
+      accountId,
+      to: uniqueRecipients.join(', '),
+      subject: message.subject.startsWith('Re:') ? message.subject : `Re: ${message.subject}`,
+      body: `\n\n---\n${message.body.replace(/<[^>]+>/g, '')}`,
+      inReplyToMessageId: message.id,
+    }
+    isOpen.value = true
+  }
+
   const openForward = (accountId: string, message: MailMessage) => {
     error.value = null
     successMessage.value = null
@@ -108,6 +129,7 @@ export const useComposerStore = defineStore('composer', () => {
     draft,
     openNew,
     openReply,
+    openReplyAll,
     openForward,
     saveDraft,
     sendDraft,

@@ -42,16 +42,44 @@ class RustBackendClient {
 
     const id = this.nextRequestId++
     const payload = args[0] === undefined ? { id, method } : { id, method, params: args[0] }
+    const startTime = Date.now()
 
     return await new Promise<RustBackendMethodMap[M]['result']>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject })
+      // Timeout: if the backend doesn't respond within 30s, reject the Promise.
+      // syncAccount gets a longer timeout since IMAP operations can be slow.
+      const timeoutMs = method === 'syncAccount' ? 120_000 : 30_000
+      const timer = setTimeout(() => {
+        if (this.pending.has(id)) {
+          this.pending.delete(id)
+          const elapsed = Date.now() - startTime
+          console.warn(`[rpc] #${id} ${method} timed out (${elapsed}ms)`)
+          reject(new Error(`Rust backend request '${method}' (id=${id}) timed out after ${timeoutMs / 1000}s`))
+        }
+      }, timeoutMs)
+
+      this.pending.set(id, {
+        resolve: (value: unknown) => {
+          clearTimeout(timer)
+          console.log(`[rpc] #${id} ${method} → ok (${Date.now() - startTime}ms)`)
+          ;(resolve as (v: unknown) => void)(value)
+        },
+        reject: (reason: Error) => {
+          clearTimeout(timer)
+          console.log(`[rpc] #${id} ${method} → error (${Date.now() - startTime}ms): ${reason.message}`)
+          reject(reason)
+        },
+      })
+
+      console.log(`[rpc] #${id} ${method}`)
 
       child.stdin.write(`${JSON.stringify(payload)}\n`, (error) => {
         if (!error) {
           return
         }
 
+        clearTimeout(timer)
         this.pending.delete(id)
+        console.error(`[rpc] #${id} ${method} stdin write failed: ${error.message}`)
         reject(new Error(`Failed to send request to Rust mail backend: ${error.message}`))
       })
     })
@@ -122,7 +150,14 @@ class RustBackendClient {
 
     let recentStderr = ''
     child.stderr.on('data', (chunk) => {
-      recentStderr = `${recentStderr}${chunk.toString('utf8')}`.slice(-4000)
+      const text = chunk.toString('utf8')
+      // Forward Rust backend stderr to console for visibility
+      for (const line of text.split('\n')) {
+        if (line.trim()) {
+          console.log(`[rust] ${line}`)
+        }
+      }
+      recentStderr = `${recentStderr}${text}`.slice(-4000)
     })
 
     const handleProcessExit = (code: number | null, signal: NodeJS.Signals | null) => {
@@ -178,7 +213,7 @@ class RustBackendClient {
     try {
       response = JSON.parse(line) as RustBackendResponse
     } catch {
-      this.rejectPending(new Error(`Rust mail backend returned invalid JSON: ${line}`))
+      console.warn(`[rpc] ignoring non-JSON line from backend: ${line.slice(0, 200)}`)
       return
     }
 

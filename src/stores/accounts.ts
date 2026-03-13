@@ -74,6 +74,22 @@ export const useAccountsStore = defineStore('accounts', () => {
     return account
   }
 
+  const deleteAccount = async (accountId: string) => {
+    await mailRepository.deleteAccount(accountId)
+    accounts.value = accounts.value.filter((a) => a.id !== accountId)
+
+    if (currentAccountId.value === accountId) {
+      const next = accounts.value[0]?.id ?? null
+      currentAccountId.value = next
+
+      if (next) {
+        localStorage.setItem(STORAGE_KEY, next)
+      } else {
+        localStorage.removeItem(STORAGE_KEY)
+      }
+    }
+  }
+
   return {
     accounts,
     currentAccount,
@@ -84,6 +100,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     connectionStatus,
     loadAccounts,
     createAccount,
+    deleteAccount,
     selectAccount,
     testAccountConnection,
   }

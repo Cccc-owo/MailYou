@@ -1,4 +1,4 @@
-use crate::provider::mock::MOCK_PROVIDER;
+use crate::provider::imap::IMAP_SMTP_PROVIDER;
 use crate::provider::MailProvider;
 
 #[derive(Clone, Copy)]
@@ -17,5 +17,5 @@ impl ProviderRegistry {
 }
 
 pub fn default_provider_registry() -> ProviderRegistry {
-    ProviderRegistry::new(&MOCK_PROVIDER)
+    ProviderRegistry::new(&IMAP_SMTP_PROVIDER)
 }

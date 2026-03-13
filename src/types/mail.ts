@@ -15,6 +15,7 @@ export interface MailboxFolder {
   unreadCount: number
   totalCount: number
   icon: string
+  imapName?: string
 }
 
 export interface AttachmentMeta {
@@ -43,6 +44,7 @@ export interface MailMessage {
   hasAttachments: boolean
   attachments: AttachmentMeta[]
   labels: string[]
+  imapUid?: number
 }
 
 export interface MailThread {

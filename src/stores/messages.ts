@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, shallowReactive } from 'vue'
 import { defineStore } from 'pinia'
 import { mailRepository } from '@/services/mail'
 import type { MailMessage, MailboxBundle, MailboxFolder, SyncStatus } from '@/types/mail'
@@ -35,6 +35,8 @@ export const useMessagesStore = defineStore('messages', () => {
   const query = ref('')
   const syncStatus = ref<SyncStatus | null>(null)
   const error = ref<string | null>(null)
+  const selectedIds = shallowReactive(new Set<string>())
+  const isMultiSelectMode = computed(() => selectedIds.size > 0)
 
   const filteredMessages = computed(() => {
     const search = query.value.trim().toLowerCase()
@@ -43,12 +45,19 @@ export const useMessagesStore = defineStore('messages', () => {
       return messages.value
     }
 
-    return messages.value.filter((message) =>
-      [message.subject, message.preview, message.from, message.fromEmail]
+    return messages.value.filter((message) => {
+      const basicFields = [message.subject, message.preview, message.from, message.fromEmail]
         .join(' ')
         .toLowerCase()
-        .includes(search),
-    )
+
+      if (basicFields.includes(search)) {
+        return true
+      }
+
+      // Search in body with HTML tags stripped
+      const bodyText = message.body.replace(/<[^>]*>/g, ' ').toLowerCase()
+      return bodyText.includes(search)
+    })
   })
 
   const selectedMessage = computed(() =>
@@ -63,6 +72,12 @@ export const useMessagesStore = defineStore('messages', () => {
 
   const setMessages = (nextMessages: MailMessage[]) => {
     messages.value = nextMessages
+
+    // Preserve current selection if the message still exists in the new list
+    if (selectedMessageId.value && nextMessages.some((m) => m.id === selectedMessageId.value)) {
+      return
+    }
+
     selectedMessageId.value = nextMessages[0]?.id ?? null
   }
 
@@ -151,6 +166,101 @@ export const useMessagesStore = defineStore('messages', () => {
     }
   }
 
+  const markAllRead = async (accountId: string, folderId: string) => {
+    error.value = null
+    await mailRepository.markAllRead(accountId, folderId)
+    messages.value = messages.value.map((message) => ({ ...message, isRead: true }))
+  }
+
+  // --- Batch selection ---
+  const toggleSelection = (messageId: string) => {
+    if (selectedIds.has(messageId)) {
+      selectedIds.delete(messageId)
+    } else {
+      selectedIds.add(messageId)
+    }
+  }
+
+  const selectAll = () => {
+    for (const message of filteredMessages.value) {
+      selectedIds.add(message.id)
+    }
+  }
+
+  const clearSelection = () => {
+    selectedIds.clear()
+  }
+
+  const batchDelete = async (accountId: string) => {
+    error.value = null
+    const ids = [...selectedIds]
+    try {
+      for (const id of ids) {
+        await mailRepository.deleteMessage(accountId, id)
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Batch delete failed'
+    }
+    messages.value = messages.value.filter((m) => !selectedIds.has(m.id))
+    if (selectedMessageId.value && selectedIds.has(selectedMessageId.value)) {
+      selectedMessageId.value = messages.value[0]?.id ?? null
+    }
+    selectedIds.clear()
+  }
+
+  const batchArchive = async (accountId: string) => {
+    error.value = null
+    const ids = [...selectedIds]
+    try {
+      for (const id of ids) {
+        await mailRepository.archiveMessage(accountId, id)
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Batch archive failed'
+    }
+    messages.value = messages.value.filter((m) => !selectedIds.has(m.id))
+    if (selectedMessageId.value && selectedIds.has(selectedMessageId.value)) {
+      selectedMessageId.value = messages.value[0]?.id ?? null
+    }
+    selectedIds.clear()
+  }
+
+  const batchToggleRead = async (accountId: string, markRead: boolean) => {
+    error.value = null
+    const ids = [...selectedIds]
+    try {
+      for (const id of ids) {
+        const msg = messages.value.find((m) => m.id === id)
+        if (msg && msg.isRead !== markRead) {
+          await mailRepository.toggleRead(accountId, id)
+        }
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Batch mark read failed'
+    }
+    messages.value = messages.value.map((m) =>
+      selectedIds.has(m.id) ? { ...m, isRead: markRead } : m,
+    )
+    selectedIds.clear()
+  }
+
+  const batchMove = async (accountId: string, folderId: string) => {
+    error.value = null
+    const ids = [...selectedIds]
+    try {
+      for (const id of ids) {
+        await mailRepository.moveMessage(accountId, id, folderId)
+      }
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Batch move failed'
+    }
+    messages.value = messages.value.filter((m) => !selectedIds.has(m.id))
+    if (selectedMessageId.value && selectedIds.has(selectedMessageId.value)) {
+      selectedMessageId.value = messages.value[0]?.id ?? null
+    }
+    selectedIds.clear()
+  }
+
   const syncAccount = async (accountId: string) => {
     error.value = null
 
@@ -172,6 +282,15 @@ export const useMessagesStore = defineStore('messages', () => {
     error.value = null
   }
 
+  const clearAll = () => {
+    messages.value = []
+    selectedMessageId.value = null
+    syncStatus.value = null
+    error.value = null
+    query.value = ''
+    selectedIds.clear()
+  }
+
   return {
     messages,
     filteredMessages,
@@ -182,6 +301,8 @@ export const useMessagesStore = defineStore('messages', () => {
     syncStatus,
     error,
     hasSearchQuery,
+    selectedIds,
+    isMultiSelectMode,
     setSyncStatus,
     setMessages,
     setMailboxBundle,
@@ -193,7 +314,16 @@ export const useMessagesStore = defineStore('messages', () => {
     archiveMessage,
     restoreMessage,
     moveMessage,
+    markAllRead,
+    toggleSelection,
+    selectAll,
+    clearSelection,
+    batchDelete,
+    batchArchive,
+    batchToggleRead,
+    batchMove,
     syncAccount,
     clearError,
+    clearAll,
   }
 })

@@ -240,6 +240,7 @@ pub fn seeded_messages() -> Vec<MailMessage> {
             has_attachments: false,
             attachments: vec![],
             labels: vec!["MVP".into()],
+            imap_uid: None,
         },
         MailMessage {
             id: "msg-2".into(),
@@ -260,6 +261,7 @@ pub fn seeded_messages() -> Vec<MailMessage> {
             has_attachments: false,
             attachments: vec![],
             labels: vec!["Theme".into()],
+            imap_uid: None,
         },
         MailMessage {
             id: "msg-3".into(),
@@ -285,6 +287,7 @@ pub fn seeded_messages() -> Vec<MailMessage> {
                 size_bytes: 58_231,
             }],
             labels: vec!["Protocol".into()],
+            imap_uid: None,
         },
         MailMessage {
             id: "msg-4".into(),
@@ -305,6 +308,7 @@ pub fn seeded_messages() -> Vec<MailMessage> {
             has_attachments: false,
             attachments: vec![],
             labels: vec![],
+            imap_uid: None,
         },
         MailMessage {
             id: "msg-5".into(),
@@ -330,6 +334,7 @@ pub fn seeded_messages() -> Vec<MailMessage> {
                 size_bytes: 22_104,
             }],
             labels: vec!["Travel".into()],
+            imap_uid: None,
         },
     ]
 }
@@ -351,5 +356,6 @@ fn folder(
         unread_count,
         total_count,
         icon: icon.into(),
+        imap_name: None,
     }
 }

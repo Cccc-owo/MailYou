@@ -48,7 +48,8 @@ defineEmits<{
 .mail-shell-layout {
   display: grid;
   grid-template-rows: auto 1fr;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: rgb(var(--v-theme-background));
 }
 
@@ -62,6 +63,11 @@ defineEmits<{
 .mail-shell-layout__list,
 .mail-shell-layout__reader {
   min-height: 0;
+  overflow: hidden;
+}
+
+.mail-shell-layout__sidebar,
+.mail-shell-layout__reader {
   overflow: auto;
 }
 

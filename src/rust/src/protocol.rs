@@ -13,19 +13,60 @@ pub enum BackendRequest {
     ListAccounts,
     CreateAccount(AccountSetupDraft),
     TestAccountConnection(AccountSetupDraft),
+    #[serde(rename_all = "camelCase")]
     ListFolders { account_id: String },
+    #[serde(rename_all = "camelCase")]
     ListMessages { account_id: String, folder_id: String },
+    #[serde(rename_all = "camelCase")]
     GetMessage { account_id: String, message_id: String },
     SaveDraft(DraftMessage),
     SendMessage(DraftMessage),
+    #[serde(rename_all = "camelCase")]
     ToggleStar { account_id: String, message_id: String },
+    #[serde(rename_all = "camelCase")]
     ToggleRead { account_id: String, message_id: String },
+    #[serde(rename_all = "camelCase")]
     DeleteMessage { account_id: String, message_id: String },
+    #[serde(rename_all = "camelCase")]
+    DeleteAccount { account_id: String },
+    #[serde(rename_all = "camelCase")]
     ArchiveMessage { account_id: String, message_id: String },
+    #[serde(rename_all = "camelCase")]
     RestoreMessage { account_id: String, message_id: String },
+    #[serde(rename_all = "camelCase")]
     MoveMessage { account_id: String, message_id: String, folder_id: String },
+    #[serde(rename_all = "camelCase")]
+    MarkAllRead { account_id: String, folder_id: String },
+    #[serde(rename_all = "camelCase")]
     SyncAccount { account_id: String },
+    #[serde(rename_all = "camelCase")]
     GetMailboxBundle { account_id: String },
+}
+
+impl BackendRequest {
+    pub fn method_name(&self) -> &'static str {
+        match self {
+            Self::HealthCheck => "healthCheck",
+            Self::ListAccounts => "listAccounts",
+            Self::CreateAccount(_) => "createAccount",
+            Self::TestAccountConnection(_) => "testAccountConnection",
+            Self::ListFolders { .. } => "listFolders",
+            Self::ListMessages { .. } => "listMessages",
+            Self::GetMessage { .. } => "getMessage",
+            Self::SaveDraft(_) => "saveDraft",
+            Self::SendMessage(_) => "sendMessage",
+            Self::ToggleStar { .. } => "toggleStar",
+            Self::ToggleRead { .. } => "toggleRead",
+            Self::DeleteMessage { .. } => "deleteMessage",
+            Self::DeleteAccount { .. } => "deleteAccount",
+            Self::ArchiveMessage { .. } => "archiveMessage",
+            Self::RestoreMessage { .. } => "restoreMessage",
+            Self::MoveMessage { .. } => "moveMessage",
+            Self::MarkAllRead { .. } => "markAllRead",
+            Self::SyncAccount { .. } => "syncAccount",
+            Self::GetMailboxBundle { .. } => "getMailboxBundle",
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

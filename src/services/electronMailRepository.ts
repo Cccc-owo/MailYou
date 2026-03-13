@@ -23,7 +23,9 @@ export const electronMailRepository: MailRepository = {
   archiveMessage: (accountId, messageId) => getBridge().archiveMessage(accountId, messageId),
   restoreMessage: (accountId, messageId) => getBridge().restoreMessage(accountId, messageId),
   moveMessage: (accountId, messageId, folderId) => getBridge().moveMessage(accountId, messageId, folderId),
+  markAllRead: (accountId, folderId) => getBridge().markAllRead(accountId, folderId),
   deleteMessage: (accountId, messageId) => getBridge().deleteMessage(accountId, messageId),
+  deleteAccount: (accountId) => getBridge().deleteAccount(accountId),
   syncAccount: (accountId) => getBridge().syncAccount(accountId),
   getMailboxBundle: (accountId) => getBridge().getMailboxBundle(accountId),
 }

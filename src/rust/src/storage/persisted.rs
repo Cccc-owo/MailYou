@@ -14,12 +14,42 @@ const DRAFTS_FILE: &str = "drafts.json";
 const MAILBOX_FILE: &str = "mailbox.json";
 const SYNC_FILE: &str = "sync.json";
 
+const KEYRING_SERVICE: &str = "mailstack";
+const PASSWORD_PLACEHOLDER: &str = "<keyring>";
+
 pub fn load_accounts() -> Vec<StoredAccountState> {
-    load_json(ACCOUNTS_FILE).unwrap_or_default()
+    let mut accounts: Vec<StoredAccountState> = load_json(ACCOUNTS_FILE).unwrap_or_default();
+
+    for account_state in accounts.iter_mut() {
+        if account_state.config.password == PASSWORD_PLACEHOLDER
+            || account_state.config.password.is_empty()
+        {
+            if let Some(password) = keyring_get(&account_state.account.id) {
+                account_state.config.password = password;
+            }
+        }
+    }
+
+    accounts
 }
 
 pub fn save_accounts(accounts: &[StoredAccountState]) -> io::Result<()> {
-    save_json(ACCOUNTS_FILE, accounts)
+    // Store passwords in keyring, replace with placeholder in JSON
+    let mut sanitized: Vec<StoredAccountState> = accounts.to_vec();
+
+    for account_state in sanitized.iter_mut() {
+        let account_id = &account_state.account.id;
+        let password = &account_state.config.password;
+
+        if !password.is_empty() && password != PASSWORD_PLACEHOLDER {
+            if keyring_set(account_id, password) {
+                account_state.config.password = PASSWORD_PLACEHOLDER.into();
+            }
+            // If keyring fails, password stays in JSON as fallback
+        }
+    }
+
+    save_json(ACCOUNTS_FILE, &sanitized)
 }
 
 pub fn load_drafts() -> Vec<DraftMessage> {
@@ -61,6 +91,22 @@ fn load_json<T: DeserializeOwned>(file_name: &str) -> io::Result<T> {
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
 }
 
+pub fn has_persisted(file_name: &str) -> bool {
+    storage_file(file_name).map(|p| p.exists()).unwrap_or(false)
+}
+
+pub fn has_accounts_file() -> bool {
+    has_persisted(ACCOUNTS_FILE)
+}
+
+pub fn has_mailbox_file() -> bool {
+    has_persisted(MAILBOX_FILE)
+}
+
+pub fn has_drafts_file() -> bool {
+    has_persisted(DRAFTS_FILE)
+}
+
 fn save_json<T: Serialize + ?Sized>(file_name: &str, value: &T) -> io::Result<()> {
     let path = storage_file(file_name)?;
     if let Some(parent) = path.parent() {
@@ -99,4 +145,17 @@ fn data_root() -> io::Result<PathBuf> {
         .map(PathBuf::from)
         .map_err(|error| io::Error::new(io::ErrorKind::NotFound, error.to_string()))?;
     Ok(home.join(".local").join("share"))
+}
+
+fn keyring_get(account_id: &str) -> Option<String> {
+    keyring::Entry::new(KEYRING_SERVICE, account_id)
+        .ok()
+        .and_then(|entry| entry.get_password().ok())
+}
+
+fn keyring_set(account_id: &str, password: &str) -> bool {
+    keyring::Entry::new(KEYRING_SERVICE, account_id)
+        .ok()
+        .and_then(|entry| entry.set_password(password).ok())
+        .is_some()
 }

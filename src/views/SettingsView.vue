@@ -67,6 +67,44 @@
           </v-col>
         </v-row>
       </v-card>
+
+      <v-card class="settings-card">
+        <div class="text-overline mb-2">Mail</div>
+        <div class="text-h4 mb-2">Sync settings</div>
+        <div class="text-body-1 text-medium-emphasis mb-6">
+          Configure how often MailStack syncs and how many messages to fetch per sync.
+        </div>
+
+        <v-row class="settings-row" dense>
+          <v-col cols="12" md="6">
+            <v-card class="settings-panel pa-4" color="surface">
+              <div class="text-subtitle-1 mb-3">Sync frequency</div>
+              <v-select
+                :items="syncIntervalOptions"
+                :model-value="uiStore.syncIntervalMinutes"
+                item-title="label"
+                item-value="value"
+                label="Sync every"
+                @update:model-value="setSyncInterval"
+              />
+            </v-card>
+          </v-col>
+
+          <v-col cols="12" md="6">
+            <v-card class="settings-panel pa-4" color="surface">
+              <div class="text-subtitle-1 mb-3">Fetch limit</div>
+              <v-select
+                :items="fetchLimitOptions"
+                :model-value="uiStore.fetchLimit"
+                item-title="label"
+                item-value="value"
+                label="Messages per sync"
+                @update:model-value="setFetchLimit"
+              />
+            </v-card>
+          </v-col>
+        </v-row>
+      </v-card>
     </v-container>
   </div>
 </template>
@@ -91,6 +129,22 @@ const seedOptions = [
   { label: 'Rose', value: '#C75B7A' },
 ] as const
 
+const syncIntervalOptions = [
+  { label: '1 minute', value: 1 },
+  { label: '3 minutes', value: 3 },
+  { label: '5 minutes', value: 5 },
+  { label: '10 minutes', value: 10 },
+  { label: '15 minutes', value: 15 },
+  { label: '30 minutes', value: 30 },
+] satisfies Array<{ label: string; value: number }>
+
+const fetchLimitOptions = [
+  { label: '25 messages', value: 25 },
+  { label: '50 messages', value: 50 },
+  { label: '100 messages', value: 100 },
+  { label: '200 messages', value: 200 },
+] satisfies Array<{ label: string; value: number }>
+
 const setThemeSeed = (value: string | null) => {
   if (!value) {
     return
@@ -113,6 +167,22 @@ const setDensity = (value: DensityMode | null) => {
   }
 
   uiStore.setDensity(value)
+}
+
+const setSyncInterval = (value: number | null) => {
+  if (!value) {
+    return
+  }
+
+  uiStore.setSyncIntervalMinutes(value)
+}
+
+const setFetchLimit = (value: number | null) => {
+  if (!value) {
+    return
+  }
+
+  uiStore.setFetchLimit(value)
 }
 </script>
 

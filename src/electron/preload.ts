@@ -16,7 +16,9 @@ const mailstack: MailstackBridge = {
   archiveMessage: (accountId, messageId) => ipcRenderer.invoke('mail:archiveMessage', accountId, messageId),
   restoreMessage: (accountId, messageId) => ipcRenderer.invoke('mail:restoreMessage', accountId, messageId),
   moveMessage: (accountId, messageId, folderId) => ipcRenderer.invoke('mail:moveMessage', accountId, messageId, folderId),
+  markAllRead: (accountId, folderId) => ipcRenderer.invoke('mail:markAllRead', accountId, folderId),
   deleteMessage: (accountId, messageId) => ipcRenderer.invoke('mail:deleteMessage', accountId, messageId),
+  deleteAccount: (accountId) => ipcRenderer.invoke('mail:deleteAccount', accountId),
   syncAccount: (accountId) => ipcRenderer.invoke('mail:syncAccount', accountId),
   getMailboxBundle: (accountId) => ipcRenderer.invoke('mail:getMailboxBundle', accountId),
 }

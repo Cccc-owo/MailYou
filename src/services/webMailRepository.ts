@@ -1,4 +1,26 @@
-import { mockMailRepository } from '@/shared/mock/mockMailRepository'
 import type { MailRepository } from '@/shared/mail/mailRepository'
 
-export const webMailRepository: MailRepository = mockMailRepository
+const notAvailable = (): never => {
+  throw new Error('Mail backend is not available in web mode. Use the Electron desktop target.')
+}
+
+export const webMailRepository: MailRepository = {
+  listAccounts: notAvailable,
+  createAccount: notAvailable,
+  testAccountConnection: notAvailable,
+  deleteAccount: notAvailable,
+  listFolders: notAvailable,
+  listMessages: notAvailable,
+  getMessage: notAvailable,
+  saveDraft: notAvailable,
+  sendMessage: notAvailable,
+  toggleStar: notAvailable,
+  toggleRead: notAvailable,
+  deleteMessage: notAvailable,
+  archiveMessage: notAvailable,
+  restoreMessage: notAvailable,
+  moveMessage: notAvailable,
+  markAllRead: notAvailable,
+  syncAccount: notAvailable,
+  getMailboxBundle: notAvailable,
+}

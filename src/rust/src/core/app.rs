@@ -1,13 +1,12 @@
-use crate::core::context::AppContext;
 use crate::protocol::{
     serialize, BackendRequest, HealthCheckResult, SendMessageResult,
 };
+use crate::provider::MailProvider;
 
-pub fn handle(
-    context: &AppContext,
+pub fn handle_with_provider(
+    provider: &'static dyn MailProvider,
     request: BackendRequest,
 ) -> Result<serde_json::Value, crate::protocol::BackendError> {
-    let provider = context.provider();
 
     match request {
         BackendRequest::HealthCheck => serialize(HealthCheckResult {
@@ -44,6 +43,7 @@ pub fn handle(
             account_id,
             message_id,
         } => serialize(provider.delete_message(&account_id, &message_id)?),
+        BackendRequest::DeleteAccount { account_id } => serialize(provider.delete_account(&account_id)?),
         BackendRequest::ArchiveMessage {
             account_id,
             message_id,
@@ -57,6 +57,10 @@ pub fn handle(
             message_id,
             folder_id,
         } => serialize(provider.move_message(&account_id, &message_id, &folder_id)?),
+        BackendRequest::MarkAllRead {
+            account_id,
+            folder_id,
+        } => serialize(provider.mark_all_read(&account_id, &folder_id)?),
         BackendRequest::SyncAccount { account_id } => serialize(provider.sync_account(&account_id)?),
         BackendRequest::GetMailboxBundle { account_id } => serialize(provider.get_mailbox_bundle(&account_id)?),
     }

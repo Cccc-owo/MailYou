@@ -64,8 +64,16 @@ export interface RustBackendMethodMap {
     params: { accountId: string; messageId: string; folderId: string }
     result: MailMessage | null
   }
+  markAllRead: {
+    params: { accountId: string; folderId: string }
+    result: void
+  }
   deleteMessage: {
     params: { accountId: string; messageId: string }
+    result: void
+  }
+  deleteAccount: {
+    params: { accountId: string }
     result: void
   }
   syncAccount: {

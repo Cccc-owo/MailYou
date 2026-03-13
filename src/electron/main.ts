@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, session } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ensureRustBackendReady, shutdownRustBackend } from './backend/rust/process'
@@ -47,6 +47,18 @@ const createMainWindow = async () => {
 }
 
 app.whenReady().then(async () => {
+  // Allow loading external images (http/https) and inline data URIs in email bodies.
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http: data: cid:; font-src 'self' data:; connect-src 'self' ws: wss: http: https:",
+        ],
+      },
+    })
+  })
+
   try {
     await ensureRustBackendReady()
   } catch (error) {

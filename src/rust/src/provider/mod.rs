@@ -1,4 +1,4 @@
-pub mod mock;
+pub mod imap;
 pub mod registry;
 
 use crate::models::{
@@ -20,9 +20,11 @@ pub trait MailProvider: Sync {
     fn toggle_star(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError>;
     fn toggle_read(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError>;
     fn delete_message(&self, account_id: &str, message_id: &str) -> Result<(), BackendError>;
+    fn delete_account(&self, account_id: &str) -> Result<(), BackendError>;
     fn archive_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError>;
     fn restore_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError>;
     fn move_message(&self, account_id: &str, message_id: &str, folder_id: &str) -> Result<Option<MailMessage>, BackendError>;
+    fn mark_all_read(&self, account_id: &str, folder_id: &str) -> Result<(), BackendError>;
     fn sync_account(&self, account_id: &str) -> Result<SyncStatus, BackendError>;
     fn get_mailbox_bundle(&self, account_id: &str) -> Result<MailboxBundle, BackendError>;
 }

@@ -7,11 +7,34 @@
       </div>
       <div class="mail-reader__toolbar-actions d-flex flex-wrap ga-2">
         <v-btn prepend-icon="mdi-reply-outline" @click="$emit('reply')">Reply</v-btn>
+        <v-btn prepend-icon="mdi-reply-all-outline" @click="$emit('reply-all')">Reply All</v-btn>
         <v-btn prepend-icon="mdi-arrow-top-right" @click="$emit('forward')">Forward</v-btn>
         <v-btn prepend-icon="mdi-email-open-outline" @click="$emit('toggle-read')">
           {{ message.isRead ? 'Mark unread' : 'Mark read' }}
         </v-btn>
-        <v-btn prepend-icon="mdi-archive-outline" @click="$emit('archive')">Archive</v-btn>
+
+        <v-menu v-if="moveTargetFolders.length > 0">
+          <template #activator="{ props: menuProps }">
+            <v-btn prepend-icon="mdi-folder-move-outline" v-bind="menuProps">Move to</v-btn>
+          </template>
+          <v-list density="compact">
+            <v-list-item
+              v-for="folder in moveTargetFolders"
+              :key="folder.id"
+              :prepend-icon="folder.icon"
+              :title="folder.name"
+              @click="$emit('move', folder.id)"
+            />
+          </v-list>
+        </v-menu>
+
+        <template v-if="isTrashOrArchive">
+          <v-btn prepend-icon="mdi-inbox-arrow-down" @click="$emit('restore')">Restore to Inbox</v-btn>
+        </template>
+        <template v-else>
+          <v-btn prepend-icon="mdi-archive-outline" @click="$emit('archive')">Archive</v-btn>
+        </template>
+
         <v-btn prepend-icon="mdi-delete-outline" color="error" @click="$emit('delete')">Delete</v-btn>
       </div>
     </div>
@@ -25,6 +48,7 @@
         <div class="text-body-2 text-medium-emphasis text-sm-left text-md-right">
           <div>{{ formattedDate }}</div>
           <div>To {{ message.to.join(', ') }}</div>
+          <div v-if="message.cc.length > 0">Cc {{ message.cc.join(', ') }}</div>
         </div>
       </div>
 
@@ -33,7 +57,7 @@
         <v-chip v-if="message.hasAttachments" size="small" color="primary">{{ message.attachments.length }} attachments</v-chip>
       </div>
 
-      <div class="mail-reader__body text-body-1" v-html="message.body" />
+      <div class="mail-reader__body text-body-1" v-html="sanitizedBody" />
 
       <v-list v-if="message.attachments.length" class="mail-reader__attachments">
         <v-list-item v-for="attachment in message.attachments" :key="attachment.id" rounded="xl">
@@ -56,27 +80,55 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { MailMessage } from '@/types/mail'
+import DOMPurify from 'dompurify'
+import type { MailMessage, MailboxFolder } from '@/types/mail'
+
+// Ensure all links in email bodies open externally and have noopener
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A') {
+    node.setAttribute('target', '_blank')
+    node.setAttribute('rel', 'noopener noreferrer')
+  }
+})
 
 const props = withDefaults(
   defineProps<{
     hasMessages?: boolean
     hasSearchQuery?: boolean
     message: MailMessage | null
+    folders?: MailboxFolder[]
+    currentFolderId?: string | null
+    currentFolderKind?: string | null
   }>(),
   {
     hasMessages: false,
     hasSearchQuery: false,
+    folders: () => [],
+    currentFolderId: null,
+    currentFolderKind: null,
   },
 )
 
 defineEmits<{
   reply: []
+  'reply-all': []
   forward: []
   archive: []
+  restore: []
   delete: []
   'toggle-read': []
+  move: [folderId: string]
 }>()
+
+const isTrashOrArchive = computed(() =>
+  props.currentFolderKind === 'trash' || props.currentFolderKind === 'archive',
+)
+
+const moveTargetFolders = computed(() =>
+  props.folders.filter(
+    (f) => f.id !== props.currentFolderId && f.kind !== 'starred',
+  ),
+)
 
 const formattedDate = computed(() => {
   if (!props.message) {
@@ -117,6 +169,28 @@ const emptyStateDescription = computed(() => {
 })
 
 const emptyStateIcon = computed(() => (props.hasSearchQuery && !props.hasMessages ? 'mdi-magnify' : 'mdi-email-outline'))
+
+const sanitizedBody = computed(() => {
+  if (!props.message) {
+    return ''
+  }
+
+  return DOMPurify.sanitize(props.message.body, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'td', 'th',
+      'div', 'span', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code',
+      'hr', 'sub', 'sup', 'caption', 'col', 'colgroup', 'dd', 'dl', 'dt',
+      'center', 'font', 'small', 'big', 'abbr', 'cite',
+    ],
+    ALLOWED_ATTR: [
+      'href', 'src', 'alt', 'title', 'width', 'height', 'style', 'class',
+      'align', 'valign', 'border', 'cellpadding', 'cellspacing', 'bgcolor',
+      'color', 'size', 'face', 'target', 'colspan', 'rowspan',
+    ],
+    ALLOW_DATA_ATTR: false,
+  })
+})
 
 const formatSize = (value: number) => {
   if (value < 1024) {

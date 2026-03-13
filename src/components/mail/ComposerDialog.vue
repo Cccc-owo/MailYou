@@ -9,6 +9,7 @@
       <v-card-text class="composer-dialog__body">
         <v-text-field :model-value="draft.to" label="To" @update:model-value="$emit('update:draft', { ...draft, to: $event })" />
         <v-text-field :model-value="draft.cc" label="Cc" @update:model-value="$emit('update:draft', { ...draft, cc: $event })" />
+        <v-text-field :model-value="draft.bcc" label="Bcc" @update:model-value="$emit('update:draft', { ...draft, bcc: $event })" />
         <v-text-field :model-value="draft.subject" label="Subject" @update:model-value="$emit('update:draft', { ...draft, subject: $event })" />
         <v-textarea
           :model-value="draft.body"

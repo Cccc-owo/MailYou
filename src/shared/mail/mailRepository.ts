@@ -21,7 +21,9 @@ export interface MailRepository {
   archiveMessage(accountId: string, messageId: string): Promise<MailMessage | null>
   restoreMessage(accountId: string, messageId: string): Promise<MailMessage | null>
   moveMessage(accountId: string, messageId: string, folderId: string): Promise<MailMessage | null>
+  markAllRead(accountId: string, folderId: string): Promise<void>
   deleteMessage(accountId: string, messageId: string): Promise<void>
+  deleteAccount(accountId: string): Promise<void>
   syncAccount(accountId: string): Promise<SyncStatus>
   getMailboxBundle(accountId: string): Promise<MailboxBundle>
 }
