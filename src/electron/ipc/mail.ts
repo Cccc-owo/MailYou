@@ -75,4 +75,7 @@ export const registerMailIpc = () => {
   handle('mail:getMailboxBundle', (accountId) =>
     mailBackend.getMailboxBundle(accountId as string),
   )
+  handle('mail:getAttachmentContent', (accountId, messageId, attachmentId) =>
+    mailBackend.getAttachmentContent(accountId as string, messageId as string, attachmentId as string),
+  )
 }

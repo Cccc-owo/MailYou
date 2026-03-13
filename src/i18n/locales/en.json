@@ -73,6 +73,7 @@
     "openLinkInBrowser": "Open link in browser",
     "selectAll": "Select all",
     "attachmentsCount": "{count} attachments",
+    "download": "Download",
     "to": "To {recipients}",
     "cc": "Cc {recipients}",
     "noMatchingMessage": "No matching message",
@@ -90,7 +91,9 @@
     "subject": "Subject",
     "message": "Message",
     "saveDraft": "Save draft",
-    "send": "Send"
+    "send": "Send",
+    "attach": "Attach",
+    "removeAttachment": "Remove attachment"
   },
   "settings": {
     "title": "Settings",

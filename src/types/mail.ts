@@ -56,6 +56,18 @@ export interface MailThread {
   unreadCount: number
 }
 
+export interface AttachmentContent {
+  fileName: string
+  mimeType: string
+  dataBase64: string
+}
+
+export interface DraftAttachment {
+  fileName: string
+  mimeType: string
+  dataBase64: string
+}
+
 export interface DraftMessage {
   id: string
   accountId: string
@@ -66,6 +78,7 @@ export interface DraftMessage {
   body: string
   inReplyToMessageId?: string
   forwardFromMessageId?: string
+  attachments: DraftAttachment[]
 }
 
 export interface SyncStatus {

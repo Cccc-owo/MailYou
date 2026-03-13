@@ -139,6 +139,24 @@ pub struct DraftMessage {
     pub body: String,
     pub in_reply_to_message_id: Option<String>,
     pub forward_from_message_id: Option<String>,
+    #[serde(default)]
+    pub attachments: Vec<DraftAttachment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftAttachment {
+    pub file_name: String,
+    pub mime_type: String,
+    pub data_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentContent {
+    pub file_name: String,
+    pub mime_type: String,
+    pub data_base64: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

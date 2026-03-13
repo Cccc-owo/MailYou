@@ -1,5 +1,6 @@
 import type { AccountSetupDraft, MailAccount } from '@/types/account'
 import type {
+  AttachmentContent,
   DraftMessage,
   MailMessage,
   MailboxBundle,
@@ -83,6 +84,10 @@ export interface RustBackendMethodMap {
   getMailboxBundle: {
     params: { accountId: string }
     result: MailboxBundle
+  }
+  getAttachmentContent: {
+    params: { accountId: string; messageId: string; attachmentId: string }
+    result: AttachmentContent
   }
 }
 

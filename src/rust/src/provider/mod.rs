@@ -2,8 +2,8 @@ pub mod imap;
 pub mod registry;
 
 use crate::models::{
-    AccountSetupDraft, DraftMessage, MailAccount, MailMessage, MailboxBundle, MailboxFolder,
-    SyncStatus,
+    AccountSetupDraft, AttachmentContent, DraftMessage, MailAccount, MailMessage, MailboxBundle,
+    MailboxFolder, SyncStatus,
 };
 use crate::protocol::BackendError;
 
@@ -27,4 +27,5 @@ pub trait MailProvider: Sync {
     fn mark_all_read(&self, account_id: &str, folder_id: &str) -> Result<(), BackendError>;
     fn sync_account(&self, account_id: &str) -> Result<SyncStatus, BackendError>;
     fn get_mailbox_bundle(&self, account_id: &str) -> Result<MailboxBundle, BackendError>;
+    fn get_attachment_content(&self, account_id: &str, message_id: &str, attachment_id: &str) -> Result<AttachmentContent, BackendError>;
 }

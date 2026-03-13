@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use crate::models::{
-    AccountSetupDraft, AccountStatus, DraftMessage, MailAccount, MailFolderKind, MailMessage,
-    MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
+    AccountSetupDraft, AccountStatus, AttachmentMeta, DraftMessage, MailAccount, MailFolderKind,
+    MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
 };
 use crate::protocol::BackendError;
 use crate::storage::{accounts, drafts, mailbox, persisted, sync};
@@ -355,16 +355,16 @@ pub fn get_mailbox_bundle(account_id: &str) -> Result<MailboxBundle, BackendErro
     })
 }
 
-/// Return cached (body, preview) keyed by IMAP UID for all messages that
+/// Return cached (body, preview, attachments) keyed by IMAP UID for all messages that
 /// belong to the given account and already have a downloaded body.
 /// Used by incremental sync to skip re-fetching bodies we already have.
-pub fn get_existing_bodies(account_id: &str) -> std::collections::HashMap<u32, (String, String)> {
+pub fn get_existing_bodies(account_id: &str) -> std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>)> {
     let state = lock_state();
     let mut map = std::collections::HashMap::new();
     for msg in state.messages.iter().filter(|m| m.account_id == account_id) {
         if let Some(uid) = msg.imap_uid {
             if !msg.body.is_empty() {
-                map.insert(uid, (msg.body.clone(), msg.preview.clone()));
+                map.insert(uid, (msg.body.clone(), msg.preview.clone(), msg.attachments.clone()));
             }
         }
     }
@@ -416,8 +416,13 @@ pub fn record_sent_message(draft: DraftMessage) -> Result<String, BackendError> 
         received_at: timestamp.clone(),
         is_read: true,
         is_starred: false,
-        has_attachments: false,
-        attachments: vec![],
+        has_attachments: !draft.attachments.is_empty(),
+        attachments: draft.attachments.iter().map(|a| crate::models::AttachmentMeta {
+            id: a.file_name.clone(),
+            file_name: a.file_name.clone(),
+            mime_type: a.mime_type.clone(),
+            size_bytes: a.data_base64.len() as u64 * 3 / 4, // approximate decoded size
+        }).collect(),
         labels: vec!["Sent".into()],
         imap_uid: None,
     };

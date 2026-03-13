@@ -4,12 +4,13 @@ use std::time::{Duration, Instant};
 use native_tls::TlsConnector;
 
 use crate::models::{
-    AccountSetupDraft, DraftMessage, MailAccount, MailFolderKind, MailMessage, MailThread,
-    MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
+    AccountSetupDraft, AttachmentContent, AttachmentMeta, DraftMessage, MailAccount, MailFolderKind,
+    MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
 };
 use crate::protocol::BackendError;
 use crate::provider::MailProvider;
 use crate::storage::memory;
+use crate::storage::persisted;
 
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const TCP_READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -227,6 +228,36 @@ impl MailProvider for ImapSmtpProvider {
 
     fn get_mailbox_bundle(&self, account_id: &str) -> Result<MailboxBundle, BackendError> {
         memory::get_mailbox_bundle(account_id)
+    }
+
+    fn get_attachment_content(
+        &self,
+        account_id: &str,
+        message_id: &str,
+        attachment_id: &str,
+    ) -> Result<AttachmentContent, BackendError> {
+        let _ = account_id; // message_id already encodes the account
+        let raw = persisted::load_raw_email(message_id)
+            .map_err(|_| BackendError::not_found("Raw email not found. Try syncing the account."))?;
+
+        let parsed = mailparse::parse_mail(&raw)
+            .map_err(|e| BackendError::internal(format!("Failed to parse email: {e}")))?;
+
+        let part = find_mime_part_by_path(&parsed, attachment_id)
+            .ok_or_else(|| BackendError::not_found("Attachment part not found"))?;
+
+        let file_name = get_attachment_filename(part).unwrap_or_else(|| "attachment".into());
+        let mime_type = part.ctype.mimetype.clone();
+        let raw_body = part
+            .get_body_raw()
+            .map_err(|e| BackendError::internal(format!("Failed to read attachment body: {e}")))?;
+        let data_base64 = base64_encode_bytes(&raw_body);
+
+        Ok(AttachmentContent {
+            file_name,
+            mime_type,
+            data_base64,
+        })
     }
 }
 
@@ -472,8 +503,8 @@ fn imap_fetch_mailbox(
     Ok((folders, all_messages, all_threads))
 }
 
-/// Cached body + preview for a message, keyed by IMAP UID.
-type ExistingBodies = std::collections::HashMap<u32, (String, String)>;
+/// Cached body + preview + attachments for a message, keyed by IMAP UID.
+type ExistingBodies = std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>)>;
 
 fn fetch_folder_contents(
     session: &mut imap::Session<native_tls::TlsStream<std::net::TcpStream>>,
@@ -566,6 +597,9 @@ fn fetch_folder_contents(
         if let Ok(body_fetches) = session.uid_fetch(&uid_set, "BODY.PEEK[]") {
             for bf in body_fetches.iter() {
                 if let (Some(uid), Some(raw)) = (bf.uid, bf.body()) {
+                    // Save raw .eml for attachment download later
+                    let msg_id = format!("imap-{account_id}-{folder_id}-{uid}");
+                    let _ = persisted::save_raw_email(&msg_id, raw);
                     body_map.insert(uid, raw.to_vec());
                 }
             }
@@ -579,16 +613,17 @@ fn fetch_folder_contents(
     let mut threads = Vec::with_capacity(metas.len());
 
     for meta in metas {
-        let (body, preview) = if let Some((cached_body, cached_preview)) = existing_bodies.get(&meta.uid) {
-            // Reuse body + preview from memory
-            (cached_body.clone(), cached_preview.clone())
+        let (body, preview, attachments) = if let Some((cached_body, cached_preview, cached_attachments)) = existing_bodies.get(&meta.uid) {
+            // Reuse body + preview + attachments from memory
+            (cached_body.clone(), cached_preview.clone(), cached_attachments.clone())
         } else if let Some(raw) = body_map.remove(&meta.uid) {
-            // Parse newly downloaded body
+            // Parse newly downloaded body and extract attachments
             let parsed = extract_body_from_mime(&raw);
             let prev = make_preview(&parsed);
-            (parsed, prev)
+            let atts = extract_attachments_from_mime(&raw);
+            (parsed, prev, atts)
         } else {
-            (String::new(), "(No preview)".into())
+            (String::new(), "(No preview)".into(), vec![])
         };
 
         messages.push(MailMessage {
@@ -607,8 +642,8 @@ fn fetch_folder_contents(
             received_at: meta.date,
             is_read: meta.is_read,
             is_starred: meta.is_starred,
-            has_attachments: false,
-            attachments: vec![],
+            has_attachments: !attachments.is_empty(),
+            attachments,
             labels: vec![],
             imap_uid: Some(meta.uid),
         });
@@ -858,7 +893,8 @@ fn charset_decode(bytes: &[u8], charset: &str) -> String {
 // ---------------------------------------------------------------------------
 
 fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(), BackendError> {
-    use lettre::message::Mailbox;
+    use lettre::message::header::ContentType;
+    use lettre::message::{Attachment, Mailbox, MultiPart, SinglePart};
     use lettre::transport::smtp::authentication::Credentials;
     use lettre::{Message, SmtpTransport, Transport};
 
@@ -889,10 +925,28 @@ fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(), Bac
         builder = builder.bcc(bcc);
     }
 
-    let email = builder
-        .subject(&draft.subject)
-        .body(draft.body.clone())
-        .map_err(|e| BackendError::internal(format!("Failed to build email: {e}")))?;
+    let email = if draft.attachments.is_empty() {
+        builder
+            .subject(&draft.subject)
+            .body(draft.body.clone())
+            .map_err(|e| BackendError::internal(format!("Failed to build email: {e}")))?
+    } else {
+        let body_part = SinglePart::plain(draft.body.clone());
+        let mut multipart = MultiPart::mixed().singlepart(body_part);
+
+        for att in &draft.attachments {
+            let decoded = base64_decode(&att.data_base64).unwrap_or_default();
+            let content_type = ContentType::parse(&att.mime_type)
+                .unwrap_or(ContentType::TEXT_PLAIN);
+            let attachment = Attachment::new(att.file_name.clone()).body(decoded, content_type);
+            multipart = multipart.singlepart(attachment);
+        }
+
+        builder
+            .subject(&draft.subject)
+            .multipart(multipart)
+            .map_err(|e| BackendError::internal(format!("Failed to build email: {e}")))?
+    };
 
     let host = state.config.outgoing_host.trim();
     let port = state.config.outgoing_port;
@@ -919,6 +973,134 @@ fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(), Bac
         .map_err(|e| BackendError::internal(format!("SMTP send failed: {e}")))?;
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Attachment helpers
+// ---------------------------------------------------------------------------
+
+fn extract_attachments_from_mime(raw: &[u8]) -> Vec<AttachmentMeta> {
+    let parsed = match mailparse::parse_mail(raw) {
+        Ok(mail) => mail,
+        Err(_) => return vec![],
+    };
+    let mut attachments = Vec::new();
+    let mut path = Vec::new();
+    collect_attachments(&parsed, &mut attachments, &mut path);
+    attachments
+}
+
+fn collect_attachments(
+    part: &mailparse::ParsedMail,
+    result: &mut Vec<AttachmentMeta>,
+    path: &mut Vec<usize>,
+) {
+    let mime_type = part.ctype.mimetype.to_lowercase();
+
+    if mime_type.starts_with("multipart/") {
+        for (i, sub) in part.subparts.iter().enumerate() {
+            path.push(i);
+            collect_attachments(sub, result, path);
+            path.pop();
+        }
+        return;
+    }
+
+    if is_attachment_part(part) {
+        let id = if path.is_empty() {
+            "0".into()
+        } else {
+            path.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(".")
+        };
+
+        let file_name = get_attachment_filename(part)
+            .unwrap_or_else(|| format!("attachment-{id}"));
+
+        let size_bytes = part.get_body_raw().map(|b| b.len() as u64).unwrap_or(0);
+
+        result.push(AttachmentMeta {
+            id,
+            file_name,
+            mime_type,
+            size_bytes,
+        });
+    }
+
+    for (i, sub) in part.subparts.iter().enumerate() {
+        path.push(i);
+        collect_attachments(sub, result, path);
+        path.pop();
+    }
+}
+
+fn is_attachment_part(part: &mailparse::ParsedMail) -> bool {
+    let mime_type = part.ctype.mimetype.to_lowercase();
+
+    if mime_type.starts_with("multipart/") {
+        return false;
+    }
+
+    // Explicit Content-Disposition: attachment
+    let disposition = part.get_content_disposition();
+    if matches!(disposition.disposition, mailparse::DispositionType::Attachment) {
+        return true;
+    }
+
+    // Inline images with Content-ID are embedded in HTML (not user-facing attachments)
+    let has_content_id = part.headers.iter()
+        .any(|h| h.get_key().eq_ignore_ascii_case("content-id"));
+    if has_content_id && mime_type.starts_with("image/") {
+        return false;
+    }
+
+    // text/plain and text/html without explicit attachment disposition are body parts
+    if mime_type == "text/plain" || mime_type == "text/html" {
+        return false;
+    }
+
+    // Everything else (application/*, image/* without CID, audio/*, video/*) is an attachment
+    true
+}
+
+fn get_attachment_filename(part: &mailparse::ParsedMail) -> Option<String> {
+    // Try Content-Disposition filename first
+    let disposition = part.get_content_disposition();
+    if let Some(filename) = disposition.params.get("filename") {
+        if !filename.is_empty() {
+            return Some(filename.clone());
+        }
+    }
+
+    // Fall back to Content-Type name parameter
+    if let Some(name) = part.ctype.params.get("name") {
+        if !name.is_empty() {
+            return Some(name.clone());
+        }
+    }
+
+    None
+}
+
+fn find_mime_part_by_path<'a>(
+    mail: &'a mailparse::ParsedMail<'a>,
+    path: &str,
+) -> Option<&'a mailparse::ParsedMail<'a>> {
+    if path.is_empty() {
+        return Some(mail);
+    }
+
+    let indices: Vec<usize> = path.split('.')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+
+    let mut current = mail;
+    for idx in indices {
+        if idx >= current.subparts.len() {
+            return None;
+        }
+        current = &current.subparts[idx];
+    }
+    Some(current)
 }
 
 // ---------------------------------------------------------------------------

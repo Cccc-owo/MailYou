@@ -1,5 +1,6 @@
 import type { AccountSetupDraft, MailAccount } from '@/types/account'
 import type {
+  AttachmentContent,
   DraftMessage,
   MailMessage,
   MailboxBundle,
@@ -26,4 +27,5 @@ export interface MailRepository {
   deleteAccount(accountId: string): Promise<void>
   syncAccount(accountId: string): Promise<SyncStatus>
   getMailboxBundle(accountId: string): Promise<MailboxBundle>
+  getAttachmentContent(accountId: string, messageId: string, attachmentId: string): Promise<AttachmentContent>
 }

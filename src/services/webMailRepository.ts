@@ -23,4 +23,5 @@ export const webMailRepository: MailRepository = {
   markAllRead: notAvailable,
   syncAccount: notAvailable,
   getMailboxBundle: notAvailable,
+  getAttachmentContent: notAvailable,
 }

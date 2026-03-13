@@ -20,4 +20,5 @@ export const rustMailBackend: MailBackend = {
   deleteAccount: (accountId) => invokeRustBackend('deleteAccount', { accountId }),
   syncAccount: (accountId) => invokeRustBackend('syncAccount', { accountId }),
   getMailboxBundle: (accountId) => invokeRustBackend('getMailboxBundle', { accountId }),
+  getAttachmentContent: (accountId, messageId, attachmentId) => invokeRustBackend('getAttachmentContent', { accountId, messageId, attachmentId }),
 }

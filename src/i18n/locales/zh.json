@@ -73,6 +73,7 @@
     "openLinkInBrowser": "在浏览器中打开链接",
     "selectAll": "全选",
     "attachmentsCount": "{count} 个附件",
+    "download": "下载",
     "to": "收件人：{recipients}",
     "cc": "抄送：{recipients}",
     "noMatchingMessage": "没有匹配的邮件",
@@ -90,7 +91,9 @@
     "subject": "主题",
     "message": "正文",
     "saveDraft": "保存草稿",
-    "send": "发送"
+    "send": "发送",
+    "attach": "添加附件",
+    "removeAttachment": "移除附件"
   },
   "settings": {
     "title": "设置",

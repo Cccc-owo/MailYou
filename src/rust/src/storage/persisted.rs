@@ -147,6 +147,22 @@ fn data_root() -> io::Result<PathBuf> {
     Ok(home.join(".local").join("share"))
 }
 
+pub fn save_raw_email(message_id: &str, raw: &[u8]) -> io::Result<()> {
+    let dir = storage_dir()?.join("raw");
+    fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{}.eml", sanitize_id(message_id)));
+    fs::write(path, raw)
+}
+
+pub fn load_raw_email(message_id: &str) -> io::Result<Vec<u8>> {
+    let path = storage_dir()?.join("raw").join(format!("{}.eml", sanitize_id(message_id)));
+    fs::read(path)
+}
+
+fn sanitize_id(id: &str) -> String {
+    id.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_")
+}
+
 fn keyring_get(account_id: &str) -> Option<String> {
     keyring::Entry::new(KEYRING_SERVICE, account_id)
         .ok()

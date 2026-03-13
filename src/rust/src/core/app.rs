@@ -63,5 +63,10 @@ pub fn handle_with_provider(
         } => serialize(provider.mark_all_read(&account_id, &folder_id)?),
         BackendRequest::SyncAccount { account_id } => serialize(provider.sync_account(&account_id)?),
         BackendRequest::GetMailboxBundle { account_id } => serialize(provider.get_mailbox_bundle(&account_id)?),
+        BackendRequest::GetAttachmentContent {
+            account_id,
+            message_id,
+            attachment_id,
+        } => serialize(provider.get_attachment_content(&account_id, &message_id, &attachment_id)?),
     }
 }

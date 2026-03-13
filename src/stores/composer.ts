@@ -11,6 +11,7 @@ const createEmptyDraft = (): DraftMessage => ({
   bcc: '',
   subject: '',
   body: '',
+  attachments: [],
 })
 
 export const useComposerStore = defineStore('composer', () => {

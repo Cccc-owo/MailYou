@@ -21,6 +21,7 @@ const mailyou: MailyouBridge = {
   deleteAccount: (accountId) => ipcRenderer.invoke('mail:deleteAccount', accountId),
   syncAccount: (accountId) => ipcRenderer.invoke('mail:syncAccount', accountId),
   getMailboxBundle: (accountId) => ipcRenderer.invoke('mail:getMailboxBundle', accountId),
+  getAttachmentContent: (accountId, messageId, attachmentId) => ipcRenderer.invoke('mail:getAttachmentContent', accountId, messageId, attachmentId),
 }
 
 const windowControls: WindowControlsBridge = {

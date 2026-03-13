@@ -66,6 +66,15 @@
           </template>
           <v-list-item-title>{{ attachment.fileName }}</v-list-item-title>
           <v-list-item-subtitle>{{ formatSize(attachment.sizeBytes) }}</v-list-item-subtitle>
+          <template #append>
+            <v-btn
+              icon="mdi-download"
+              variant="text"
+              size="small"
+              :loading="downloadingId === attachment.id"
+              @click="downloadAttachment(attachment)"
+            />
+          </template>
         </v-list-item>
       </v-list>
     </v-card>
@@ -97,15 +106,47 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DOMPurify from 'dompurify'
-import type { MailMessage, MailboxFolder } from '@/types/mail'
+import type { AttachmentMeta, MailMessage, MailboxFolder } from '@/types/mail'
 import ContextMenu from '@/components/ContextMenu.vue'
 import { useContextMenu } from '@/composables/useContextMenu'
+import { mailRepository } from '@/services/mail'
 
 const { t, locale } = useI18n()
 const ctxMenu = useContextMenu()
 const hasSelection = ref(false)
 const targetHref = ref<string | null>(null)
 const targetImgSrc = ref<string | null>(null)
+const downloadingId = ref<string | null>(null)
+
+const downloadAttachment = async (attachment: AttachmentMeta) => {
+  if (!props.message) return
+  downloadingId.value = attachment.id
+  try {
+    const content = await mailRepository.getAttachmentContent(
+      props.message.accountId,
+      props.message.id,
+      attachment.id,
+    )
+    const binary = atob(content.dataBase64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    const blob = new Blob([bytes], { type: content.mimeType })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = content.fileName
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error('Failed to download attachment:', err)
+  } finally {
+    downloadingId.value = null
+  }
+}
 
 const findAncestor = (el: HTMLElement | null, tag: string): HTMLElement | null => {
   while (el) {

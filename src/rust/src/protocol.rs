@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::models::{
-    AccountSetupDraft, DraftMessage, MailAccount, MailMessage, MailboxBundle, MailboxFolder,
-    SyncStatus,
+    AccountSetupDraft, AttachmentContent, DraftMessage, MailAccount, MailMessage, MailboxBundle,
+    MailboxFolder, SyncStatus,
 };
 
 #[derive(Debug, Deserialize)]
@@ -41,6 +41,8 @@ pub enum BackendRequest {
     SyncAccount { account_id: String },
     #[serde(rename_all = "camelCase")]
     GetMailboxBundle { account_id: String },
+    #[serde(rename_all = "camelCase")]
+    GetAttachmentContent { account_id: String, message_id: String, attachment_id: String },
 }
 
 impl BackendRequest {
@@ -65,6 +67,7 @@ impl BackendRequest {
             Self::MarkAllRead { .. } => "markAllRead",
             Self::SyncAccount { .. } => "syncAccount",
             Self::GetMailboxBundle { .. } => "getMailboxBundle",
+            Self::GetAttachmentContent { .. } => "getAttachmentContent",
         }
     }
 }
@@ -185,3 +188,5 @@ pub type DeleteMessageResult = ();
 pub type SyncAccountResult = SyncStatus;
 #[allow(dead_code)]
 pub type GetMailboxBundleResult = MailboxBundle;
+#[allow(dead_code)]
+pub type GetAttachmentContentResult = AttachmentContent;

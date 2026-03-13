@@ -11,5 +11,6 @@ pub fn seeded_drafts() -> Vec<DraftMessage> {
         body: "Starting a short handoff doc for the sync engine boundaries and retry model.".into(),
         in_reply_to_message_id: None,
         forward_from_message_id: None,
+        attachments: vec![],
     }]
 }
