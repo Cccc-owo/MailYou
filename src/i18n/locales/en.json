@@ -15,7 +15,8 @@
     "backToMail": "Back to mail",
     "mailbox": "Mailbox",
     "star": "Star",
-    "unstar": "Unstar"
+    "unstar": "Unstar",
+    "undo": "Undo"
   },
   "titleBar": {
     "minimize": "Minimize window",
@@ -49,7 +50,11 @@
     "noSearchResults": "No search results",
     "noMessages": "No messages yet",
     "noSearchResultsHint": "Try a different keyword or clear the search.",
-    "emptyFolder": "This folder is empty for now."
+    "emptyFolder": "This folder is empty for now.",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "thisWeek": "This week",
+    "earlier": "Earlier"
   },
   "reader": {
     "conversation": "Conversation",
@@ -152,6 +157,12 @@
     "newMail": "New mail",
     "newMessagesCount": "{count} new messages",
     "fromSender": "From {sender}",
-    "searchPlaceholder": "Search mail, people, and labels"
+    "searchPlaceholder": "Search mail, people, and labels",
+    "messageArchived": "Message archived",
+    "messageDeleted": "Message deleted",
+    "messageMoved": "Message moved",
+    "messagesArchived": "{count} messages archived",
+    "messagesDeleted": "{count} messages deleted",
+    "messagesMoved": "{count} messages moved"
   }
 }

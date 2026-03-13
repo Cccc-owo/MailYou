@@ -682,7 +682,18 @@ fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String,
     let date = env
         .date
         .as_ref()
-        .map(|d| String::from_utf8_lossy(d).to_string())
+        .map(|d| {
+            let raw = String::from_utf8_lossy(d).to_string();
+            // Try to parse RFC 2822 date and convert to ISO 8601
+            mailparse::dateparse(&raw)
+                .map(|ts| {
+                    let secs = ts;
+                    let dt = chrono::DateTime::from_timestamp(secs, 0)
+                        .unwrap_or_else(|| chrono::Utc::now());
+                    dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+                })
+                .unwrap_or(raw)
+        })
         .unwrap_or_else(|| memory::current_timestamp());
 
     (subject, from, from_email, to, cc, date)

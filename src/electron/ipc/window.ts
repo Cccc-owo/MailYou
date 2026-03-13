@@ -42,4 +42,12 @@ export const registerWindowIpc = () => {
       return shell.openExternal(url)
     }
   })
+
+  ipcMain.handle('window:focus', (event) => {
+    const win = getWindowFromEvent(event)
+    if (win) {
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    }
+  })
 }

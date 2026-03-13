@@ -25,7 +25,7 @@ const getMessagesForFolder = (
           (message) => message.accountId === folder.accountId && message.folderId === folderId,
         )
 
-  return folderMessages.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))
+  return folderMessages.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
 }
 
 export const useMessagesStore = defineStore('messages', () => {
@@ -63,6 +63,13 @@ export const useMessagesStore = defineStore('messages', () => {
   const selectedMessage = computed(() =>
     messages.value.find((message) => message.id === selectedMessageId.value) ?? null,
   )
+
+  const computeNextSelectedId = (removedId: string): string | null => {
+    if (selectedMessageId.value !== removedId) return selectedMessageId.value
+    const idx = messages.value.findIndex((m) => m.id === removedId)
+    if (idx < 0) return null
+    return messages.value[idx + 1]?.id ?? messages.value[idx - 1]?.id ?? null
+  }
 
   const hasSearchQuery = computed(() => query.value.trim().length > 0)
 
@@ -128,42 +135,34 @@ export const useMessagesStore = defineStore('messages', () => {
 
   const deleteMessage = async (accountId: string, messageId: string) => {
     error.value = null
+    const nextId = computeNextSelectedId(messageId)
     await mailRepository.deleteMessage(accountId, messageId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
-
-    if (selectedMessageId.value === messageId) {
-      selectedMessageId.value = messages.value[0]?.id ?? null
-    }
+    selectedMessageId.value = nextId
   }
 
   const archiveMessage = async (accountId: string, messageId: string) => {
     error.value = null
+    const nextId = computeNextSelectedId(messageId)
     await mailRepository.archiveMessage(accountId, messageId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
-
-    if (selectedMessageId.value === messageId) {
-      selectedMessageId.value = messages.value[0]?.id ?? null
-    }
+    selectedMessageId.value = nextId
   }
 
   const restoreMessage = async (accountId: string, messageId: string) => {
     error.value = null
+    const nextId = computeNextSelectedId(messageId)
     await mailRepository.restoreMessage(accountId, messageId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
-
-    if (selectedMessageId.value === messageId) {
-      selectedMessageId.value = messages.value[0]?.id ?? null
-    }
+    selectedMessageId.value = nextId
   }
 
   const moveMessage = async (accountId: string, messageId: string, folderId: string) => {
     error.value = null
+    const nextId = computeNextSelectedId(messageId)
     await mailRepository.moveMessage(accountId, messageId, folderId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
-
-    if (selectedMessageId.value === messageId) {
-      selectedMessageId.value = messages.value[0]?.id ?? null
-    }
+    selectedMessageId.value = nextId
   }
 
   const markAllRead = async (accountId: string, folderId: string) => {
@@ -194,6 +193,9 @@ export const useMessagesStore = defineStore('messages', () => {
   const batchDelete = async (accountId: string) => {
     error.value = null
     const ids = [...selectedIds]
+    const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
+      ? computeNextSelectedId(selectedMessageId.value)
+      : selectedMessageId.value
     try {
       for (const id of ids) {
         await mailRepository.deleteMessage(accountId, id)
@@ -202,15 +204,16 @@ export const useMessagesStore = defineStore('messages', () => {
       error.value = e instanceof Error ? e.message : 'Batch delete failed'
     }
     messages.value = messages.value.filter((m) => !selectedIds.has(m.id))
-    if (selectedMessageId.value && selectedIds.has(selectedMessageId.value)) {
-      selectedMessageId.value = messages.value[0]?.id ?? null
-    }
+    selectedMessageId.value = nextId
     selectedIds.clear()
   }
 
   const batchArchive = async (accountId: string) => {
     error.value = null
     const ids = [...selectedIds]
+    const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
+      ? computeNextSelectedId(selectedMessageId.value)
+      : selectedMessageId.value
     try {
       for (const id of ids) {
         await mailRepository.archiveMessage(accountId, id)
@@ -219,9 +222,7 @@ export const useMessagesStore = defineStore('messages', () => {
       error.value = e instanceof Error ? e.message : 'Batch archive failed'
     }
     messages.value = messages.value.filter((m) => !selectedIds.has(m.id))
-    if (selectedMessageId.value && selectedIds.has(selectedMessageId.value)) {
-      selectedMessageId.value = messages.value[0]?.id ?? null
-    }
+    selectedMessageId.value = nextId
     selectedIds.clear()
   }
 
@@ -247,6 +248,9 @@ export const useMessagesStore = defineStore('messages', () => {
   const batchMove = async (accountId: string, folderId: string) => {
     error.value = null
     const ids = [...selectedIds]
+    const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
+      ? computeNextSelectedId(selectedMessageId.value)
+      : selectedMessageId.value
     try {
       for (const id of ids) {
         await mailRepository.moveMessage(accountId, id, folderId)
@@ -255,9 +259,7 @@ export const useMessagesStore = defineStore('messages', () => {
       error.value = e instanceof Error ? e.message : 'Batch move failed'
     }
     messages.value = messages.value.filter((m) => !selectedIds.has(m.id))
-    if (selectedMessageId.value && selectedIds.has(selectedMessageId.value)) {
-      selectedMessageId.value = messages.value[0]?.id ?? null
-    }
+    selectedMessageId.value = nextId
     selectedIds.clear()
   }
 

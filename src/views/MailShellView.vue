@@ -136,6 +136,18 @@
       <v-btn variant="text" @click="messagesStore.clearError()">{{ t('common.dismiss') }}</v-btn>
     </template>
   </v-snackbar>
+
+  <v-snackbar
+    :model-value="Boolean(undoableAction)"
+    :timeout="-1"
+    location="bottom right"
+  >
+    {{ undoableAction?.label }}
+    <template #actions>
+      <v-btn variant="text" @click="handleUndo">{{ t('common.undo') }}</v-btn>
+      <v-btn variant="text" @click="dismissUndo">{{ t('common.dismiss') }}</v-btn>
+    </template>
+  </v-snackbar>
 </template>
 
 <script setup lang="ts">
@@ -167,6 +179,34 @@ const { currentAccount } = storeToRefs(accountsStore)
 const { syncStatus } = storeToRefs(messagesStore)
 
 const deleteConfirmDialog = ref(false)
+
+interface UndoableAction {
+  label: string
+  undo: () => Promise<void>
+  timer: ReturnType<typeof setTimeout>
+}
+const undoableAction = ref<UndoableAction | null>(null)
+
+const performUndoable = (label: string, undoFn: () => Promise<void>) => {
+  if (undoableAction.value) clearTimeout(undoableAction.value.timer)
+  const timer = setTimeout(() => { undoableAction.value = null }, 5000)
+  undoableAction.value = { label, undo: undoFn, timer }
+}
+
+const handleUndo = async () => {
+  if (!undoableAction.value) return
+  clearTimeout(undoableAction.value.timer)
+  const action = undoableAction.value
+  undoableAction.value = null
+  await action.undo()
+}
+
+const dismissUndo = () => {
+  if (undoableAction.value) {
+    clearTimeout(undoableAction.value.timer)
+    undoableAction.value = null
+  }
+}
 
 const currentFolderDisplayName = computed(() => {
   const folder = mailboxesStore.currentFolder
@@ -366,8 +406,14 @@ const confirmDeleteCurrentMessage = async () => {
     return
   }
 
-  await messagesStore.deleteMessage(accountsStore.currentAccountId, messagesStore.selectedMessageId)
+  const accountId = accountsStore.currentAccountId
+  const messageId = messagesStore.selectedMessageId
+  await messagesStore.deleteMessage(accountId, messageId)
   await refreshMailbox()
+  performUndoable(t('shell.messageDeleted'), async () => {
+    await messagesStore.restoreMessage(accountId, messageId)
+    await refreshMailbox()
+  })
 }
 
 const archiveCurrentMessage = async () => {
@@ -375,8 +421,14 @@ const archiveCurrentMessage = async () => {
     return
   }
 
-  await messagesStore.archiveMessage(accountsStore.currentAccountId, messagesStore.selectedMessageId)
+  const accountId = accountsStore.currentAccountId
+  const messageId = messagesStore.selectedMessageId
+  await messagesStore.archiveMessage(accountId, messageId)
   await refreshMailbox()
+  performUndoable(t('shell.messageArchived'), async () => {
+    await messagesStore.restoreMessage(accountId, messageId)
+    await refreshMailbox()
+  })
 }
 
 const restoreCurrentMessage = async () => {
@@ -393,8 +445,17 @@ const moveCurrentMessage = async (folderId: string) => {
     return
   }
 
-  await messagesStore.moveMessage(accountsStore.currentAccountId, messagesStore.selectedMessageId, folderId)
+  const accountId = accountsStore.currentAccountId
+  const messageId = messagesStore.selectedMessageId
+  const originalFolderId = mailboxesStore.currentFolderId
+  await messagesStore.moveMessage(accountId, messageId, folderId)
   await refreshMailbox()
+  if (originalFolderId) {
+    performUndoable(t('shell.messageMoved'), async () => {
+      await messagesStore.moveMessage(accountId, messageId, originalFolderId)
+      await refreshMailbox()
+    })
+  }
 }
 
 const handleMarkAllRead = async () => {
@@ -409,14 +470,26 @@ const handleMarkAllRead = async () => {
 // --- Batch operation handlers ---
 const handleBatchDelete = async () => {
   if (!accountsStore.currentAccountId) return
-  await messagesStore.batchDelete(accountsStore.currentAccountId)
+  const accountId = accountsStore.currentAccountId
+  const ids = [...messagesStore.selectedIds]
+  await messagesStore.batchDelete(accountId)
   await refreshMailbox()
+  performUndoable(t('shell.messagesDeleted', { count: ids.length }), async () => {
+    for (const id of ids) await messagesStore.restoreMessage(accountId, id)
+    await refreshMailbox()
+  })
 }
 
 const handleBatchArchive = async () => {
   if (!accountsStore.currentAccountId) return
-  await messagesStore.batchArchive(accountsStore.currentAccountId)
+  const accountId = accountsStore.currentAccountId
+  const ids = [...messagesStore.selectedIds]
+  await messagesStore.batchArchive(accountId)
   await refreshMailbox()
+  performUndoable(t('shell.messagesArchived', { count: ids.length }), async () => {
+    for (const id of ids) await messagesStore.restoreMessage(accountId, id)
+    await refreshMailbox()
+  })
 }
 
 const handleBatchMarkRead = async () => {
@@ -433,8 +506,17 @@ const handleBatchMarkUnread = async () => {
 
 const handleBatchMove = async (folderId: string) => {
   if (!accountsStore.currentAccountId) return
-  await messagesStore.batchMove(accountsStore.currentAccountId, folderId)
+  const accountId = accountsStore.currentAccountId
+  const ids = [...messagesStore.selectedIds]
+  const originalFolderId = mailboxesStore.currentFolderId
+  await messagesStore.batchMove(accountId, folderId)
   await refreshMailbox()
+  if (originalFolderId) {
+    performUndoable(t('shell.messagesMoved', { count: ids.length }), async () => {
+      for (const id of ids) await messagesStore.moveMessage(accountId, id, originalFolderId)
+      await refreshMailbox()
+    })
+  }
 }
 
 // --- Context menu handlers (operate by messageId, not selectedMessage) ---
@@ -473,8 +555,13 @@ const handleContextToggleRead = async (messageId: string) => {
 
 const handleContextArchive = async (messageId: string) => {
   if (!accountsStore.currentAccountId) return
-  await messagesStore.archiveMessage(accountsStore.currentAccountId, messageId)
+  const accountId = accountsStore.currentAccountId
+  await messagesStore.archiveMessage(accountId, messageId)
   await refreshMailbox()
+  performUndoable(t('shell.messageArchived'), async () => {
+    await messagesStore.restoreMessage(accountId, messageId)
+    await refreshMailbox()
+  })
 }
 
 const handleContextRestore = async (messageId: string) => {
@@ -485,14 +572,27 @@ const handleContextRestore = async (messageId: string) => {
 
 const handleContextDelete = async (messageId: string) => {
   if (!accountsStore.currentAccountId) return
-  await messagesStore.deleteMessage(accountsStore.currentAccountId, messageId)
+  const accountId = accountsStore.currentAccountId
+  await messagesStore.deleteMessage(accountId, messageId)
   await refreshMailbox()
+  performUndoable(t('shell.messageDeleted'), async () => {
+    await messagesStore.restoreMessage(accountId, messageId)
+    await refreshMailbox()
+  })
 }
 
 const handleContextMove = async (messageId: string, folderId: string) => {
   if (!accountsStore.currentAccountId) return
-  await messagesStore.moveMessage(accountsStore.currentAccountId, messageId, folderId)
+  const accountId = accountsStore.currentAccountId
+  const originalFolderId = mailboxesStore.currentFolderId
+  await messagesStore.moveMessage(accountId, messageId, folderId)
   await refreshMailbox()
+  if (originalFolderId) {
+    performUndoable(t('shell.messageMoved'), async () => {
+      await messagesStore.moveMessage(accountId, messageId, originalFolderId)
+      await refreshMailbox()
+    })
+  }
 }
 
 // --- Sidebar context menu handlers ---
@@ -539,14 +639,18 @@ const syncCurrentAccount = async () => {
   knownMessageIds.value = new Set(messagesStore.messages.map((m) => m.id))
 
   if (newUnread.length > 0 && Notification.permission === 'granted') {
-    if (newUnread.length === 1) {
-      new Notification(newUnread[0].subject || t('shell.newMessage'), {
-        body: t('shell.fromSender', { sender: newUnread[0].from }),
-      })
-    } else {
-      new Notification(t('shell.newMail'), {
-        body: t('shell.newMessagesCount', { count: newUnread.length }),
-      })
+    const title = newUnread.length === 1
+      ? (newUnread[0].subject || t('shell.newMessage'))
+      : t('shell.newMail')
+    const body = newUnread.length === 1
+      ? t('shell.fromSender', { sender: newUnread[0].from })
+      : t('shell.newMessagesCount', { count: newUnread.length })
+    const notification = new Notification(title, { body })
+    notification.onclick = () => {
+      window.windowControls?.focus()
+      if (newUnread.length === 1) {
+        handleSelectMessage(newUnread[0].id)
+      }
     }
   }
 }

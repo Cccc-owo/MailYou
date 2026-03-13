@@ -76,45 +76,49 @@
       </div>
     </div>
 
-    <v-virtual-scroll v-else :items="messages" :item-height="100" class="mail-list__items">
-      <template #default="{ item: message }">
+    <v-virtual-scroll v-else :items="flatItems" class="mail-list__items">
+      <template #default="{ item }">
+        <div v-if="item.type === 'header'" class="mail-list__date-header">
+          {{ item.label }}
+        </div>
         <v-list-item
-          :key="message.id"
-          :active="message.id === selectedMessageId"
-          :class="['mail-list__item', { 'mail-list__item--unread': !message.isRead }]"
+          v-else
+          :key="item.key"
+          :active="item.message.id === selectedMessageId"
+          :class="['mail-list__item', { 'mail-list__item--unread': !item.message.isRead }]"
           rounded="xl"
-          @click="$emit('select-message', message.id)"
-          @contextmenu="ctxMenu.open($event, message)"
+          @click="$emit('select-message', item.message.id)"
+          @contextmenu="ctxMenu.open($event, item.message)"
         >
           <template #prepend>
             <v-checkbox
-              :model-value="selectedIds.has(message.id)"
+              :model-value="selectedIds.has(item.message.id)"
               hide-details
               density="compact"
               class="mail-list__checkbox mr-2"
               @click.stop
-              @update:model-value="$emit('toggle-selection', message.id)"
+              @update:model-value="$emit('toggle-selection', item.message.id)"
             />
-            <v-avatar color="primary-container" size="40">{{ message.from.slice(0, 1) }}</v-avatar>
+            <v-avatar color="primary-container" size="40">{{ item.message.from.slice(0, 1) }}</v-avatar>
           </template>
 
           <v-list-item-title class="d-flex align-center justify-space-between ga-4 flex-wrap">
-            <span :class="{ 'font-weight-bold': !message.isRead }">{{ message.from }}</span>
-            <span class="text-caption text-medium-emphasis">{{ formatDate(message.receivedAt) }}</span>
+            <span :class="{ 'font-weight-bold': !item.message.isRead }">{{ item.message.from }}</span>
+            <span class="text-caption text-medium-emphasis">{{ formatDate(item.message.receivedAt) }}</span>
           </v-list-item-title>
           <v-list-item-subtitle>
-            <div :class="['mb-1', message.isRead ? 'font-weight-medium' : 'font-weight-bold']">{{ message.subject }}</div>
-            <div class="text-body-2 text-medium-emphasis text-truncate">{{ message.preview }}</div>
+            <div :class="['mb-1', item.message.isRead ? 'font-weight-medium' : 'font-weight-bold']">{{ item.message.subject }}</div>
+            <div class="text-body-2 text-medium-emphasis text-truncate">{{ item.message.preview }}</div>
           </v-list-item-subtitle>
 
           <template #append>
             <div class="mail-list__append d-flex align-center ga-2">
               <v-icon
-                :icon="message.isStarred ? 'mdi-star' : 'mdi-star-outline'"
-                :color="message.isStarred ? 'warning' : undefined"
-                @click.stop="$emit('toggle-star', message.id)"
+                :icon="item.message.isStarred ? 'mdi-star' : 'mdi-star-outline'"
+                :color="item.message.isStarred ? 'warning' : undefined"
+                @click.stop="$emit('toggle-star', item.message.id)"
               />
-              <v-icon v-if="message.hasAttachments" icon="mdi-paperclip" size="18" />
+              <v-icon v-if="item.message.hasAttachments" icon="mdi-paperclip" size="18" />
             </div>
           </template>
         </v-list-item>
@@ -236,6 +240,39 @@ const moveTargetFolders = computed(() =>
   ),
 )
 
+type ListItem =
+  | { type: 'header'; label: string; key: string }
+  | { type: 'message'; message: MailMessage; key: string }
+
+const dateGroupLabel = (dateStr: string): string => {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const weekAgo = new Date(today)
+  weekAgo.setDate(weekAgo.getDate() - 6)
+
+  if (date >= today) return t('mailList.today')
+  if (date >= yesterday) return t('mailList.yesterday')
+  if (date >= weekAgo) return t('mailList.thisWeek')
+  return t('mailList.earlier')
+}
+
+const flatItems = computed<ListItem[]>(() => {
+  const result: ListItem[] = []
+  let lastLabel = ''
+  for (const msg of props.messages) {
+    const label = dateGroupLabel(msg.receivedAt)
+    if (label !== lastLabel) {
+      lastLabel = label
+      result.push({ type: 'header', label, key: `header-${label}` })
+    }
+    result.push({ type: 'message', message: msg, key: msg.id })
+  }
+  return result
+})
+
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(
     new Date(value),
@@ -285,6 +322,15 @@ const formatDate = (value: string) =>
   padding: 0 0 16px;
   flex: 1;
   min-height: 0;
+}
+
+.mail-list__date-header {
+  padding: 12px 16px 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(var(--v-theme-on-surface), 0.6);
 }
 
 .mail-list__item {

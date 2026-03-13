@@ -15,7 +15,8 @@
     "backToMail": "返回邮箱",
     "mailbox": "邮箱",
     "star": "加星标",
-    "unstar": "取消星标"
+    "unstar": "取消星标",
+    "undo": "撤销"
   },
   "titleBar": {
     "minimize": "最小化窗口",
@@ -49,7 +50,11 @@
     "noSearchResults": "没有搜索结果",
     "noMessages": "暂无邮件",
     "noSearchResultsHint": "尝试其他关键词或清除搜索。",
-    "emptyFolder": "此文件夹暂时为空。"
+    "emptyFolder": "此文件夹暂时为空。",
+    "today": "今天",
+    "yesterday": "昨天",
+    "thisWeek": "本周",
+    "earlier": "更早"
   },
   "reader": {
     "conversation": "会话",
@@ -152,6 +157,12 @@
     "newMail": "新邮件",
     "newMessagesCount": "{count} 封新邮件",
     "fromSender": "来自 {sender}",
-    "searchPlaceholder": "搜索邮件、联系人和标签"
+    "searchPlaceholder": "搜索邮件、联系人和标签",
+    "messageArchived": "邮件已归档",
+    "messageDeleted": "邮件已删除",
+    "messageMoved": "邮件已移动",
+    "messagesArchived": "{count} 封邮件已归档",
+    "messagesDeleted": "{count} 封邮件已删除",
+    "messagesMoved": "{count} 封邮件已移动"
   }
 }
