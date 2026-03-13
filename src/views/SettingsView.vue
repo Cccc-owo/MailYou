@@ -1,33 +1,43 @@
 <template>
   <div class="settings-page">
-    <AppTitleBar title="MailStack" subtitle="Appearance and shell preferences">
+    <AppTitleBar title="MailStack" :subtitle="t('settings.subtitle')">
       <template #actions>
-        <v-btn prepend-icon="mdi-arrow-left" @click="router.push('/')">Back to mail</v-btn>
+        <v-btn prepend-icon="mdi-arrow-left" @click="router.push('/')">{{ t('common.backToMail') }}</v-btn>
       </template>
     </AppTitleBar>
 
     <v-container max-width="880" class="settings-page__content">
       <v-card class="settings-card">
-        <div class="text-overline mb-2">Settings</div>
-        <div class="text-h4 mb-2">Appearance and shell preferences</div>
+        <div class="text-overline mb-2">{{ t('settings.title') }}</div>
+        <div class="text-h4 mb-2">{{ t('settings.subtitle') }}</div>
         <div class="text-body-1 text-medium-emphasis mb-6">
-          Persist lightweight UI preferences now; move mailbox and credential persistence into Rust storage later.
+          {{ t('settings.description') }}
         </div>
 
         <v-row class="settings-row" dense>
           <v-col cols="12" md="6">
             <v-card class="settings-panel pa-4" color="surface">
-              <div class="text-subtitle-1 mb-3">Theme mode</div>
+              <div class="text-subtitle-1 mb-3">{{ t('settings.themeMode') }}</div>
               <v-btn-toggle class="mode-toggle" :model-value="uiStore.appearance" mandatory divided @update:model-value="setAppearance">
-                <v-btn value="light" block>Light</v-btn>
-                <v-btn value="dark" block>Dark</v-btn>
+                <v-btn value="light" block>{{ t('settings.light') }}</v-btn>
+                <v-btn value="dark" block>{{ t('settings.dark') }}</v-btn>
               </v-btn-toggle>
             </v-card>
           </v-col>
 
           <v-col cols="12" md="6">
             <v-card class="settings-panel pa-4" color="surface">
-              <div class="text-subtitle-1 mb-3">Seed color</div>
+              <div class="text-subtitle-1 mb-3">{{ t('settings.language') }}</div>
+              <v-btn-toggle class="mode-toggle" :model-value="uiStore.locale" mandatory divided @update:model-value="setLocale">
+                <v-btn value="en" block>English</v-btn>
+                <v-btn value="zh" block>简体中文</v-btn>
+              </v-btn-toggle>
+            </v-card>
+          </v-col>
+
+          <v-col cols="12" md="6">
+            <v-card class="settings-panel pa-4" color="surface">
+              <div class="text-subtitle-1 mb-3">{{ t('settings.seedColor') }}</div>
               <v-item-group :model-value="uiStore.themeSeed" mandatory @update:model-value="setThemeSeed">
                 <v-row dense>
                   <v-col v-for="option in seedOptions" :key="option.value" cols="12" sm="6">
@@ -52,15 +62,15 @@
             </v-card>
           </v-col>
 
-          <v-col cols="12">
+          <v-col cols="12" md="6">
             <v-card class="settings-panel pa-4" color="surface">
-              <div class="text-subtitle-1 mb-3">Density</div>
+              <div class="text-subtitle-1 mb-3">{{ t('settings.density') }}</div>
               <v-select
                 :items="densityOptions"
                 :model-value="uiStore.density"
                 item-title="label"
                 item-value="value"
-                label="Density"
+                :label="t('settings.density')"
                 @update:model-value="setDensity"
               />
             </v-card>
@@ -69,22 +79,22 @@
       </v-card>
 
       <v-card class="settings-card">
-        <div class="text-overline mb-2">Mail</div>
-        <div class="text-h4 mb-2">Sync settings</div>
+        <div class="text-overline mb-2">{{ t('settings.mail') }}</div>
+        <div class="text-h4 mb-2">{{ t('settings.syncSettings') }}</div>
         <div class="text-body-1 text-medium-emphasis mb-6">
-          Configure how often MailStack syncs and how many messages to fetch per sync.
+          {{ t('settings.syncDescription') }}
         </div>
 
         <v-row class="settings-row" dense>
           <v-col cols="12" md="6">
             <v-card class="settings-panel pa-4" color="surface">
-              <div class="text-subtitle-1 mb-3">Sync frequency</div>
+              <div class="text-subtitle-1 mb-3">{{ t('settings.syncFrequency') }}</div>
               <v-select
                 :items="syncIntervalOptions"
                 :model-value="uiStore.syncIntervalMinutes"
                 item-title="label"
                 item-value="value"
-                label="Sync every"
+                :label="t('settings.syncEvery')"
                 @update:model-value="setSyncInterval"
               />
             </v-card>
@@ -92,13 +102,13 @@
 
           <v-col cols="12" md="6">
             <v-card class="settings-panel pa-4" color="surface">
-              <div class="text-subtitle-1 mb-3">Fetch limit</div>
+              <div class="text-subtitle-1 mb-3">{{ t('settings.fetchLimit') }}</div>
               <v-select
                 :items="fetchLimitOptions"
                 :model-value="uiStore.fetchLimit"
                 item-title="label"
                 item-value="value"
-                label="Messages per sync"
+                :label="t('settings.messagesPerSync')"
                 @update:model-value="setFetchLimit"
               />
             </v-card>
@@ -110,40 +120,43 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import AppTitleBar from '@/components/AppTitleBar.vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { useUiStore, type AppearanceMode, type DensityMode } from '@/stores/ui'
+import { useUiStore, type AppearanceMode, type DensityMode, type LocaleMode } from '@/stores/ui'
 
+const { t } = useI18n()
 const router = useRouter()
 const uiStore = useUiStore()
 
-const densityOptions = [
-  { label: 'Comfortable', value: 'comfortable' },
-  { label: 'Compact', value: 'compact' },
-] satisfies Array<{ label: string; value: DensityMode }>
+const densityOptions = computed(() => [
+  { label: t('settings.comfortable'), value: 'comfortable' },
+  { label: t('settings.compact'), value: 'compact' },
+] satisfies Array<{ label: string; value: DensityMode }>)
 
-const seedOptions = [
-  { label: 'Violet', value: '#6750A4' },
-  { label: 'Blue', value: '#5B8DEF' },
-  { label: 'Green', value: '#0F9D58' },
-  { label: 'Rose', value: '#C75B7A' },
-] as const
+const seedOptions = computed(() => [
+  { label: t('settings.violet'), value: '#6750A4' },
+  { label: t('settings.blue'), value: '#5B8DEF' },
+  { label: t('settings.green'), value: '#0F9D58' },
+  { label: t('settings.rose'), value: '#C75B7A' },
+] as const)
 
-const syncIntervalOptions = [
-  { label: '1 minute', value: 1 },
-  { label: '3 minutes', value: 3 },
-  { label: '5 minutes', value: 5 },
-  { label: '10 minutes', value: 10 },
-  { label: '15 minutes', value: 15 },
-  { label: '30 minutes', value: 30 },
-] satisfies Array<{ label: string; value: number }>
+const syncIntervalOptions = computed(() => [
+  { label: t('settings.syncInterval1'), value: 1 },
+  { label: t('settings.syncInterval3'), value: 3 },
+  { label: t('settings.syncInterval5'), value: 5 },
+  { label: t('settings.syncInterval10'), value: 10 },
+  { label: t('settings.syncInterval15'), value: 15 },
+  { label: t('settings.syncInterval30'), value: 30 },
+] satisfies Array<{ label: string; value: number }>)
 
-const fetchLimitOptions = [
-  { label: '25 messages', value: 25 },
-  { label: '50 messages', value: 50 },
-  { label: '100 messages', value: 100 },
-  { label: '200 messages', value: 200 },
-] satisfies Array<{ label: string; value: number }>
+const fetchLimitOptions = computed(() => [
+  { label: t('settings.fetchLimit25'), value: 25 },
+  { label: t('settings.fetchLimit50'), value: 50 },
+  { label: t('settings.fetchLimit100'), value: 100 },
+  { label: t('settings.fetchLimit200'), value: 200 },
+] satisfies Array<{ label: string; value: number }>)
 
 const setThemeSeed = (value: string | null) => {
   if (!value) {
@@ -167,6 +180,14 @@ const setDensity = (value: DensityMode | null) => {
   }
 
   uiStore.setDensity(value)
+}
+
+const setLocale = (value: LocaleMode | null) => {
+  if (!value) {
+    return
+  }
+
+  uiStore.setLocale(value)
 }
 
 const setSyncInterval = (value: number | null) => {

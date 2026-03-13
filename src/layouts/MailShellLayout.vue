@@ -7,7 +7,7 @@
           prepend-inner-icon="mdi-magnify"
           hide-details
           density="comfortable"
-          placeholder="Search mail, people, and labels"
+          :placeholder="t('shell.searchPlaceholder')"
           @update:model-value="$emit('update:search', $event)"
         />
       </template>
@@ -32,7 +32,10 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import AppTitleBar from '@/components/AppTitleBar.vue'
+
+const { t } = useI18n()
 
 defineProps<{
   search: string

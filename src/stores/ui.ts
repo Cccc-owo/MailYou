@@ -1,14 +1,23 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import { i18n } from '@/i18n'
 
 export type AppearanceMode = 'light' | 'dark'
 export type DensityMode = 'comfortable' | 'compact'
+export type LocaleMode = 'en' | 'zh'
 
 const APPEARANCE_KEY = 'mailstack.appearance'
 const THEME_SEED_KEY = 'mailstack.themeSeed'
 const DENSITY_KEY = 'mailstack.density'
 const SYNC_INTERVAL_KEY = 'mailstack.syncIntervalMinutes'
 const FETCH_LIMIT_KEY = 'mailstack.fetchLimit'
+const LOCALE_KEY = 'mailstack.locale'
+
+const getDefaultLocale = (): LocaleMode => {
+  const saved = localStorage.getItem(LOCALE_KEY) as LocaleMode | null
+  if (saved) return saved
+  return navigator.language.startsWith('zh') ? 'zh' : 'en'
+}
 
 export const useUiStore = defineStore('ui', () => {
   const appearance = ref<AppearanceMode>((localStorage.getItem(APPEARANCE_KEY) as AppearanceMode) || 'light')
@@ -16,6 +25,7 @@ export const useUiStore = defineStore('ui', () => {
   const density = ref<DensityMode>((localStorage.getItem(DENSITY_KEY) as DensityMode) || 'comfortable')
   const syncIntervalMinutes = ref(Number(localStorage.getItem(SYNC_INTERVAL_KEY)) || 5)
   const fetchLimit = ref(Number(localStorage.getItem(FETCH_LIMIT_KEY)) || 50)
+  const locale = ref<LocaleMode>(getDefaultLocale())
 
   const setAppearance = (value: AppearanceMode) => {
     appearance.value = value
@@ -46,17 +56,25 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(FETCH_LIMIT_KEY, String(value))
   }
 
+  const setLocale = (value: LocaleMode) => {
+    locale.value = value
+    localStorage.setItem(LOCALE_KEY, value)
+    i18n.global.locale.value = value
+  }
+
   return {
     appearance,
     themeSeed,
     density,
     syncIntervalMinutes,
     fetchLimit,
+    locale,
     setAppearance,
     toggleAppearance,
     setThemeSeed,
     setDensity,
     setSyncIntervalMinutes,
     setFetchLimit,
+    setLocale,
   }
 })

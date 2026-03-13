@@ -12,7 +12,7 @@
           @update:model-value="onToggleSelectAll"
         />
         <div>
-          <div class="text-overline">Mailbox</div>
+          <div class="text-overline">{{ t('mailList.mailbox') }}</div>
           <div class="text-h5">{{ title }}</div>
         </div>
       </div>
@@ -24,32 +24,32 @@
           prepend-icon="mdi-email-check-outline"
           @click="$emit('mark-all-read')"
         >
-          Mark all read
+          {{ t('mailList.markAllRead') }}
         </v-btn>
-        <v-chip v-if="unreadCount > 0" size="small" color="primary">{{ unreadCount }} unread</v-chip>
-        <v-chip size="small" color="secondary" variant="tonal">{{ messages.length }} total</v-chip>
+        <v-chip v-if="unreadCount > 0" size="small" color="primary">{{ t('mailList.unreadCount', { count: unreadCount }) }}</v-chip>
+        <v-chip size="small" color="secondary" variant="tonal">{{ t('mailList.totalCount', { count: messages.length }) }}</v-chip>
       </div>
     </div>
 
     <!-- Batch toolbar -->
     <div v-if="selectedIds.size > 0" class="mail-list__batch-toolbar d-flex align-center ga-2 flex-wrap mb-3">
-      <v-chip size="small" color="primary">{{ selectedIds.size }} selected</v-chip>
+      <v-chip size="small" color="primary">{{ t('mailList.selectedCount', { count: selectedIds.size }) }}</v-chip>
       <v-btn size="small" variant="tonal" prepend-icon="mdi-delete-outline" color="error" @click="$emit('batch-delete')">
-        Delete
+        {{ t('common.delete') }}
       </v-btn>
       <v-btn size="small" variant="tonal" prepend-icon="mdi-archive-outline" @click="$emit('batch-archive')">
-        Archive
+        {{ t('mailList.archive') }}
       </v-btn>
       <v-btn size="small" variant="tonal" prepend-icon="mdi-email-open-outline" @click="$emit('batch-mark-read')">
-        Mark read
+        {{ t('mailList.markRead') }}
       </v-btn>
       <v-btn size="small" variant="tonal" prepend-icon="mdi-email-outline" @click="$emit('batch-mark-unread')">
-        Mark unread
+        {{ t('mailList.markUnread') }}
       </v-btn>
       <v-menu v-if="moveTargetFolders.length > 0">
         <template #activator="{ props: menuProps }">
           <v-btn size="small" variant="tonal" prepend-icon="mdi-folder-move-outline" v-bind="menuProps">
-            Move to
+            {{ t('mailList.moveTo') }}
           </v-btn>
         </template>
         <v-list density="compact">
@@ -57,12 +57,12 @@
             v-for="folder in moveTargetFolders"
             :key="folder.id"
             :prepend-icon="folder.icon"
-            :title="folder.name"
+            :title="folderDisplayName(folder)"
             @click="$emit('batch-move', folder.id)"
           />
         </v-list>
       </v-menu>
-      <v-btn size="small" variant="text" @click="$emit('clear-selection')">Cancel</v-btn>
+      <v-btn size="small" variant="text" @click="$emit('clear-selection')">{{ t('common.cancel') }}</v-btn>
     </div>
 
     <v-alert v-if="error" class="mb-4" type="error" variant="tonal">{{ error }}</v-alert>
@@ -70,9 +70,9 @@
 
     <div v-if="!isLoading && messages.length === 0" class="mail-list__empty">
       <v-icon :icon="isSearchResult ? 'mdi-magnify' : 'mdi-inbox-outline'" size="40" class="mb-3" />
-      <div class="text-h6 mb-1">{{ isSearchResult ? 'No search results' : 'No messages yet' }}</div>
+      <div class="text-h6 mb-1">{{ isSearchResult ? t('mailList.noSearchResults') : t('mailList.noMessages') }}</div>
       <div class="text-body-2 text-medium-emphasis">
-        {{ isSearchResult ? 'Try a different keyword or clear the search.' : 'This folder is empty for now.' }}
+        {{ isSearchResult ? t('mailList.noSearchResultsHint') : t('mailList.emptyFolder') }}
       </div>
     </div>
 
@@ -124,7 +124,13 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { MailMessage, MailboxFolder } from '@/types/mail'
+
+const { t, locale } = useI18n()
+
+const folderDisplayName = (folder: MailboxFolder) =>
+  folder.kind !== 'custom' ? t(`folders.${folder.kind}`) : folder.name
 
 const props = defineProps<{
   error?: string | null
@@ -177,7 +183,7 @@ const moveTargetFolders = computed(() =>
 )
 
 const formatDate = (value: string) =>
-  new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(
+  new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(
     new Date(value),
   )
 </script>

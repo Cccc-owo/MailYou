@@ -1,45 +1,45 @@
 <template>
   <div class="account-setup-page">
-    <AppTitleBar title="MailStack" subtitle="Connect a new mailbox">
+    <AppTitleBar title="MailStack" :subtitle="t('accountSetup.subtitle')">
       <template #actions>
-        <v-btn prepend-icon="mdi-arrow-left" @click="router.push('/')">Back to mail</v-btn>
+        <v-btn prepend-icon="mdi-arrow-left" @click="router.push('/')">{{ t('common.backToMail') }}</v-btn>
       </template>
     </AppTitleBar>
 
     <v-container class="account-setup-page__content" max-width="720">
       <v-card class="pa-6">
-        <div class="text-overline mb-2">Account setup</div>
-        <div class="text-h4 mb-2">Connect a new mailbox</div>
+        <div class="text-overline mb-2">{{ t('accountSetup.title') }}</div>
+        <div class="text-h4 mb-2">{{ t('accountSetup.heading') }}</div>
         <div class="text-body-1 text-medium-emphasis mb-6">
-          Configure IMAP and SMTP manually, test the connection, then save the account.
+          {{ t('accountSetup.description') }}
         </div>
 
         <v-form class="account-setup__form">
-          <v-text-field v-model="draft.displayName" label="Display name" />
-          <v-text-field v-model="draft.email" label="Email address" />
-          <v-text-field v-model="draft.provider" label="Provider" />
+          <v-text-field v-model="draft.displayName" :label="t('accountSetup.displayName')" />
+          <v-text-field v-model="draft.email" :label="t('accountSetup.emailAddress')" />
+          <v-text-field v-model="draft.provider" :label="t('accountSetup.provider')" />
           <v-row>
             <v-col cols="8">
-              <v-text-field v-model="draft.incomingHost" label="Incoming host" />
+              <v-text-field v-model="draft.incomingHost" :label="t('accountSetup.incomingHost')" />
             </v-col>
             <v-col cols="4">
-              <v-text-field v-model.number="draft.incomingPort" label="Port" type="number" />
+              <v-text-field v-model.number="draft.incomingPort" :label="t('accountSetup.port')" type="number" />
             </v-col>
           </v-row>
           <v-row>
             <v-col cols="8">
-              <v-text-field v-model="draft.outgoingHost" label="Outgoing host" />
+              <v-text-field v-model="draft.outgoingHost" :label="t('accountSetup.outgoingHost')" />
             </v-col>
             <v-col cols="4">
-              <v-text-field v-model.number="draft.outgoingPort" label="Port" type="number" />
+              <v-text-field v-model.number="draft.outgoingPort" :label="t('accountSetup.port')" type="number" />
             </v-col>
           </v-row>
-          <v-text-field v-model="draft.username" label="Username" />
-          <v-text-field v-model="draft.password" label="Password / app password" type="password" />
-          <v-switch v-model="draft.useTls" label="Use TLS" color="primary" />
+          <v-text-field v-model="draft.username" :label="t('accountSetup.username')" />
+          <v-text-field v-model="draft.password" :label="t('accountSetup.password')" type="password" />
+          <v-switch v-model="draft.useTls" :label="t('accountSetup.useTls')" color="primary" />
 
           <div class="d-flex justify-space-between align-center flex-wrap ga-3 mt-4">
-            <v-chip color="secondary">Backend now validates and persists account settings locally</v-chip>
+            <v-chip color="secondary">{{ t('accountSetup.backendNote') }}</v-chip>
             <div class="d-flex ga-3 flex-wrap">
               <v-btn
                 prepend-icon="mdi-connection"
@@ -47,7 +47,7 @@
                 :loading="accountsStore.isTestingConnection"
                 @click="runConnectionTest"
               >
-                Test connection
+                {{ t('accountSetup.testConnection') }}
               </v-btn>
             <v-btn
               color="primary"
@@ -56,7 +56,7 @@
               :loading="isSaving"
               @click="saveAccount"
             >
-              Save account
+              {{ t('accountSetup.saveAccount') }}
             </v-btn>
             </div>
           </div>
@@ -79,10 +79,12 @@
 <script setup lang="ts">
 import AppTitleBar from '@/components/AppTitleBar.vue'
 import { computed, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAccountsStore } from '@/stores/accounts'
 import type { AccountSetupDraft } from '@/types/account'
 
+const { t } = useI18n()
 const router = useRouter()
 const accountsStore = useAccountsStore()
 const isSaving = ref(false)

@@ -19,19 +19,19 @@
     </div>
 
     <div v-if="isSupported" class="app-title-bar__window-controls app-title-bar__no-drag">
-      <v-btn icon variant="text" size="small" aria-label="Minimize window" @click="minimize">
+      <v-btn icon variant="text" size="small" :aria-label="t('titleBar.minimize')" @click="minimize">
         <v-icon icon="mdi-window-minimize" />
       </v-btn>
       <v-btn
         icon
         variant="text"
         size="small"
-        :aria-label="isMaximized ? 'Restore window' : 'Maximize window'"
+        :aria-label="isMaximized ? t('titleBar.restore') : t('titleBar.maximize')"
         @click="toggleMaximize"
       >
         <v-icon :icon="isMaximized ? 'mdi-window-restore' : 'mdi-window-maximize'" />
       </v-btn>
-      <v-btn icon variant="text" size="small" aria-label="Close window" class="app-title-bar__close" @click="close">
+      <v-btn icon variant="text" size="small" :aria-label="t('titleBar.close')" class="app-title-bar__close" @click="close">
         <v-icon icon="mdi-close" />
       </v-btn>
     </div>
@@ -39,7 +39,10 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { useWindowControls } from '@/composables/useWindowControls'
+
+const { t } = useI18n()
 
 withDefaults(
   defineProps<{

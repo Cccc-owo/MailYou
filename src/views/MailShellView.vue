@@ -2,7 +2,7 @@
   <MailShellLayout :search="messagesStore.query" :subtitle="subtitle" @update:search="messagesStore.query = $event">
     <template #actions>
       <v-btn prepend-icon="mdi-sync" :disabled="!accountsStore.currentAccountId" :loading="isSyncing" @click="syncCurrentAccount">
-        Sync
+        {{ t('shell.sync') }}
       </v-btn>
       <v-btn icon="mdi-theme-light-dark" @click="uiStore.toggleAppearance" />
       <v-btn icon="mdi-cog-outline" @click="router.push('/settings')" />
@@ -32,7 +32,7 @@
         :messages="messagesStore.filteredMessages"
         :selected-message-id="messagesStore.selectedMessageId"
         :selected-ids="messagesStore.selectedIds"
-        :title="mailboxesStore.currentFolder?.name ?? 'Mailbox'"
+        :title="currentFolderDisplayName"
         :folders="mailboxesStore.folders"
         :current-folder-id="mailboxesStore.currentFolderId"
         @select-message="handleSelectMessage"
@@ -84,12 +84,12 @@
   <!-- Delete confirmation dialog -->
   <v-dialog v-model="deleteConfirmDialog" max-width="400">
     <v-card>
-      <v-card-title>Confirm Delete</v-card-title>
-      <v-card-text>Are you sure you want to delete this message? It will be moved to Trash.</v-card-text>
+      <v-card-title>{{ t('shell.confirmDelete') }}</v-card-title>
+      <v-card-text>{{ t('shell.confirmDeleteText') }}</v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn variant="text" @click="deleteConfirmDialog = false">Cancel</v-btn>
-        <v-btn color="error" variant="tonal" @click="confirmDeleteCurrentMessage">Delete</v-btn>
+        <v-btn variant="text" @click="deleteConfirmDialog = false">{{ t('common.cancel') }}</v-btn>
+        <v-btn color="error" variant="tonal" @click="confirmDeleteCurrentMessage">{{ t('common.delete') }}</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -121,8 +121,8 @@
   >
     {{ messagesStore.error }}
     <template #actions>
-      <v-btn variant="text" @click="retryLastAction">Retry</v-btn>
-      <v-btn variant="text" @click="messagesStore.clearError()">Dismiss</v-btn>
+      <v-btn variant="text" @click="retryLastAction">{{ t('common.retry') }}</v-btn>
+      <v-btn variant="text" @click="messagesStore.clearError()">{{ t('common.dismiss') }}</v-btn>
     </template>
   </v-snackbar>
 </template>
@@ -130,6 +130,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import MailShellLayout from '@/layouts/MailShellLayout.vue'
 import ComposerDialog from '@/components/mail/ComposerDialog.vue'
@@ -143,6 +144,7 @@ import { useMessagesStore } from '@/stores/messages'
 import { useUiStore } from '@/stores/ui'
 import { mailRepository } from '@/services/mail'
 
+const { t } = useI18n()
 const router = useRouter()
 const accountsStore = useAccountsStore()
 const mailboxesStore = useMailboxesStore()
@@ -155,13 +157,19 @@ const { syncStatus } = storeToRefs(messagesStore)
 
 const deleteConfirmDialog = ref(false)
 
+const currentFolderDisplayName = computed(() => {
+  const folder = mailboxesStore.currentFolder
+  if (!folder) return t('common.mailbox')
+  return folder.kind !== 'custom' ? t(`folders.${folder.kind}`) : folder.name
+})
+
 const subtitle = computed(() => {
   if (!accountsStore.accounts.length) {
-    return 'Add an account to start using MailStack'
+    return t('shell.addAccountHint')
   }
 
   if (!currentAccount.value) {
-    return 'Choose an account to load its mailbox'
+    return t('shell.chooseAccountHint')
   }
 
   return syncStatus.value?.message ?? `${currentAccount.value.provider} · ${currentAccount.value.email}`
@@ -218,7 +226,7 @@ const handleAccountChange = async (accountId: string) => {
   try {
     await loadMailbox(accountId)
   } catch {
-    messagesStore.error = 'Failed to load mailbox. Please try again.'
+    messagesStore.error = t('shell.failedToLoadMailbox')
   }
 }
 
@@ -248,7 +256,7 @@ const handleFolderChange = async (folderId: string) => {
   try {
     await messagesStore.loadMessages(accountsStore.currentAccountId, folderId)
   } catch {
-    messagesStore.error = 'Failed to load messages. Please try again.'
+    messagesStore.error = t('shell.failedToLoadMessages')
   }
 }
 
@@ -428,7 +436,7 @@ const syncCurrentAccount = async () => {
   messagesStore.setSyncStatus({
     accountId: accountsStore.currentAccountId,
     state: 'syncing',
-    message: 'Sync in progress…',
+    message: t('shell.syncInProgress'),
     updatedAt: new Date().toISOString(),
   })
 
@@ -444,12 +452,12 @@ const syncCurrentAccount = async () => {
 
   if (newUnread.length > 0 && Notification.permission === 'granted') {
     if (newUnread.length === 1) {
-      new Notification(newUnread[0].subject || 'New message', {
-        body: `From ${newUnread[0].from}`,
+      new Notification(newUnread[0].subject || t('shell.newMessage'), {
+        body: t('shell.fromSender', { sender: newUnread[0].from }),
       })
     } else {
-      new Notification('New mail', {
-        body: `${newUnread.length} new messages`,
+      new Notification(t('shell.newMail'), {
+        body: t('shell.newMessagesCount', { count: newUnread.length }),
       })
     }
   }

@@ -3,8 +3,8 @@
     <v-card class="mail-sidebar__panel" color="surface">
       <div class="mail-sidebar__header d-flex align-center justify-space-between ga-3 flex-wrap">
         <div>
-          <div class="text-overline">Accounts</div>
-          <div class="text-h6">Unified inbox shell</div>
+          <div class="text-overline">{{ t('sidebar.accounts') }}</div>
+          <div class="text-h6">{{ t('sidebar.unifiedInbox') }}</div>
         </div>
         <v-btn icon="mdi-plus" size="small" @click="$emit('add-account')" />
       </div>
@@ -39,18 +39,18 @@
 
       <div v-else class="mail-sidebar__empty">
         <v-icon icon="mdi-email-plus-outline" size="36" class="mb-2" />
-        <div class="text-body-2 text-medium-emphasis mb-3">No accounts configured yet.</div>
-        <v-btn size="small" prepend-icon="mdi-plus" @click="$emit('add-account')">Add account</v-btn>
+        <div class="text-body-2 text-medium-emphasis mb-3">{{ t('sidebar.noAccounts') }}</div>
+        <v-btn size="small" prepend-icon="mdi-plus" @click="$emit('add-account')">{{ t('sidebar.addAccount') }}</v-btn>
       </div>
     </v-card>
 
     <v-card class="mail-sidebar__panel" color="surface">
       <div class="mail-sidebar__header d-flex align-center justify-space-between ga-3 flex-wrap">
         <div>
-          <div class="text-overline">Folders</div>
-          <div class="text-h6">{{ currentAccount?.name ?? 'Select account' }}</div>
+          <div class="text-overline">{{ t('sidebar.folders') }}</div>
+          <div class="text-h6">{{ currentAccount?.name ?? t('sidebar.selectAccount') }}</div>
         </div>
-        <v-btn prepend-icon="mdi-pencil-plus-outline" @click="$emit('compose')">Compose</v-btn>
+        <v-btn prepend-icon="mdi-pencil-plus-outline" @click="$emit('compose')">{{ t('sidebar.compose') }}</v-btn>
       </div>
 
       <v-progress-linear v-if="isFoldersLoading" indeterminate color="primary" class="mb-2" />
@@ -66,7 +66,7 @@
           <template #prepend>
             <v-icon :icon="folder.icon" />
           </template>
-          <v-list-item-title>{{ folder.name }}</v-list-item-title>
+          <v-list-item-title>{{ folderDisplayName(folder) }}</v-list-item-title>
           <template #append>
             <div class="mail-sidebar__folder-counts d-flex align-center ga-1">
               <v-chip
@@ -87,7 +87,7 @@
       <div v-else class="mail-sidebar__empty">
         <v-icon icon="mdi-folder-outline" size="36" class="mb-2" />
         <div class="text-body-2 text-medium-emphasis">
-          {{ accounts.length ? 'Select an account to view its folders.' : 'Add an account to get started.' }}
+          {{ accounts.length ? t('sidebar.selectAccountToView') : t('sidebar.addAccountToStart') }}
         </div>
       </div>
     </v-card>
@@ -95,14 +95,14 @@
 
   <v-dialog v-model="deleteDialog" max-width="400" persistent>
     <v-card>
-      <v-card-title>Delete account</v-card-title>
+      <v-card-title>{{ t('sidebar.deleteAccount') }}</v-card-title>
       <v-card-text>
-        Are you sure you want to delete <strong>{{ pendingDeleteAccount?.name }}</strong> ({{ pendingDeleteAccount?.email }})? All local data for this account will be removed.
+        {{ t('sidebar.deleteConfirmText', { name: pendingDeleteAccount?.name, email: pendingDeleteAccount?.email }) }}
       </v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn @click="deleteDialog = false">Cancel</v-btn>
-        <v-btn color="error" variant="flat" @click="emitDelete">Delete</v-btn>
+        <v-btn @click="deleteDialog = false">{{ t('common.cancel') }}</v-btn>
+        <v-btn color="error" variant="flat" @click="emitDelete">{{ t('common.delete') }}</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -110,8 +110,14 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { MailAccount } from '@/types/account'
 import type { MailboxFolder } from '@/types/mail'
+
+const { t } = useI18n()
+
+const folderDisplayName = (folder: MailboxFolder) =>
+  folder.kind !== 'custom' ? t(`folders.${folder.kind}`) : folder.name
 
 defineProps<{
   accounts: MailAccount[]

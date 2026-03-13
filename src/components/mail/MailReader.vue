@@ -2,40 +2,40 @@
   <div v-if="message" class="mail-reader">
     <div class="mail-reader__toolbar d-flex justify-space-between ga-4 flex-wrap">
       <div>
-        <div class="text-overline">Conversation</div>
+        <div class="text-overline">{{ t('reader.conversation') }}</div>
         <div class="text-h4">{{ message.subject }}</div>
       </div>
       <div class="mail-reader__toolbar-actions d-flex flex-wrap ga-2">
-        <v-btn prepend-icon="mdi-reply-outline" @click="$emit('reply')">Reply</v-btn>
-        <v-btn prepend-icon="mdi-reply-all-outline" @click="$emit('reply-all')">Reply All</v-btn>
-        <v-btn prepend-icon="mdi-arrow-top-right" @click="$emit('forward')">Forward</v-btn>
+        <v-btn prepend-icon="mdi-reply-outline" @click="$emit('reply')">{{ t('reader.reply') }}</v-btn>
+        <v-btn prepend-icon="mdi-reply-all-outline" @click="$emit('reply-all')">{{ t('reader.replyAll') }}</v-btn>
+        <v-btn prepend-icon="mdi-arrow-top-right" @click="$emit('forward')">{{ t('reader.forward') }}</v-btn>
         <v-btn prepend-icon="mdi-email-open-outline" @click="$emit('toggle-read')">
-          {{ message.isRead ? 'Mark unread' : 'Mark read' }}
+          {{ message.isRead ? t('reader.markUnread') : t('reader.markRead') }}
         </v-btn>
 
         <v-menu v-if="moveTargetFolders.length > 0">
           <template #activator="{ props: menuProps }">
-            <v-btn prepend-icon="mdi-folder-move-outline" v-bind="menuProps">Move to</v-btn>
+            <v-btn prepend-icon="mdi-folder-move-outline" v-bind="menuProps">{{ t('reader.moveTo') }}</v-btn>
           </template>
           <v-list density="compact">
             <v-list-item
               v-for="folder in moveTargetFolders"
               :key="folder.id"
               :prepend-icon="folder.icon"
-              :title="folder.name"
+              :title="folderDisplayName(folder)"
               @click="$emit('move', folder.id)"
             />
           </v-list>
         </v-menu>
 
         <template v-if="isTrashOrArchive">
-          <v-btn prepend-icon="mdi-inbox-arrow-down" @click="$emit('restore')">Restore to Inbox</v-btn>
+          <v-btn prepend-icon="mdi-inbox-arrow-down" @click="$emit('restore')">{{ t('reader.restoreToInbox') }}</v-btn>
         </template>
         <template v-else>
-          <v-btn prepend-icon="mdi-archive-outline" @click="$emit('archive')">Archive</v-btn>
+          <v-btn prepend-icon="mdi-archive-outline" @click="$emit('archive')">{{ t('reader.archive') }}</v-btn>
         </template>
 
-        <v-btn prepend-icon="mdi-delete-outline" color="error" @click="$emit('delete')">Delete</v-btn>
+        <v-btn prepend-icon="mdi-delete-outline" color="error" @click="$emit('delete')">{{ t('common.delete') }}</v-btn>
       </div>
     </div>
 
@@ -47,14 +47,14 @@
         </div>
         <div class="text-body-2 text-medium-emphasis text-sm-left text-md-right">
           <div>{{ formattedDate }}</div>
-          <div>To {{ message.to.join(', ') }}</div>
-          <div v-if="message.cc.length > 0">Cc {{ message.cc.join(', ') }}</div>
+          <div>{{ t('reader.to', { recipients: message.to.join(', ') }) }}</div>
+          <div v-if="message.cc.length > 0">{{ t('reader.cc', { recipients: message.cc.join(', ') }) }}</div>
         </div>
       </div>
 
       <div class="mail-reader__chips d-flex flex-wrap ga-2">
         <v-chip v-for="label in message.labels" :key="label" size="small" color="secondary">{{ label }}</v-chip>
-        <v-chip v-if="message.hasAttachments" size="small" color="primary">{{ message.attachments.length }} attachments</v-chip>
+        <v-chip v-if="message.hasAttachments" size="small" color="primary">{{ t('reader.attachmentsCount', { count: message.attachments.length }) }}</v-chip>
       </div>
 
       <div class="mail-reader__body text-body-1" v-html="sanitizedBody" />
@@ -80,8 +80,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import DOMPurify from 'dompurify'
 import type { MailMessage, MailboxFolder } from '@/types/mail'
+
+const { t, locale } = useI18n()
+
+const folderDisplayName = (folder: MailboxFolder) =>
+  folder.kind !== 'custom' ? t(`folders.${folder.kind}`) : folder.name
 
 // Ensure all links in email bodies open externally and have noopener
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
@@ -135,7 +141,7 @@ const formattedDate = computed(() => {
     return ''
   }
 
-  return new Intl.DateTimeFormat('en', {
+  return new Intl.DateTimeFormat(locale.value, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -146,26 +152,26 @@ const formattedDate = computed(() => {
 
 const emptyStateTitle = computed(() => {
   if (props.hasSearchQuery && !props.hasMessages) {
-    return 'No matching message'
+    return t('reader.noMatchingMessage')
   }
 
   if (!props.hasMessages) {
-    return 'No message selected'
+    return t('reader.noMessageSelected')
   }
 
-  return 'Select a message'
+  return t('reader.selectMessage')
 })
 
 const emptyStateDescription = computed(() => {
   if (props.hasSearchQuery && !props.hasMessages) {
-    return 'The current search did not match any cached messages in this folder.'
+    return t('reader.noMatchingMessageHint')
   }
 
   if (!props.hasMessages) {
-    return 'This folder is empty or no message is currently selected.'
+    return t('reader.noMessageSelectedHint')
   }
 
-  return 'Choose a message from the list to start reading.'
+  return t('reader.selectMessageHint')
 })
 
 const emptyStateIcon = computed(() => (props.hasSearchQuery && !props.hasMessages ? 'mdi-magnify' : 'mdi-email-outline'))
