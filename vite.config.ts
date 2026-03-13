@@ -17,9 +17,11 @@ export default defineConfig({
           electron({
             main: {
               entry: 'src/electron/main.ts',
+              vite: { build: { outDir: 'dist/electron' } },
             },
             preload: {
               input: 'src/electron/preload.ts',
+              vite: { build: { outDir: 'dist/electron' } },
             },
           }),
         ]

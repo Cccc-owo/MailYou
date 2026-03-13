@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "main": "dist-electron/main.js",
+  "main": "dist/electron/main.js",
   "scripts": {
     "dev": "vite",
     "dev:web": "MAILYOU_TARGET=web vite",
@@ -13,8 +13,15 @@
     "build:rust": "cargo build --release --manifest-path src/rust/Cargo.toml",
     "check:rust": "cargo check --manifest-path src/rust/Cargo.toml",
     "copy:rust-binary": "node scripts/copy-rust-binary.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dist": "npm run build && electron-builder --linux",
+    "dist:appimage": "npm run build && electron-builder --linux AppImage",
+    "dist:deb": "npm run build && electron-builder --linux deb",
+    "dist:rpm": "npm run build && electron-builder --linux rpm",
+    "dist:zip": "npm run build && electron-builder --linux zip"
   },
+  "author": "MailYou Devs",
+  "description": "Desktop email client",
   "dependencies": {
     "@mdi/font": "^7.4.47",
     "@mdi/js": "^7.4.47",
@@ -30,6 +37,7 @@
     "@types/node": "^25.4.0",
     "@vitejs/plugin-vue": "^6.0.4",
     "electron": "^41.0.0",
+    "electron-builder": "^26.8.1",
     "sass": "^1.98.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",

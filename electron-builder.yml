@@ -1,0 +1,44 @@
+appId: cc.iscccc.mailyou
+productName: MailYou
+
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - "!dist/electron/bin/**"   # bin 由 extraResources 处理
+
+extraResources:
+  - from: dist/electron/bin/
+    to: bin/
+    filter:
+      - "**/*"
+
+linux:
+  icon: src/assets/logo.png
+  maintainer: iscccc <me@iscccc.cc>
+  category: Network;Email;Office
+  mimeTypes:
+    - x-scheme-handler/mailto
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+    - target: rpm
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+
+appImage:
+  artifactName: ${productName}-${version}-${arch}.AppImage
+
+deb:
+  artifactName: ${productName}-${version}-${arch}.deb
+  depends:
+    - libsecret-1-0
+
+rpm:
+  artifactName: ${productName}-${version}-${arch}.rpm
+  depends:
+    - libsecret

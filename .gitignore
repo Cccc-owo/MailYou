@@ -1,7 +1,6 @@
 .claude/
 .vscode/
 dist/
-dist-electron/
 node_modules/
 coverage/
 .DS_Store
@@ -10,3 +9,4 @@ coverage/
 .env.*
 !.env.example
 src/rust/target/
+release/

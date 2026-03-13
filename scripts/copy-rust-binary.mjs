@@ -6,7 +6,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(scriptDir, '..')
 const binaryName = process.platform === 'win32' ? 'mailyou-mail-backend.exe' : 'mailyou-mail-backend'
 const sourcePath = resolve(repoRoot, 'src/rust/target/release', binaryName)
-const targetDir = resolve(repoRoot, 'dist-electron/bin')
+const targetDir = resolve(repoRoot, 'dist/electron/bin')
 const targetPath = resolve(targetDir, binaryName)
 
 if (!existsSync(sourcePath)) {
