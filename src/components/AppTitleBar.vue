@@ -51,7 +51,7 @@ withDefaults(
   }>(),
   {
     subtitle: undefined,
-    title: 'MailStack',
+    title: 'MailYou',
   },
 )
 

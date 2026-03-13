@@ -1,15 +1,15 @@
 {
-  "name": "mailstack",
+  "name": "mailyou",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "dev:web": "MAILSTACK_TARGET=web vite",
+    "dev:web": "MAILYOU_TARGET=web vite",
     "typecheck": "vue-tsc --noEmit",
     "build": "npm run typecheck && npm run build:rust && vite build && npm run copy:rust-binary",
-    "build:web": "npm run typecheck && MAILSTACK_TARGET=web vite build",
+    "build:web": "npm run typecheck && MAILYOU_TARGET=web vite build",
     "build:rust": "cargo build --release --manifest-path src/rust/Cargo.toml",
     "check:rust": "cargo check --manifest-path src/rust/Cargo.toml",
     "copy:rust-binary": "node scripts/copy-rust-binary.mjs",

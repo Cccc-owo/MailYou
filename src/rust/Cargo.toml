@@ -1,10 +1,10 @@
 [package]
-name = "mailstack-mail-backend"
+name = "mailyou-mail-backend"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "mailstack-mail-backend"
+name = "mailyou-mail-backend"
 path = "src/main.rs"
 
 [dependencies]

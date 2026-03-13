@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 const currentDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = process.cwd()
 const manifestPath = resolve(repoRoot, 'src/rust/Cargo.toml')
-const binaryName = process.platform === 'win32' ? 'mailstack-mail-backend.exe' : 'mailstack-mail-backend'
+const binaryName = process.platform === 'win32' ? 'mailyou-mail-backend.exe' : 'mailyou-mail-backend'
 const bundledBinaryPath = resolve(currentDir, 'bin', binaryName)
 const packagedBinaryPath = resolve(process.resourcesPath, 'bin', binaryName)
 const releaseBinaryPath = resolve(repoRoot, 'src/rust/target/release', binaryName)

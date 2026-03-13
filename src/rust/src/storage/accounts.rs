@@ -7,11 +7,11 @@ pub fn seeded_account_states() -> Vec<StoredAccountState> {
         StoredAccountState {
             account: MailAccount {
                 id: "acc-work".into(),
-                name: "MailStack Work".into(),
-                email: "hello@mailstack.dev".into(),
+                name: "MailYou Work".into(),
+                email: "hello@mailyou.dev".into(),
                 provider: "Fastmail".into(),
                 color: "#6D5DFB".into(),
-                initials: "MW".into(),
+                initials: "MY".into(),
                 unread_count: 6,
                 status: AccountStatus::Syncing,
                 last_synced_at: "2026-03-12T09:41:00.000Z".into(),
@@ -21,7 +21,7 @@ pub fn seeded_account_states() -> Vec<StoredAccountState> {
                 incoming_port: 993,
                 outgoing_host: "smtp.fastmail.com".into(),
                 outgoing_port: 465,
-                username: "hello@mailstack.dev".into(),
+                username: "hello@mailyou.dev".into(),
                 password: "demo-password".into(),
                 use_tls: true,
             },

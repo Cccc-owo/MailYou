@@ -12,7 +12,7 @@ const configureLinuxWindowSystem = () => {
     return
   }
 
-  const ozoneHint = process.env.MAILSTACK_OZONE_PLATFORM_HINT?.trim() ?? 'auto'
+  const ozoneHint = process.env.MAILYOU_OZONE_PLATFORM_HINT?.trim() ?? 'auto'
 
   app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform')
   app.commandLine.appendSwitch('ozone-platform-hint', ozoneHint)
@@ -63,7 +63,7 @@ app.whenReady().then(async () => {
     await ensureRustBackendReady()
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown Rust backend startup error'
-    dialog.showErrorBox('MailStack backend failed to start', message)
+    dialog.showErrorBox('MailYou backend failed to start', message)
     await shutdownRustBackend()
     app.quit()
     return

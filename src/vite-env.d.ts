@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 /// <reference path="./electron/types.d.ts" />
 
-declare const __MAILSTACK_RUNTIME__: 'electron' | 'web'
+declare const __MAILYOU_RUNTIME__: 'electron' | 'web'
 
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'

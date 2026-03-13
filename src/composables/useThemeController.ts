@@ -11,8 +11,8 @@ export const useThemeController = () => {
 
   const applyTheme = () => {
     const generated = createMaterialYouTheme(themeSeed.value)
-    const light = theme.themes.value['mailstack-light']
-    const dark = theme.themes.value['mailstack-dark']
+    const light = theme.themes.value['mailyou-light']
+    const dark = theme.themes.value['mailyou-dark']
 
     light.colors = {
       ...light.colors,
@@ -52,7 +52,7 @@ export const useThemeController = () => {
       'on-primary': generated.dark.onPrimary,
     }
 
-    theme.global.name.value = appearance.value === 'dark' ? 'mailstack-dark' : 'mailstack-light'
+    theme.global.name.value = appearance.value === 'dark' ? 'mailyou-dark' : 'mailyou-light'
   }
 
   watch([appearance, themeSeed], applyTheme, { immediate: true })

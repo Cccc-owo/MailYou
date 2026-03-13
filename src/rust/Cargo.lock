@@ -651,7 +651,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mailstack-mail-backend"
+name = "mailyou-mail-backend"
 version = "0.1.0"
 dependencies = [
  "imap",

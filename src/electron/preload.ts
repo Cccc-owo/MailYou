@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { MailstackBridge } from '../shared/mail/bridge'
+import type { MailyouBridge } from '../shared/mail/bridge'
 import type { WindowControlsBridge } from '../shared/window/bridge'
 
-const mailstack: MailstackBridge = {
+const mailyou: MailyouBridge = {
   listAccounts: () => ipcRenderer.invoke('mail:listAccounts'),
   createAccount: (draft) => ipcRenderer.invoke('mail:createAccount', draft),
   testAccountConnection: (draft) => ipcRenderer.invoke('mail:testAccountConnection', draft),
@@ -31,5 +31,5 @@ const windowControls: WindowControlsBridge = {
   openExternal: (url) => ipcRenderer.invoke('window:openExternal', url),
 }
 
-contextBridge.exposeInMainWorld('mailstack', mailstack)
+contextBridge.exposeInMainWorld('mailyou', mailyou)
 contextBridge.exposeInMainWorld('windowControls', windowControls)

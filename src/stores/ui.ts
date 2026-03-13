@@ -6,12 +6,12 @@ export type AppearanceMode = 'light' | 'dark'
 export type DensityMode = 'comfortable' | 'compact'
 export type LocaleMode = 'en' | 'zh'
 
-const APPEARANCE_KEY = 'mailstack.appearance'
-const THEME_SEED_KEY = 'mailstack.themeSeed'
-const DENSITY_KEY = 'mailstack.density'
-const SYNC_INTERVAL_KEY = 'mailstack.syncIntervalMinutes'
-const FETCH_LIMIT_KEY = 'mailstack.fetchLimit'
-const LOCALE_KEY = 'mailstack.locale'
+const APPEARANCE_KEY = 'mailyou.appearance'
+const THEME_SEED_KEY = 'mailyou.themeSeed'
+const DENSITY_KEY = 'mailyou.density'
+const SYNC_INTERVAL_KEY = 'mailyou.syncIntervalMinutes'
+const FETCH_LIMIT_KEY = 'mailyou.fetchLimit'
+const LOCALE_KEY = 'mailyou.locale'
 
 const getDefaultLocale = (): LocaleMode => {
   const saved = localStorage.getItem(LOCALE_KEY) as LocaleMode | null

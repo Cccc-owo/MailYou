@@ -1,9 +1,9 @@
-import type { MailstackBridge } from '../shared/mail/bridge'
+import type { MailyouBridge } from '../shared/mail/bridge'
 import type { WindowControlsBridge } from '../shared/window/bridge'
 
 declare global {
   interface Window {
-    mailstack?: MailstackBridge
+    mailyou?: MailyouBridge
     windowControls?: WindowControlsBridge
   }
 }

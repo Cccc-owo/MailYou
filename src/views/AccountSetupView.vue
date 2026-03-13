@@ -1,6 +1,6 @@
 <template>
   <div class="account-setup-page">
-    <AppTitleBar title="MailStack" :subtitle="t('accountSetup.subtitle')">
+    <AppTitleBar title="MailYou" :subtitle="t('accountSetup.subtitle')">
       <template #actions>
         <v-btn prepend-icon="mdi-arrow-left" @click="router.push('/')">{{ t('common.backToMail') }}</v-btn>
       </template>

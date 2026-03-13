@@ -3,4 +3,4 @@ import { webMailRepository } from '@/services/webMailRepository'
 import type { MailRepository } from '@/shared/mail/mailRepository'
 
 export const mailRepository: MailRepository =
-  __MAILSTACK_RUNTIME__ === 'web' ? webMailRepository : electronMailRepository
+  __MAILYOU_RUNTIME__ === 'web' ? webMailRepository : electronMailRepository

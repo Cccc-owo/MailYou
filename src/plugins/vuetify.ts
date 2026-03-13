@@ -73,10 +73,10 @@ export const vuetify = createVuetify({
     },
   },
   theme: {
-    defaultTheme: 'mailstack-light',
+    defaultTheme: 'mailyou-light',
     themes: {
-      'mailstack-light': lightTheme,
-      'mailstack-dark': darkTheme,
+      'mailyou-light': lightTheme,
+      'mailyou-dark': darkTheme,
     },
   },
 })

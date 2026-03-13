@@ -4,7 +4,7 @@ import type { AccountSetupDraft, MailAccount } from '@/types/account'
 import type { SyncStatus } from '@/types/mail'
 import { mailRepository } from '@/services/mail'
 
-const STORAGE_KEY = 'mailstack.currentAccountId'
+const STORAGE_KEY = 'mailyou.currentAccountId'
 
 export const useAccountsStore = defineStore('accounts', () => {
   const accounts = ref<MailAccount[]>([])

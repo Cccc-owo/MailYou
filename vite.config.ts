@@ -4,7 +4,7 @@ import vue from '@vitejs/plugin-vue'
 import electron from 'vite-plugin-electron/simple'
 import vuetify from 'vite-plugin-vuetify'
 
-const target = process.env.MAILSTACK_TARGET ?? 'electron'
+const target = process.env.MAILYOU_TARGET ?? 'electron'
 const isDesktopTarget = target === 'electron'
 const isWebTarget = target === 'web'
 
@@ -26,7 +26,7 @@ export default defineConfig({
       : []),
   ],
   define: {
-    __MAILSTACK_RUNTIME__: JSON.stringify(isWebTarget ? 'web' : 'electron'),
+    __MAILYOU_RUNTIME__: JSON.stringify(isWebTarget ? 'web' : 'electron'),
   },
   resolve: {
     alias: {

@@ -1,12 +1,12 @@
 import type { MailRepository } from '@/shared/mail/mailRepository'
-import type { MailstackBridge } from '@/shared/mail/bridge'
+import type { MailyouBridge } from '@/shared/mail/bridge'
 
-const getBridge = (): MailstackBridge => {
-  if (!window.mailstack) {
-    throw new Error('Mailstack bridge is not available. Use the Electron desktop target or the explicit web mock entrypoint.')
+const getBridge = (): MailyouBridge => {
+  if (!window.mailyou) {
+    throw new Error('Mailyou bridge is not available. Use the Electron desktop target or the explicit web mock entrypoint.')
   }
 
-  return window.mailstack
+  return window.mailyou
 }
 
 export const electronMailRepository: MailRepository = {

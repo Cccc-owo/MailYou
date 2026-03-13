@@ -7,14 +7,14 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::models::{DraftMessage, StoredAccountState, SyncStatus};
 
-const APP_DIR_NAME: &str = "MailStack";
+const APP_DIR_NAME: &str = "MailYou";
 const STORAGE_DIR_NAME: &str = "mail";
 const ACCOUNTS_FILE: &str = "accounts.json";
 const DRAFTS_FILE: &str = "drafts.json";
 const MAILBOX_FILE: &str = "mailbox.json";
 const SYNC_FILE: &str = "sync.json";
 
-const KEYRING_SERVICE: &str = "mailstack";
+const KEYRING_SERVICE: &str = "mailyou";
 const PASSWORD_PLACEHOLDER: &str = "<keyring>";
 
 pub fn load_accounts() -> Vec<StoredAccountState> {
@@ -127,7 +127,7 @@ fn storage_dir() -> io::Result<PathBuf> {
 }
 
 fn data_root() -> io::Result<PathBuf> {
-    if let Ok(value) = env::var("MAILSTACK_DATA_DIR") {
+    if let Ok(value) = env::var("MAILYOU_DATA_DIR") {
         let trimmed = value.trim();
         if !trimmed.is_empty() {
             return Ok(PathBuf::from(trimmed));
