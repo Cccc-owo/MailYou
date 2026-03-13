@@ -21,6 +21,8 @@
         @delete-account="handleDeleteAccount"
         @select-account="handleAccountChange"
         @select-folder="handleFolderChange"
+        @sync-account="handleSyncAccount"
+        @mark-folder-read="handleMarkFolderRead"
       />
     </template>
 
@@ -35,6 +37,7 @@
         :title="currentFolderDisplayName"
         :folders="mailboxesStore.folders"
         :current-folder-id="mailboxesStore.currentFolderId"
+        :current-folder-kind="mailboxesStore.currentFolder?.kind ?? null"
         @select-message="handleSelectMessage"
         @toggle-star="toggleStar"
         @toggle-selection="messagesStore.toggleSelection"
@@ -46,6 +49,14 @@
         @batch-mark-read="handleBatchMarkRead"
         @batch-mark-unread="handleBatchMarkUnread"
         @batch-move="handleBatchMove"
+        @context-reply="handleContextReply"
+        @context-reply-all="handleContextReplyAll"
+        @context-forward="handleContextForward"
+        @context-toggle-read="handleContextToggleRead"
+        @context-archive="handleContextArchive"
+        @context-restore="handleContextRestore"
+        @context-delete="handleContextDelete"
+        @context-move="handleContextMove"
       />
     </template>
 
@@ -423,6 +434,83 @@ const handleBatchMarkUnread = async () => {
 const handleBatchMove = async (folderId: string) => {
   if (!accountsStore.currentAccountId) return
   await messagesStore.batchMove(accountsStore.currentAccountId, folderId)
+  await refreshMailbox()
+}
+
+// --- Context menu handlers (operate by messageId, not selectedMessage) ---
+const findMessage = (messageId: string) =>
+  messagesStore.messages.find((m) => m.id === messageId)
+
+const handleContextReply = (messageId: string) => {
+  if (!accountsStore.currentAccountId) return
+  const msg = findMessage(messageId)
+  if (!msg) return
+  composerStore.clearFeedback()
+  composerStore.openReply(accountsStore.currentAccountId, msg)
+}
+
+const handleContextReplyAll = (messageId: string) => {
+  if (!accountsStore.currentAccountId || !currentAccount.value) return
+  const msg = findMessage(messageId)
+  if (!msg) return
+  composerStore.clearFeedback()
+  composerStore.openReplyAll(accountsStore.currentAccountId, msg, currentAccount.value.email)
+}
+
+const handleContextForward = (messageId: string) => {
+  if (!accountsStore.currentAccountId) return
+  const msg = findMessage(messageId)
+  if (!msg) return
+  composerStore.clearFeedback()
+  composerStore.openForward(accountsStore.currentAccountId, msg)
+}
+
+const handleContextToggleRead = async (messageId: string) => {
+  if (!accountsStore.currentAccountId) return
+  await messagesStore.toggleRead(accountsStore.currentAccountId, messageId)
+  await refreshMailbox()
+}
+
+const handleContextArchive = async (messageId: string) => {
+  if (!accountsStore.currentAccountId) return
+  await messagesStore.archiveMessage(accountsStore.currentAccountId, messageId)
+  await refreshMailbox()
+}
+
+const handleContextRestore = async (messageId: string) => {
+  if (!accountsStore.currentAccountId) return
+  await messagesStore.restoreMessage(accountsStore.currentAccountId, messageId)
+  await refreshMailbox()
+}
+
+const handleContextDelete = async (messageId: string) => {
+  if (!accountsStore.currentAccountId) return
+  await messagesStore.deleteMessage(accountsStore.currentAccountId, messageId)
+  await refreshMailbox()
+}
+
+const handleContextMove = async (messageId: string, folderId: string) => {
+  if (!accountsStore.currentAccountId) return
+  await messagesStore.moveMessage(accountsStore.currentAccountId, messageId, folderId)
+  await refreshMailbox()
+}
+
+// --- Sidebar context menu handlers ---
+const handleSyncAccount = async (accountId: string) => {
+  messagesStore.setSyncStatus({
+    accountId,
+    state: 'syncing',
+    message: t('shell.syncInProgress'),
+    updatedAt: new Date().toISOString(),
+  })
+
+  await messagesStore.syncAccount(accountId)
+  await refreshMailbox()
+}
+
+const handleMarkFolderRead = async (folderId: string) => {
+  if (!accountsStore.currentAccountId) return
+  await messagesStore.markAllRead(accountsStore.currentAccountId, folderId)
   await refreshMailbox()
 }
 

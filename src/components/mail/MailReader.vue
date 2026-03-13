@@ -1,5 +1,5 @@
 <template>
-  <div v-if="message" class="mail-reader">
+  <div v-if="message" class="mail-reader" @contextmenu="openReaderMenu($event)">
     <div class="mail-reader__toolbar d-flex justify-space-between ga-4 flex-wrap">
       <div>
         <div class="text-overline">{{ t('reader.conversation') }}</div>
@@ -57,7 +57,7 @@
         <v-chip v-if="message.hasAttachments" size="small" color="primary">{{ t('reader.attachmentsCount', { count: message.attachments.length }) }}</v-chip>
       </div>
 
-      <div class="mail-reader__body text-body-1" v-html="sanitizedBody" />
+      <div class="mail-reader__body text-body-1" v-html="sanitizedBody" @click="handleBodyClick" />
 
       <v-list v-if="message.attachments.length" class="mail-reader__attachments">
         <v-list-item v-for="attachment in message.attachments" :key="attachment.id" rounded="xl">
@@ -69,6 +69,21 @@
         </v-list-item>
       </v-list>
     </v-card>
+
+    <!-- Right-click context menu -->
+    <ContextMenu v-model="ctxMenu.isOpen.value" :x="ctxMenu.x.value" :y="ctxMenu.y.value">
+      <v-list-item v-if="hasSelection" prepend-icon="mdi-content-copy" :title="t('reader.copy')" @click="copySelection" />
+      <template v-if="targetHref">
+        <v-list-item prepend-icon="mdi-open-in-new" :title="t('reader.openLinkInBrowser')" @click="openLinkInBrowser" />
+        <v-list-item prepend-icon="mdi-link-variant" :title="t('reader.copyLinkAddress')" @click="copyLinkAddress" />
+      </template>
+      <template v-if="targetImgSrc">
+        <v-list-item prepend-icon="mdi-image-outline" :title="t('reader.copyImage')" @click="copyImage" />
+        <v-list-item prepend-icon="mdi-image-multiple-outline" :title="t('reader.copyImageAddress')" @click="copyImageAddress" />
+      </template>
+      <v-divider v-if="hasSelection || targetHref || targetImgSrc" />
+      <v-list-item prepend-icon="mdi-select-all" :title="t('reader.selectAll')" @click="selectAllBody" />
+    </ContextMenu>
   </div>
 
   <div v-else class="mail-reader__empty">
@@ -79,12 +94,107 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DOMPurify from 'dompurify'
 import type { MailMessage, MailboxFolder } from '@/types/mail'
+import ContextMenu from '@/components/ContextMenu.vue'
+import { useContextMenu } from '@/composables/useContextMenu'
 
 const { t, locale } = useI18n()
+const ctxMenu = useContextMenu()
+const hasSelection = ref(false)
+const targetHref = ref<string | null>(null)
+const targetImgSrc = ref<string | null>(null)
+
+const findAncestor = (el: HTMLElement | null, tag: string): HTMLElement | null => {
+  while (el) {
+    if (el.tagName === tag) return el
+    el = el.parentElement
+  }
+  return null
+}
+
+const openReaderMenu = (event: MouseEvent) => {
+  const target = event.target as HTMLElement
+
+  const sel = window.getSelection()
+  hasSelection.value = Boolean(sel && sel.toString().trim().length > 0)
+
+  const anchor = findAncestor(target, 'A') as HTMLAnchorElement | null
+  targetHref.value = anchor?.href ?? null
+
+  const img = findAncestor(target, 'IMG') as HTMLImageElement | null
+  targetImgSrc.value = img?.src ?? null
+
+  ctxMenu.open(event)
+}
+
+const copySelection = () => {
+  const sel = window.getSelection()
+  if (sel) {
+    navigator.clipboard.writeText(sel.toString())
+  }
+}
+
+const copyLinkAddress = () => {
+  if (targetHref.value) {
+    navigator.clipboard.writeText(targetHref.value)
+  }
+}
+
+const openUrlExternal = (url: string) => {
+  const wc = (window as unknown as Record<string, unknown>).windowControls as
+    | { openExternal?: (url: string) => Promise<void> }
+    | undefined
+  if (wc?.openExternal) {
+    wc.openExternal(url)
+  } else {
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+}
+
+const openLinkInBrowser = () => {
+  if (targetHref.value) openUrlExternal(targetHref.value)
+}
+
+const handleBodyClick = (event: MouseEvent) => {
+  const anchor = findAncestor(event.target as HTMLElement, 'A') as HTMLAnchorElement | null
+  if (anchor?.href) {
+    event.preventDefault()
+    openUrlExternal(anchor.href)
+  }
+}
+
+const copyImage = async () => {
+  if (!targetImgSrc.value) return
+  try {
+    const res = await fetch(targetImgSrc.value)
+    const blob = await res.blob()
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
+  } catch {
+    // fallback: copy the URL instead
+    navigator.clipboard.writeText(targetImgSrc.value)
+  }
+}
+
+const copyImageAddress = () => {
+  if (targetImgSrc.value) {
+    navigator.clipboard.writeText(targetImgSrc.value)
+  }
+}
+
+const selectAllBody = () => {
+  const el = document.querySelector('.mail-reader__body')
+  if (!el) return
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  const sel = window.getSelection()
+  if (sel) {
+    sel.removeAllRanges()
+    sel.addRange(range)
+  }
+}
 
 const folderDisplayName = (folder: MailboxFolder) =>
   folder.kind !== 'custom' ? t(`folders.${folder.kind}`) : folder.name

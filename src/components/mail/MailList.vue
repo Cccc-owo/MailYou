@@ -84,6 +84,7 @@
           :class="['mail-list__item', { 'mail-list__item--unread': !message.isRead }]"
           rounded="xl"
           @click="$emit('select-message', message.id)"
+          @contextmenu="ctxMenu.open($event, message)"
         >
           <template #prepend>
             <v-checkbox
@@ -119,6 +120,47 @@
         </v-list-item>
       </template>
     </v-virtual-scroll>
+
+    <!-- Right-click context menu -->
+    <ContextMenu v-model="ctxMenu.isOpen.value" :x="ctxMenu.x.value" :y="ctxMenu.y.value">
+      <v-list-item prepend-icon="mdi-reply-outline" :title="t('reader.reply')" @click="$emit('context-reply', ctxMenu.target.value!.id)" />
+      <v-list-item prepend-icon="mdi-reply-all-outline" :title="t('reader.replyAll')" @click="$emit('context-reply-all', ctxMenu.target.value!.id)" />
+      <v-list-item prepend-icon="mdi-arrow-top-right" :title="t('reader.forward')" @click="$emit('context-forward', ctxMenu.target.value!.id)" />
+      <v-divider />
+      <v-list-item
+        :prepend-icon="ctxMenu.target.value?.isStarred ? 'mdi-star' : 'mdi-star-outline'"
+        :title="ctxMenu.target.value?.isStarred ? t('common.unstar') : t('common.star')"
+        @click="$emit('toggle-star', ctxMenu.target.value!.id)"
+      />
+      <v-list-item
+        :prepend-icon="ctxMenu.target.value?.isRead ? 'mdi-email-outline' : 'mdi-email-open-outline'"
+        :title="ctxMenu.target.value?.isRead ? t('mailList.markUnread') : t('mailList.markRead')"
+        @click="$emit('context-toggle-read', ctxMenu.target.value!.id)"
+      />
+      <v-divider />
+      <template v-if="currentFolderKind === 'trash' || currentFolderKind === 'archive'">
+        <v-list-item prepend-icon="mdi-inbox-arrow-down" :title="t('reader.restoreToInbox')" @click="$emit('context-restore', ctxMenu.target.value!.id)" />
+      </template>
+      <template v-else>
+        <v-list-item prepend-icon="mdi-archive-outline" :title="t('reader.archive')" @click="$emit('context-archive', ctxMenu.target.value!.id)" />
+      </template>
+      <v-menu v-if="moveTargetFolders.length > 0" location="end">
+        <template #activator="{ props: subMenuProps }">
+          <v-list-item prepend-icon="mdi-folder-move-outline" :title="t('mailList.moveTo')" v-bind="subMenuProps" append-icon="mdi-chevron-right" />
+        </template>
+        <v-list density="compact">
+          <v-list-item
+            v-for="folder in moveTargetFolders"
+            :key="folder.id"
+            :prepend-icon="folder.icon"
+            :title="folderDisplayName(folder)"
+            @click="$emit('context-move', ctxMenu.target.value!.id, folder.id)"
+          />
+        </v-list>
+      </v-menu>
+      <v-divider />
+      <v-list-item prepend-icon="mdi-delete-outline" :title="t('common.delete')" base-color="error" @click="$emit('context-delete', ctxMenu.target.value!.id)" />
+    </ContextMenu>
   </div>
 </template>
 
@@ -126,8 +168,11 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MailMessage, MailboxFolder } from '@/types/mail'
+import ContextMenu from '@/components/ContextMenu.vue'
+import { useContextMenu } from '@/composables/useContextMenu'
 
 const { t, locale } = useI18n()
+const ctxMenu = useContextMenu<MailMessage>()
 
 const folderDisplayName = (folder: MailboxFolder) =>
   folder.kind !== 'custom' ? t(`folders.${folder.kind}`) : folder.name
@@ -142,6 +187,7 @@ const props = defineProps<{
   title: string
   folders?: MailboxFolder[]
   currentFolderId?: string | null
+  currentFolderKind?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -156,6 +202,14 @@ const emit = defineEmits<{
   'batch-mark-read': []
   'batch-mark-unread': []
   'batch-move': [folderId: string]
+  'context-reply': [messageId: string]
+  'context-reply-all': [messageId: string]
+  'context-forward': [messageId: string]
+  'context-toggle-read': [messageId: string]
+  'context-archive': [messageId: string]
+  'context-restore': [messageId: string]
+  'context-delete': [messageId: string]
+  'context-move': [messageId: string, folderId: string]
 }>()
 
 const hasUnread = computed(() => props.messages.some((m) => !m.isRead))

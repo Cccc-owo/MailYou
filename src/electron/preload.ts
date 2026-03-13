@@ -28,6 +28,7 @@ const windowControls: WindowControlsBridge = {
   toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
   close: () => ipcRenderer.invoke('window:close'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  openExternal: (url) => ipcRenderer.invoke('window:openExternal', url),
 }
 
 contextBridge.exposeInMainWorld('mailstack', mailstack)

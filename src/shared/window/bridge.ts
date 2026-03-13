@@ -3,4 +3,5 @@ export interface WindowControlsBridge {
   toggleMaximize(): Promise<boolean>
   close(): Promise<void>
   isMaximized(): Promise<boolean>
+  openExternal(url: string): Promise<void>
 }

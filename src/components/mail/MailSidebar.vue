@@ -16,6 +16,7 @@
           :active="account.id === currentAccountId"
           rounded="xl"
           @click="$emit('select-account', account.id)"
+          @contextmenu="accountCtx.open($event, account)"
         >
           <template #prepend>
             <v-avatar :color="account.color" size="36">{{ account.initials }}</v-avatar>
@@ -62,6 +63,7 @@
           :active="folder.id === currentFolderId"
           rounded="xl"
           @click="$emit('select-folder', folder.id)"
+          @contextmenu="folderCtx.open($event, folder)"
         >
           <template #prepend>
             <v-icon :icon="folder.icon" />
@@ -91,6 +93,18 @@
         </div>
       </div>
     </v-card>
+
+    <!-- Account context menu -->
+    <ContextMenu v-model="accountCtx.isOpen.value" :x="accountCtx.x.value" :y="accountCtx.y.value">
+      <v-list-item prepend-icon="mdi-sync" :title="t('shell.sync')" @click="$emit('sync-account', accountCtx.target.value!.id)" />
+      <v-divider />
+      <v-list-item prepend-icon="mdi-delete-outline" :title="t('sidebar.deleteAccount')" base-color="error" @click="confirmDelete(accountCtx.target.value!)" />
+    </ContextMenu>
+
+    <!-- Folder context menu -->
+    <ContextMenu v-model="folderCtx.isOpen.value" :x="folderCtx.x.value" :y="folderCtx.y.value">
+      <v-list-item prepend-icon="mdi-email-check-outline" :title="t('mailList.markAllRead')" @click="$emit('mark-folder-read', folderCtx.target.value!.id)" />
+    </ContextMenu>
   </div>
 
   <v-dialog v-model="deleteDialog" max-width="400" persistent>
@@ -113,8 +127,12 @@ import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MailAccount } from '@/types/account'
 import type { MailboxFolder } from '@/types/mail'
+import ContextMenu from '@/components/ContextMenu.vue'
+import { useContextMenu } from '@/composables/useContextMenu'
 
 const { t } = useI18n()
+const accountCtx = useContextMenu<MailAccount>()
+const folderCtx = useContextMenu<MailboxFolder>()
 
 const folderDisplayName = (folder: MailboxFolder) =>
   folder.kind !== 'custom' ? t(`folders.${folder.kind}`) : folder.name
@@ -134,6 +152,8 @@ const emit = defineEmits<{
   'delete-account': [accountId: string]
   compose: []
   'add-account': []
+  'sync-account': [accountId: string]
+  'mark-folder-read': [folderId: string]
 }>()
 
 const deleteDialog = ref(false)

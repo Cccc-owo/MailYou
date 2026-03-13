@@ -13,7 +13,9 @@
     "retry": "重试",
     "dismiss": "关闭",
     "backToMail": "返回邮箱",
-    "mailbox": "邮箱"
+    "mailbox": "邮箱",
+    "star": "加星标",
+    "unstar": "取消星标"
   },
   "titleBar": {
     "minimize": "最小化窗口",
@@ -59,6 +61,12 @@
     "moveTo": "移动到",
     "restoreToInbox": "恢复到收件箱",
     "archive": "归档",
+    "copy": "复制",
+    "copyLinkAddress": "复制链接地址",
+    "copyImage": "复制图片",
+    "copyImageAddress": "复制图片地址",
+    "openLinkInBrowser": "在浏览器中打开链接",
+    "selectAll": "全选",
     "attachmentsCount": "{count} 个附件",
     "to": "收件人：{recipients}",
     "cc": "抄送：{recipients}",

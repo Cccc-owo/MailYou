@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, shell } from 'electron'
 
 let registered = false
 
@@ -36,4 +36,10 @@ export const registerWindowIpc = () => {
   })
 
   ipcMain.handle('window:isMaximized', (event) => getWindowFromEvent(event)?.isMaximized() ?? false)
+
+  ipcMain.handle('window:openExternal', (_event, url: string) => {
+    if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+      return shell.openExternal(url)
+    }
+  })
 }

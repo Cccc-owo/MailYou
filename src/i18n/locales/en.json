@@ -13,7 +13,9 @@
     "retry": "Retry",
     "dismiss": "Dismiss",
     "backToMail": "Back to mail",
-    "mailbox": "Mailbox"
+    "mailbox": "Mailbox",
+    "star": "Star",
+    "unstar": "Unstar"
   },
   "titleBar": {
     "minimize": "Minimize window",
@@ -59,6 +61,12 @@
     "moveTo": "Move to",
     "restoreToInbox": "Restore to Inbox",
     "archive": "Archive",
+    "copy": "Copy",
+    "copyLinkAddress": "Copy link address",
+    "copyImage": "Copy image",
+    "copyImageAddress": "Copy image address",
+    "openLinkInBrowser": "Open link in browser",
+    "selectAll": "Select all",
     "attachmentsCount": "{count} attachments",
     "to": "To {recipients}",
     "cc": "Cc {recipients}",
