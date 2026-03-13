@@ -2,7 +2,10 @@
   <header class="app-title-bar">
     <div class="app-title-bar__brand">
       <div class="app-title-bar__logo">
-        <v-icon icon="mdi-email-outline" size="20" />
+        <svg viewBox="0 0 512 512" width="20" height="20" fill="none" stroke="currentColor" stroke-width="32" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="72" y="148" width="368" height="272" rx="24"/>
+          <polyline points="96,148 256,332 416,148"/>
+        </svg>
       </div>
       <div class="app-title-bar__copy">
         <div class="text-h6">{{ title }}</div>

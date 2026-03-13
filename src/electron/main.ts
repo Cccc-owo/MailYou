@@ -29,6 +29,7 @@ const createMainWindow = async () => {
     titleBarStyle: 'hidden',
     titleBarOverlay: false,
     backgroundColor: '#10131c',
+    icon: join(__dirname, '../src/assets/logo.png'),
     webPreferences: {
       preload: join(__dirname, 'preload.mjs'),
       contextIsolation: true,
