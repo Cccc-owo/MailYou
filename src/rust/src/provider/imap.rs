@@ -727,7 +727,7 @@ fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String,
                         .unwrap_or_else(|| chrono::Utc::now());
                     dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
                 })
-                .unwrap_or(raw)
+                .unwrap_or_else(|_| memory::current_timestamp())
         })
         .unwrap_or_else(|| memory::current_timestamp());
 
