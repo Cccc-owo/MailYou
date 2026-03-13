@@ -37,6 +37,7 @@ export const useMessagesStore = defineStore('messages', () => {
   const error = ref<string | null>(null)
   const selectedIds = shallowReactive(new Set<string>())
   const isMultiSelectMode = computed(() => selectedIds.size > 0)
+  let loadGeneration = 0
 
   const sortByDate = (list: MailMessage[]) =>
     list.slice().sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
@@ -71,9 +72,10 @@ export const useMessagesStore = defineStore('messages', () => {
 
   const computeNextSelectedId = (removedId: string): string | null => {
     if (selectedMessageId.value !== removedId) return selectedMessageId.value
-    const idx = messages.value.findIndex((m) => m.id === removedId)
+    const sorted = filteredMessages.value
+    const idx = sorted.findIndex((m) => m.id === removedId)
     if (idx < 0) return null
-    return messages.value[idx + 1]?.id ?? messages.value[idx - 1]?.id ?? null
+    return sorted[idx + 1]?.id ?? sorted[idx - 1]?.id ?? null
   }
 
   const hasSearchQuery = computed(() => query.value.trim().length > 0)
@@ -90,7 +92,9 @@ export const useMessagesStore = defineStore('messages', () => {
       return
     }
 
-    selectedMessageId.value = nextMessages[0]?.id ?? null
+    // Auto-select the most recent message by date
+    const sorted = sortByDate(nextMessages)
+    selectedMessageId.value = sorted[0]?.id ?? null
   }
 
   const setMailboxBundle = (bundle: MailboxBundle, folderId: string | null) => {
@@ -102,13 +106,19 @@ export const useMessagesStore = defineStore('messages', () => {
   const loadMessages = async (accountId: string, folderId: string) => {
     isLoading.value = true
     error.value = null
+    const gen = ++loadGeneration
 
     try {
-      setMessages(await mailRepository.listMessages(accountId, folderId))
+      const result = await mailRepository.listMessages(accountId, folderId)
+      if (gen !== loadGeneration) return // stale response, discard
+      setMessages(result)
     } catch (loadError) {
+      if (gen !== loadGeneration) return
       error.value = loadError instanceof Error ? loadError.message : 'Unable to load messages'
     } finally {
-      isLoading.value = false
+      if (gen === loadGeneration) {
+        isLoading.value = false
+      }
     }
   }
 
@@ -201,15 +211,17 @@ export const useMessagesStore = defineStore('messages', () => {
     const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
       ? computeNextSelectedId(selectedMessageId.value)
       : selectedMessageId.value
+    const succeeded = new Set<string>()
     try {
       for (const id of ids) {
         await mailRepository.deleteMessage(accountId, id)
+        succeeded.add(id)
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Batch delete failed'
     }
-    messages.value = messages.value.filter((m) => !selectedIds.has(m.id))
-    selectedMessageId.value = nextId
+    messages.value = messages.value.filter((m) => !succeeded.has(m.id))
+    selectedMessageId.value = succeeded.has(selectedMessageId.value ?? '') ? nextId : selectedMessageId.value
     selectedIds.clear()
   }
 
@@ -219,33 +231,37 @@ export const useMessagesStore = defineStore('messages', () => {
     const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
       ? computeNextSelectedId(selectedMessageId.value)
       : selectedMessageId.value
+    const succeeded = new Set<string>()
     try {
       for (const id of ids) {
         await mailRepository.archiveMessage(accountId, id)
+        succeeded.add(id)
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Batch archive failed'
     }
-    messages.value = messages.value.filter((m) => !selectedIds.has(m.id))
-    selectedMessageId.value = nextId
+    messages.value = messages.value.filter((m) => !succeeded.has(m.id))
+    selectedMessageId.value = succeeded.has(selectedMessageId.value ?? '') ? nextId : selectedMessageId.value
     selectedIds.clear()
   }
 
   const batchToggleRead = async (accountId: string, markRead: boolean) => {
     error.value = null
     const ids = [...selectedIds]
+    const succeeded = new Set<string>()
     try {
       for (const id of ids) {
         const msg = messages.value.find((m) => m.id === id)
         if (msg && msg.isRead !== markRead) {
           await mailRepository.toggleRead(accountId, id)
         }
+        succeeded.add(id)
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Batch mark read failed'
     }
     messages.value = messages.value.map((m) =>
-      selectedIds.has(m.id) ? { ...m, isRead: markRead } : m,
+      succeeded.has(m.id) ? { ...m, isRead: markRead } : m,
     )
     selectedIds.clear()
   }
@@ -256,15 +272,17 @@ export const useMessagesStore = defineStore('messages', () => {
     const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
       ? computeNextSelectedId(selectedMessageId.value)
       : selectedMessageId.value
+    const succeeded = new Set<string>()
     try {
       for (const id of ids) {
         await mailRepository.moveMessage(accountId, id, folderId)
+        succeeded.add(id)
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Batch move failed'
     }
-    messages.value = messages.value.filter((m) => !selectedIds.has(m.id))
-    selectedMessageId.value = nextId
+    messages.value = messages.value.filter((m) => !succeeded.has(m.id))
+    selectedMessageId.value = succeeded.has(selectedMessageId.value ?? '') ? nextId : selectedMessageId.value
     selectedIds.clear()
   }
 
