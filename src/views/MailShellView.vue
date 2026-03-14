@@ -111,6 +111,7 @@
     class="mail-shell__snackbar mail-shell__snackbar--error"
     location="bottom right"
     @update:model-value="!$event && composerStore.clearFeedback()"
+    @contextmenu="openSnackbarMenu"
   >
     <span class="mail-shell__snackbar-text">{{ composerStore.error }}</span>
   </v-snackbar>
@@ -130,6 +131,7 @@
     location="bottom right"
     :timeout="-1"
     @update:model-value="!$event && messagesStore.clearError()"
+    @contextmenu="openSnackbarMenu"
   >
     <span class="mail-shell__snackbar-text">{{ messagesStore.error }}</span>
     <template #actions>
@@ -137,6 +139,13 @@
       <v-btn variant="text" @click="messagesStore.clearError()">{{ t('common.dismiss') }}</v-btn>
     </template>
   </v-snackbar>
+
+  <!-- Snackbar right-click context menu -->
+  <ContextMenu v-model="snackbarCtx.isOpen.value" :x="snackbarCtx.x.value" :y="snackbarCtx.y.value">
+    <v-list-item v-if="snackbarHasSelection" prepend-icon="mdi-content-copy" :title="t('reader.copy')" @click="snackbarCopy" />
+    <v-divider v-if="snackbarHasSelection" />
+    <v-list-item prepend-icon="mdi-select-all" :title="t('reader.selectAll')" @click="snackbarSelectAll" />
+  </ContextMenu>
 
   <v-snackbar
     :model-value="Boolean(undoableAction)"
@@ -161,6 +170,8 @@ import ComposerDialog from '@/components/mail/ComposerDialog.vue'
 import MailList from '@/components/mail/MailList.vue'
 import MailReader from '@/components/mail/MailReader.vue'
 import MailSidebar from '@/components/mail/MailSidebar.vue'
+import ContextMenu from '@/components/ContextMenu.vue'
+import { useContextMenu } from '@/composables/useContextMenu'
 import { useAccountsStore } from '@/stores/accounts'
 import { useComposerStore } from '@/stores/composer'
 import { useMailboxesStore } from '@/stores/mailboxes'
@@ -175,6 +186,34 @@ const mailboxesStore = useMailboxesStore()
 const messagesStore = useMessagesStore()
 const composerStore = useComposerStore()
 const uiStore = useUiStore()
+const snackbarCtx = useContextMenu()
+const snackbarHasSelection = ref(false)
+
+const openSnackbarMenu = (event: MouseEvent) => {
+  snackbarHasSelection.value = Boolean(window.getSelection()?.toString())
+  snackbarCtx.open(event)
+}
+
+const snackbarSelectAll = () => {
+  const sel = window.getSelection()
+  if (!sel) return
+  const snackbar = document.querySelector('.mail-shell__snackbar--error .v-snackbar__wrapper')
+  if (!snackbar) return
+  const range = document.createRange()
+  range.selectNodeContents(snackbar)
+  sel.removeAllRanges()
+  sel.addRange(range)
+}
+
+const snackbarCopy = () => {
+  const sel = window.getSelection()
+  if (sel && sel.toString()) {
+    navigator.clipboard.writeText(sel.toString())
+  } else {
+    const text = messagesStore.error || composerStore.error || ''
+    navigator.clipboard.writeText(text)
+  }
+}
 
 const { currentAccount } = storeToRefs(accountsStore)
 const { syncStatus } = storeToRefs(messagesStore)
