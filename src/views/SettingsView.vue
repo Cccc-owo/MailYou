@@ -1,6 +1,6 @@
 <template>
   <div class="settings-page">
-    <AppTitleBar title="MailYou">
+    <AppTitleBar title="MailYou" hide-search>
       <template #actions>
         <v-tooltip :text="t('common.backToMail')" location="bottom">
           <template #activator="{ props: tip }">

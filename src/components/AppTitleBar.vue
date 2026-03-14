@@ -13,7 +13,7 @@
     </div>
 
     <div class="app-title-bar__actions">
-      <div class="app-title-bar__search" :class="{ 'app-title-bar__search--open': searchOpen }">
+      <div v-if="!hideSearch" class="app-title-bar__search" :class="{ 'app-title-bar__search--open': searchOpen }">
         <v-text-field
           v-if="searchOpen"
           ref="searchFieldRef"
@@ -89,11 +89,13 @@ const { t } = useI18n()
 
 withDefaults(
   defineProps<{
+    hideSearch?: boolean
     search?: string
     searchPlaceholder?: string
     title?: string
   }>(),
   {
+    hideSearch: false,
     search: '',
     searchPlaceholder: '',
     title: 'MailYou',
