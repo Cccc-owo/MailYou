@@ -1,7 +1,10 @@
-use std::net::{TcpStream, ToSocketAddrs};
 use std::time::{Duration, Instant};
 
-use native_tls::TlsConnector;
+use async_imap::Session as ImapSession;
+use async_trait::async_trait;
+use futures::TryStreamExt;
+use tokio::net::TcpStream;
+use tokio_native_tls::TlsStream;
 
 use crate::models::{
     AccountSetupDraft, AttachmentContent, AttachmentMeta, DraftMessage, MailAccount, MailFolderKind,
@@ -13,34 +16,35 @@ use crate::storage::memory;
 use crate::storage::persisted;
 
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const TCP_READ_TIMEOUT: Duration = Duration::from_secs(30);
-const TCP_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+
+type ImapTlsSession = ImapSession<TlsStream<TcpStream>>;
 
 pub struct ImapSmtpProvider;
 
 pub static IMAP_SMTP_PROVIDER: ImapSmtpProvider = ImapSmtpProvider;
 
+#[async_trait]
 impl MailProvider for ImapSmtpProvider {
     fn backend_name(&self) -> &'static str {
         "imap-smtp"
     }
 
-    fn list_accounts(&self) -> Result<Vec<MailAccount>, BackendError> {
+    async fn list_accounts(&self) -> Result<Vec<MailAccount>, BackendError> {
         memory::list_accounts()
     }
 
-    fn create_account(&self, draft: AccountSetupDraft) -> Result<MailAccount, BackendError> {
+    async fn create_account(&self, draft: AccountSetupDraft) -> Result<MailAccount, BackendError> {
         eprintln!("[imap] testing connection for new account {}...", draft.email);
-        self.test_account_connection(draft.clone())?;
+        self.test_account_connection(draft.clone()).await?;
         eprintln!("[imap] connection test passed, creating account");
         memory::create_account_without_test(draft)
     }
 
-    fn test_account_connection(&self, draft: AccountSetupDraft) -> Result<SyncStatus, BackendError> {
+    async fn test_account_connection(&self, draft: AccountSetupDraft) -> Result<SyncStatus, BackendError> {
         validate_draft(&draft)?;
         eprintln!("[imap] connecting to {}:{}...", draft.incoming_host, draft.incoming_port);
         let start = Instant::now();
-        imap_login_test(&draft)?;
+        imap_login_test(&draft).await?;
         eprintln!("[imap] connection test ok ({:.1?})", start.elapsed());
 
         Ok(SyncStatus {
@@ -54,23 +58,23 @@ impl MailProvider for ImapSmtpProvider {
         })
     }
 
-    fn list_folders(&self, account_id: &str) -> Result<Vec<MailboxFolder>, BackendError> {
+    async fn list_folders(&self, account_id: &str) -> Result<Vec<MailboxFolder>, BackendError> {
         memory::list_folders(account_id)
     }
 
-    fn list_messages(&self, account_id: &str, folder_id: &str) -> Result<Vec<MailMessage>, BackendError> {
+    async fn list_messages(&self, account_id: &str, folder_id: &str) -> Result<Vec<MailMessage>, BackendError> {
         memory::list_messages(account_id, folder_id)
     }
 
-    fn get_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn get_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
         memory::get_message(account_id, message_id)
     }
 
-    fn save_draft(&self, draft: DraftMessage) -> Result<DraftMessage, BackendError> {
+    async fn save_draft(&self, draft: DraftMessage) -> Result<DraftMessage, BackendError> {
         memory::save_draft(draft)
     }
 
-    fn send_message(&self, draft: DraftMessage) -> Result<String, BackendError> {
+    async fn send_message(&self, draft: DraftMessage) -> Result<String, BackendError> {
         if draft.account_id.trim().is_empty() || draft.to.trim().is_empty() {
             return Err(BackendError::validation("Recipient and account are required"));
         }
@@ -80,17 +84,17 @@ impl MailProvider for ImapSmtpProvider {
 
         eprintln!("[smtp] sending message to {} via {}:{}...", draft.to, account_state.config.outgoing_host, account_state.config.outgoing_port);
         let start = Instant::now();
-        smtp_send(&account_state, &draft)?;
+        smtp_send(&account_state, &draft).await?;
         eprintln!("[smtp] sent ok ({:.1?})", start.elapsed());
         memory::record_sent_message(draft)
     }
 
-    fn toggle_star(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn toggle_star(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
         let updated = memory::toggle_star(account_id, message_id)?;
         if let Some(ref msg) = updated {
             if let Some(uid) = msg.imap_uid {
                 eprintln!("[imap] pushing star={} for uid {} in {}", msg.is_starred, uid, msg.folder_id);
-                if let Err(e) = imap_store_flag(account_id, &msg.folder_id, uid, "\\Flagged", msg.is_starred) {
+                if let Err(e) = imap_store_flag(account_id, &msg.folder_id, uid, "\\Flagged", msg.is_starred).await {
                     eprintln!("[imap] push star failed: {}", e.message);
                 }
             }
@@ -98,12 +102,12 @@ impl MailProvider for ImapSmtpProvider {
         Ok(updated)
     }
 
-    fn toggle_read(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn toggle_read(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
         let updated = memory::toggle_read(account_id, message_id)?;
         if let Some(ref msg) = updated {
             if let Some(uid) = msg.imap_uid {
                 eprintln!("[imap] pushing read={} for uid {} in {}", msg.is_read, uid, msg.folder_id);
-                if let Err(e) = imap_store_flag(account_id, &msg.folder_id, uid, "\\Seen", msg.is_read) {
+                if let Err(e) = imap_store_flag(account_id, &msg.folder_id, uid, "\\Seen", msg.is_read).await {
                     eprintln!("[imap] push read failed: {}", e.message);
                 }
             }
@@ -111,7 +115,7 @@ impl MailProvider for ImapSmtpProvider {
         Ok(updated)
     }
 
-    fn delete_message(&self, account_id: &str, message_id: &str) -> Result<(), BackendError> {
+    async fn delete_message(&self, account_id: &str, message_id: &str) -> Result<(), BackendError> {
         let original = memory::get_message(account_id, message_id)?;
         memory::delete_message(account_id, message_id)?;
 
@@ -120,7 +124,7 @@ impl MailProvider for ImapSmtpProvider {
                 if let Ok(folders) = memory::list_folders(account_id) {
                     if let Some(trash) = folders.iter().find(|f| matches!(f.kind, MailFolderKind::Trash)) {
                         eprintln!("[imap] moving uid {} to trash", uid);
-                        if let Err(e) = imap_move_message(account_id, &msg.folder_id, &trash.id, uid) {
+                        if let Err(e) = imap_move_message(account_id, &msg.folder_id, &trash.id, uid).await {
                             eprintln!("[imap] push delete failed: {}", e.message);
                         }
                     }
@@ -130,19 +134,19 @@ impl MailProvider for ImapSmtpProvider {
         Ok(())
     }
 
-    fn delete_account(&self, account_id: &str) -> Result<(), BackendError> {
+    async fn delete_account(&self, account_id: &str) -> Result<(), BackendError> {
         eprintln!("[store] deleting account {account_id}");
         memory::delete_account(account_id)
     }
 
-    fn archive_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn archive_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
         let original = memory::get_message(account_id, message_id)?;
         let updated = memory::archive_message(account_id, message_id)?;
 
         if let (Some(orig), Some(ref upd)) = (original, &updated) {
             if let Some(uid) = orig.imap_uid {
                 eprintln!("[imap] archiving uid {} from {} to {}", uid, orig.folder_id, upd.folder_id);
-                if let Err(e) = imap_move_message(account_id, &orig.folder_id, &upd.folder_id, uid) {
+                if let Err(e) = imap_move_message(account_id, &orig.folder_id, &upd.folder_id, uid).await {
                     eprintln!("[imap] push archive failed: {}", e.message);
                 }
             }
@@ -150,14 +154,14 @@ impl MailProvider for ImapSmtpProvider {
         Ok(updated)
     }
 
-    fn restore_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn restore_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
         let original = memory::get_message(account_id, message_id)?;
         let updated = memory::restore_message(account_id, message_id)?;
 
         if let (Some(orig), Some(ref upd)) = (original, &updated) {
             if let Some(uid) = orig.imap_uid {
                 eprintln!("[imap] restoring uid {} from {} to {}", uid, orig.folder_id, upd.folder_id);
-                if let Err(e) = imap_move_message(account_id, &orig.folder_id, &upd.folder_id, uid) {
+                if let Err(e) = imap_move_message(account_id, &orig.folder_id, &upd.folder_id, uid).await {
                     eprintln!("[imap] push restore failed: {}", e.message);
                 }
             }
@@ -165,14 +169,14 @@ impl MailProvider for ImapSmtpProvider {
         Ok(updated)
     }
 
-    fn move_message(&self, account_id: &str, message_id: &str, folder_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn move_message(&self, account_id: &str, message_id: &str, folder_id: &str) -> Result<Option<MailMessage>, BackendError> {
         let original = memory::get_message(account_id, message_id)?;
         let updated = memory::move_message(account_id, message_id, folder_id)?;
 
         if let Some(orig) = original {
             if let Some(uid) = orig.imap_uid {
                 eprintln!("[imap] moving uid {} from {} to {}", uid, orig.folder_id, folder_id);
-                if let Err(e) = imap_move_message(account_id, &orig.folder_id, folder_id, uid) {
+                if let Err(e) = imap_move_message(account_id, &orig.folder_id, folder_id, uid).await {
                     eprintln!("[imap] push move failed: {}", e.message);
                 }
             }
@@ -180,7 +184,7 @@ impl MailProvider for ImapSmtpProvider {
         Ok(updated)
     }
 
-    fn mark_all_read(&self, account_id: &str, folder_id: &str) -> Result<(), BackendError> {
+    async fn mark_all_read(&self, account_id: &str, folder_id: &str) -> Result<(), BackendError> {
         let unread_uids: Vec<(u32, String)> = {
             let messages = memory::list_messages(account_id, folder_id)?;
             messages
@@ -197,13 +201,15 @@ impl MailProvider for ImapSmtpProvider {
             if let Some(real_folder_id) = unread_uids.first().map(|(_, fid)| fid.clone()) {
                 if let Some(mailbox_name) = get_imap_folder_name(account_id, &real_folder_id) {
                     eprintln!("[imap] pushing \\Seen for {} messages in {mailbox_name}", unread_uids.len());
-                    if let Ok(mut session) = imap_connect_by_account(account_id) {
-                        if session.select(&mailbox_name).is_ok() {
+                    if let Ok(mut session) = imap_connect_by_account(account_id).await {
+                        if session.select(&mailbox_name).await.is_ok() {
                             for (uid, _) in &unread_uids {
-                                let _ = session.uid_store(uid.to_string(), "+FLAGS (\\Seen)");
+                                if let Ok(stream) = session.uid_store(uid.to_string(), "+FLAGS (\\Seen)").await {
+                                    let _ = stream.try_collect::<Vec<_>>().await;
+                                }
                             }
                         }
-                        let _ = session.logout();
+                        let _ = session.logout().await;
                     }
                 }
             }
@@ -212,13 +218,13 @@ impl MailProvider for ImapSmtpProvider {
         Ok(())
     }
 
-    fn sync_account(&self, account_id: &str) -> Result<SyncStatus, BackendError> {
+    async fn sync_account(&self, account_id: &str) -> Result<SyncStatus, BackendError> {
         let account_state = memory::get_account_state(account_id)
             .ok_or_else(|| BackendError::not_found("Account not found"))?;
 
         eprintln!("[imap] syncing account {} ({}:{})...", account_id, account_state.config.incoming_host, account_state.config.incoming_port);
         let start = Instant::now();
-        let (folders, messages, threads) = imap_fetch_mailbox(&account_state)?;
+        let (folders, messages, threads) = imap_fetch_mailbox(&account_state).await?;
         eprintln!("[imap] fetched {} folders, {} messages in {:.1?}", folders.len(), messages.len(), start.elapsed());
         memory::merge_remote_mailbox(account_id, folders, messages, threads)?;
 
@@ -226,11 +232,11 @@ impl MailProvider for ImapSmtpProvider {
         memory::finish_sync(account_id, &timestamp)
     }
 
-    fn get_mailbox_bundle(&self, account_id: &str) -> Result<MailboxBundle, BackendError> {
+    async fn get_mailbox_bundle(&self, account_id: &str) -> Result<MailboxBundle, BackendError> {
         memory::get_mailbox_bundle(account_id)
     }
 
-    fn get_attachment_content(
+    async fn get_attachment_content(
         &self,
         account_id: &str,
         message_id: &str,
@@ -282,89 +288,80 @@ fn validate_draft(draft: &AccountSetupDraft) -> Result<(), BackendError> {
 }
 
 // ---------------------------------------------------------------------------
-// IMAP helpers
+// IMAP helpers (async)
 // ---------------------------------------------------------------------------
 
-fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), BackendError> {
+async fn imap_tcp_connect(host: &str, port: u16) -> Result<TcpStream, BackendError> {
+    tokio::time::timeout(TCP_CONNECT_TIMEOUT, TcpStream::connect((host, port)))
+        .await
+        .map_err(|_| BackendError::internal("IMAP connection timed out"))?
+        .map_err(|e| BackendError::internal(format!("IMAP connection failed: {e}")))
+}
+
+async fn imap_tls_connect(host: &str, tcp: TcpStream) -> Result<TlsStream<TcpStream>, BackendError> {
+    let connector = native_tls::TlsConnector::new()
+        .map_err(|e| BackendError::internal(format!("TLS error: {e}")))?;
+    let connector = tokio_native_tls::TlsConnector::from(connector);
+    connector.connect(host, tcp)
+        .await
+        .map_err(|e| BackendError::internal(format!("TLS handshake failed: {e}")))
+}
+
+async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), BackendError> {
     let host = draft.incoming_host.trim();
     let port = draft.incoming_port;
 
-    let addr = (host, port)
-        .to_socket_addrs()
-        .map_err(|e| BackendError::validation(format!("DNS resolution failed: {e}")))?
-        .next()
-        .ok_or_else(|| BackendError::validation("Could not resolve IMAP server address"))?;
-
-    eprintln!("[imap] tcp connecting to {addr}...");
-    let tcp = TcpStream::connect_timeout(&addr, TCP_CONNECT_TIMEOUT)
-        .map_err(|e| BackendError::validation(format!("IMAP connection failed: {e}")))?;
-    tcp.set_read_timeout(Some(TCP_READ_TIMEOUT)).ok();
-    tcp.set_write_timeout(Some(TCP_WRITE_TIMEOUT)).ok();
+    eprintln!("[imap] tcp connecting to {host}:{port}...");
+    let tcp = imap_tcp_connect(host, port).await
+        .map_err(|e| BackendError::validation(e.message))?;
     eprintln!("[imap] tcp connected, tls={}...", draft.use_tls);
 
     if draft.use_tls {
-        let tls = TlsConnector::builder()
-            .build()
-            .map_err(|e| BackendError::internal(format!("TLS error: {e}")))?;
-        let tls_stream = tls
-            .connect(host, tcp)
-            .map_err(|e| BackendError::validation(format!("TLS handshake failed: {e}")))?;
-        let client = imap::Client::new(tls_stream);
+        let tls_stream = imap_tls_connect(host, tcp).await
+            .map_err(|e| BackendError::validation(e.message))?;
+        let client = async_imap::Client::new(tls_stream);
         eprintln!("[imap] logging in as {}...", draft.username.trim());
         let mut session = client
             .login(draft.username.trim(), draft.password.trim())
+            .await
             .map_err(|e| BackendError::validation(format!("IMAP login failed: {}", e.0)))?;
-        let _ = session.logout();
+        let _ = session.logout().await;
     } else {
-        let client = imap::Client::new(tcp);
+        let client = async_imap::Client::new(tcp);
         eprintln!("[imap] logging in as {}...", draft.username.trim());
         let mut session = client
             .login(draft.username.trim(), draft.password.trim())
+            .await
             .map_err(|e| BackendError::validation(format!("IMAP login failed: {}", e.0)))?;
-        let _ = session.logout();
+        let _ = session.logout().await;
     }
 
     Ok(())
 }
 
-fn imap_connect(state: &StoredAccountState) -> Result<imap::Session<native_tls::TlsStream<std::net::TcpStream>>, BackendError> {
+async fn imap_connect(state: &StoredAccountState) -> Result<ImapTlsSession, BackendError> {
     let host = state.config.incoming_host.trim();
     let port = state.config.incoming_port;
 
-    let addr = (host, port)
-        .to_socket_addrs()
-        .map_err(|e| BackendError::internal(format!("DNS resolution failed: {e}")))?
-        .next()
-        .ok_or_else(|| BackendError::internal("Could not resolve IMAP server address"))?;
-
-    eprintln!("[imap] connecting to {host}:{port} ({addr})...");
+    eprintln!("[imap] connecting to {host}:{port}...");
     let start = Instant::now();
-    let tcp = TcpStream::connect_timeout(&addr, TCP_CONNECT_TIMEOUT)
-        .map_err(|e| BackendError::internal(format!("IMAP connection failed: {e}")))?;
-    tcp.set_read_timeout(Some(TCP_READ_TIMEOUT)).ok();
-    tcp.set_write_timeout(Some(TCP_WRITE_TIMEOUT)).ok();
+    let tcp = imap_tcp_connect(host, port).await?;
+    let tls_stream = imap_tls_connect(host, tcp).await?;
 
-    let tls = TlsConnector::builder()
-        .build()
-        .map_err(|e| BackendError::internal(format!("TLS error: {e}")))?;
-
-    let tls_stream = tls
-        .connect(host, tcp)
-        .map_err(|e| BackendError::internal(format!("TLS handshake failed: {e}")))?;
-
-    let client = imap::Client::new(tls_stream);
+    let client = async_imap::Client::new(tls_stream);
     let session = client
         .login(state.config.username.trim(), state.config.password.trim())
+        .await
         .map_err(|e| BackendError::internal(format!("IMAP login failed: {}", e.0)))?;
 
     eprintln!("[imap] connected to {host}:{port} ({:.1?})", start.elapsed());
     Ok(session)
 }
 
-fn imap_connect_by_account(account_id: &str) -> Result<imap::Session<native_tls::TlsStream<std::net::TcpStream>>, BackendError> {
+async fn imap_connect_by_account(account_id: &str) -> Result<ImapTlsSession, BackendError> {
     let state = memory::get_account_state(account_id)
         .ok_or_else(|| BackendError::not_found("Account not found"))?;
-    imap_connect(&state)
+    imap_connect(&state).await
 }
 
 fn get_imap_folder_name(account_id: &str, folder_id: &str) -> Option<String> {
@@ -378,7 +375,7 @@ fn get_imap_folder_name(account_id: &str, folder_id: &str) -> Option<String> {
         })
 }
 
-fn imap_store_flag(
+async fn imap_store_flag(
     account_id: &str,
     folder_id: &str,
     uid: u32,
@@ -388,9 +385,10 @@ fn imap_store_flag(
     let mailbox_name = get_imap_folder_name(account_id, folder_id)
         .ok_or_else(|| BackendError::internal("IMAP folder name not found"))?;
 
-    let mut session = imap_connect_by_account(account_id)?;
+    let mut session = imap_connect_by_account(account_id).await?;
     session
         .select(&mailbox_name)
+        .await
         .map_err(|e| BackendError::internal(format!("IMAP SELECT failed: {e}")))?;
 
     let query = if add {
@@ -401,13 +399,17 @@ fn imap_store_flag(
 
     session
         .uid_store(uid.to_string(), &query)
+        .await
+        .map_err(|e| BackendError::internal(format!("IMAP STORE failed: {e}")))?
+        .try_collect::<Vec<_>>()
+        .await
         .map_err(|e| BackendError::internal(format!("IMAP STORE failed: {e}")))?;
 
-    let _ = session.logout();
+    let _ = session.logout().await;
     Ok(())
 }
 
-fn imap_move_message(
+async fn imap_move_message(
     account_id: &str,
     src_folder_id: &str,
     dest_folder_id: &str,
@@ -418,40 +420,54 @@ fn imap_move_message(
     let dest_name = get_imap_folder_name(account_id, dest_folder_id)
         .ok_or_else(|| BackendError::internal("Destination IMAP folder name not found"))?;
 
-    let mut session = imap_connect_by_account(account_id)?;
+    let mut session = imap_connect_by_account(account_id).await?;
     session
         .select(&src_name)
+        .await
         .map_err(|e| BackendError::internal(format!("IMAP SELECT failed: {e}")))?;
 
     let uid_str = uid.to_string();
     session
         .uid_copy(&uid_str, &dest_name)
+        .await
         .map_err(|e| BackendError::internal(format!("IMAP COPY failed: {e}")))?;
 
     session
         .uid_store(&uid_str, "+FLAGS (\\Deleted)")
+        .await
+        .map_err(|e| BackendError::internal(format!("IMAP STORE \\Deleted failed: {e}")))?
+        .try_collect::<Vec<_>>()
+        .await
         .map_err(|e| BackendError::internal(format!("IMAP STORE \\Deleted failed: {e}")))?;
 
     session
         .expunge()
+        .await
+        .map_err(|e| BackendError::internal(format!("IMAP EXPUNGE failed: {e}")))?
+        .try_collect::<Vec<_>>()
+        .await
         .map_err(|e| BackendError::internal(format!("IMAP EXPUNGE failed: {e}")))?;
 
-    let _ = session.logout();
+    let _ = session.logout().await;
     Ok(())
 }
 
-fn imap_fetch_mailbox(
+async fn imap_fetch_mailbox(
     state: &StoredAccountState,
 ) -> Result<(Vec<MailboxFolder>, Vec<MailMessage>, Vec<MailThread>), BackendError> {
-    let mut session = imap_connect(state)?;
+    let mut session = imap_connect(state).await?;
     let account_id = &state.account.id;
 
     // Collect existing message bodies from memory so we can skip re-downloading them.
     let existing_bodies = memory::get_existing_bodies(account_id);
     eprintln!("[imap] incremental sync: {} cached bodies available", existing_bodies.len());
 
-    let remote_folders = session
+    let remote_folders: Vec<_> = session
         .list(None, Some("*"))
+        .await
+        .map_err(|e| BackendError::internal(format!("IMAP LIST failed: {e}")))?
+        .try_collect()
+        .await
         .map_err(|e| BackendError::internal(format!("IMAP LIST failed: {e}")))?;
 
     let mut folders: Vec<MailboxFolder> = Vec::new();
@@ -470,10 +486,10 @@ fn imap_fetch_mailbox(
         imap_name: None,
     });
 
-    for remote_folder in remote_folders.iter() {
+    for remote_folder in &remote_folders {
         let raw_name = remote_folder.name();
 
-        if remote_folder.attributes().iter().any(|a| matches!(a, imap::types::NameAttribute::NoSelect)) {
+        if remote_folder.attributes().iter().any(|a| matches!(a, async_imap::types::NameAttribute::NoSelect)) {
             continue;
         }
 
@@ -482,7 +498,7 @@ fn imap_fetch_mailbox(
         let folder_id = format!("{}-{}", slug(raw_name), account_id);
 
         let (unread, total, messages, threads) =
-            fetch_folder_contents(&mut session, account_id, &folder_id, raw_name, &existing_bodies)?;
+            fetch_folder_contents(&mut session, account_id, &folder_id, raw_name, &existing_bodies).await?;
 
         folders.push(MailboxFolder {
             id: folder_id,
@@ -499,15 +515,15 @@ fn imap_fetch_mailbox(
         all_threads.extend(threads);
     }
 
-    let _ = session.logout();
+    let _ = session.logout().await;
     Ok((folders, all_messages, all_threads))
 }
 
 /// Cached body + preview + attachments for a message, keyed by IMAP UID.
 type ExistingBodies = std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>)>;
 
-fn fetch_folder_contents(
-    session: &mut imap::Session<native_tls::TlsStream<std::net::TcpStream>>,
+async fn fetch_folder_contents(
+    session: &mut ImapTlsSession,
     account_id: &str,
     folder_id: &str,
     mailbox_name: &str,
@@ -515,6 +531,7 @@ fn fetch_folder_contents(
 ) -> Result<(u32, u32, Vec<MailMessage>, Vec<MailThread>), BackendError> {
     let mailbox = session
         .select(mailbox_name)
+        .await
         .map_err(|e| BackendError::internal(format!("IMAP SELECT '{mailbox_name}' failed: {e}")))?;
 
     let total = mailbox.exists;
@@ -527,6 +544,7 @@ fn fetch_folder_contents(
     // the sequence number of the first unseen message, not the count).
     let unread = session
         .search("UNSEEN")
+        .await
         .map(|ids| ids.len() as u32)
         .unwrap_or(0);
 
@@ -535,8 +553,12 @@ fn fetch_folder_contents(
     let range = format!("{start}:{total}");
 
     // --- Phase 1: lightweight fetch (envelope + flags, no body) ---
-    let fetches = session
+    let fetches: Vec<_> = session
         .fetch(&range, "(UID FLAGS ENVELOPE RFC822.SIZE)")
+        .await
+        .map_err(|e| BackendError::internal(format!("IMAP FETCH headers failed: {e}")))?
+        .try_collect()
+        .await
         .map_err(|e| BackendError::internal(format!("IMAP FETCH headers failed: {e}")))?;
 
     // Collect parsed metadata and identify which UIDs need a body download.
@@ -557,14 +579,13 @@ fn fetch_folder_contents(
     let mut metas: Vec<MsgMeta> = Vec::with_capacity(fetches.len());
     let mut new_uids: Vec<u32> = Vec::new();
 
-    for fetch in fetches.iter() {
+    for fetch in &fetches {
         let uid = fetch.uid.unwrap_or(fetch.message);
         let message_id = format!("imap-{account_id}-{folder_id}-{uid}");
         let thread_id = format!("thread-{message_id}");
 
-        let flags = fetch.flags();
-        let is_read = flags.iter().any(|f| matches!(f, imap::types::Flag::Seen));
-        let is_starred = flags.iter().any(|f| matches!(f, imap::types::Flag::Flagged));
+        let is_read = fetch.flags().any(|f| matches!(f, async_imap::types::Flag::Seen));
+        let is_starred = fetch.flags().any(|f| matches!(f, async_imap::types::Flag::Flagged));
 
         let (subject, from, from_email, to, cc, date) = match fetch.envelope() {
             Some(env) => parse_envelope(env),
@@ -594,13 +615,15 @@ fn fetch_folder_contents(
     if !new_uids.is_empty() {
         eprintln!("[imap] fetching body for {} new messages in {mailbox_name}", new_uids.len());
         let uid_set = new_uids.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
-        if let Ok(body_fetches) = session.uid_fetch(&uid_set, "BODY.PEEK[]") {
-            for bf in body_fetches.iter() {
-                if let (Some(uid), Some(raw)) = (bf.uid, bf.body()) {
-                    // Save raw .eml for attachment download later
-                    let msg_id = format!("imap-{account_id}-{folder_id}-{uid}");
-                    let _ = persisted::save_raw_email(&msg_id, raw);
-                    body_map.insert(uid, raw.to_vec());
+        if let Ok(stream) = session.uid_fetch(&uid_set, "BODY.PEEK[]").await {
+            if let Ok(body_fetches) = stream.try_collect::<Vec<_>>().await {
+                for bf in &body_fetches {
+                    if let (Some(uid), Some(raw)) = (bf.uid, bf.body()) {
+                        // Save raw .eml for attachment download later
+                        let msg_id = format!("imap-{account_id}-{folder_id}-{uid}");
+                        let _ = persisted::save_raw_email(&msg_id, raw);
+                        body_map.insert(uid, raw.to_vec());
+                    }
                 }
             }
         }
@@ -889,14 +912,14 @@ fn charset_decode(bytes: &[u8], charset: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// SMTP helper
+// SMTP helper (async)
 // ---------------------------------------------------------------------------
 
-fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(), BackendError> {
+async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(), BackendError> {
     use lettre::message::header::ContentType;
     use lettre::message::{Attachment, Mailbox, MultiPart, SinglePart};
     use lettre::transport::smtp::authentication::Credentials;
-    use lettre::{Message, SmtpTransport, Transport};
+    use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
     let from: Mailbox = format!("{} <{}>", state.account.name, state.account.email)
         .parse()
@@ -956,20 +979,21 @@ fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(), Bac
     );
 
     let transport = if state.config.use_tls {
-        SmtpTransport::relay(host)
+        AsyncSmtpTransport::<Tokio1Executor>::relay(host)
             .map_err(|e| BackendError::internal(format!("SMTP relay error: {e}")))?
             .port(port)
             .credentials(creds)
             .build()
     } else {
-        SmtpTransport::builder_dangerous(host)
+        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host)
             .port(port)
             .credentials(creds)
             .build()
     };
 
     transport
-        .send(&email)
+        .send(email)
+        .await
         .map_err(|e| BackendError::internal(format!("SMTP send failed: {e}")))?;
 
     Ok(())
@@ -1285,49 +1309,45 @@ fn decode_imap_utf7(input: &str) -> String {
         // Found '&'
         i += 1;
 
-        // &- means literal '&'
-        if i < bytes.len() && bytes[i] == b'-' {
+        if i >= bytes.len() {
+            result.push('&');
+            break;
+        }
+
+        // &- is literal &
+        if bytes[i] == b'-' {
             result.push('&');
             i += 1;
             continue;
         }
 
-        // Collect modified base64 until '-'
+        // Find the closing '-'
         let start = i;
         while i < bytes.len() && bytes[i] != b'-' {
             i += 1;
         }
 
         let encoded = &input[start..i];
+        // Replace , with / for standard base64
+        let standard = encoded.replace(',', "/");
 
-        // Skip the closing '-'
-        if i < bytes.len() {
-            i += 1;
-        }
-
-        // Decode: replace ',' with '/' to get standard base64, then decode to UTF-16BE
-        let standard_b64: String = encoded.chars().map(|c| if c == ',' { '/' } else { c }).collect();
-
-        if let Some(utf16_bytes) = base64_decode(&standard_b64) {
-            let utf16: Vec<u16> = utf16_bytes
+        if let Some(decoded_bytes) = base64_decode(&standard) {
+            // Interpret as UTF-16BE
+            let u16s: Vec<u16> = decoded_bytes
                 .chunks(2)
                 .filter(|c| c.len() == 2)
                 .map(|c| u16::from_be_bytes([c[0], c[1]]))
                 .collect();
-
-            match String::from_utf16(&utf16) {
-                Ok(decoded) => result.push_str(&decoded),
-                Err(_) => {
-                    // Fallback: keep raw
-                    result.push('&');
-                    result.push_str(encoded);
-                    result.push('-');
-                }
-            }
+            result.extend(char::decode_utf16(u16s.into_iter()).map(|r| r.unwrap_or('\u{FFFD}')));
         } else {
+            // Failed to decode, output raw
             result.push('&');
             result.push_str(encoded);
-            result.push('-');
+        }
+
+        // Skip the closing '-'
+        if i < bytes.len() && bytes[i] == b'-' {
+            i += 1;
         }
     }
 

@@ -1,8 +1,6 @@
-use std::io::{self, BufRead, BufWriter, Write};
-use std::panic::AssertUnwindSafe;
-use std::sync::mpsc;
-use std::thread;
 use std::time::Instant;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::sync::mpsc;
 
 mod core;
 mod models;
@@ -13,24 +11,26 @@ mod storage;
 use core::context::app_context;
 use protocol::{BackendRequestEnvelope, BackendResponse};
 
-fn main() {
+#[tokio::main]
+async fn main() {
     eprintln!("[backend] starting...");
     let start = Instant::now();
     let app_context = app_context();
     let provider = app_context.provider();
     eprintln!("[backend] initialized provider '{}' in {:?}", provider.backend_name(), start.elapsed());
 
-    let stdin = io::stdin();
+    let stdin = BufReader::new(tokio::io::stdin());
+    let (tx, mut rx) = mpsc::unbounded_channel::<BackendResponse>();
 
-    // Channel for worker threads to send responses back to the writer thread.
-    let (tx, rx) = mpsc::channel::<BackendResponse>();
-
-    // Dedicated writer thread owns stdout — avoids Send issues with StdoutLock.
-    let writer_handle = thread::spawn(move || {
-        let stdout = io::stdout();
-        let mut writer = BufWriter::new(stdout.lock());
-        for response in rx {
-            if write_response(&mut writer, &response).is_err() {
+    // Dedicated writer task owns stdout — avoids Send issues with StdoutLock.
+    let writer_handle = tokio::spawn(async move {
+        let mut stdout = BufWriter::new(tokio::io::stdout());
+        while let Some(response) = rx.recv().await {
+            let Ok(json) = serde_json::to_vec(&response) else { continue };
+            if stdout.write_all(&json).await.is_err()
+                || stdout.write_all(b"\n").await.is_err()
+                || stdout.flush().await.is_err()
+            {
                 eprintln!("[backend] writer: stdout write failed, exiting");
                 break;
             }
@@ -40,12 +40,8 @@ fn main() {
 
     eprintln!("[backend] ready, reading stdin");
 
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else {
-            eprintln!("[backend] stdin closed");
-            break;
-        };
-
+    let mut lines = stdin.lines();
+    while let Ok(Some(line)) = lines.next_line().await {
         if line.trim().is_empty() {
             continue;
         }
@@ -69,30 +65,35 @@ fn main() {
         eprintln!("[backend] req #{request_id} {method}");
 
         let tx = tx.clone();
-        thread::spawn(move || {
+        tokio::spawn(async move {
             let start = Instant::now();
 
-            // catch_unwind ensures a response is ALWAYS sent, even if the handler panics
-            // (e.g. due to a poisoned Mutex).
-            let response =
-                std::panic::catch_unwind(AssertUnwindSafe(|| {
-                    match core::app::handle_with_provider(provider, request.request) {
-                        Ok(result) => BackendResponse::success(request_id, result),
-                        Err(error) => BackendResponse::error(request_id, error),
-                    }
-                }))
-                .unwrap_or_else(|panic_value| {
-                    let msg = panic_value
-                        .downcast_ref::<&str>()
-                        .map(|s| s.to_string())
-                        .or_else(|| panic_value.downcast_ref::<String>().cloned())
-                        .unwrap_or_else(|| "unknown panic".into());
+            // Nested spawn to catch panics (JoinError on panic)
+            let inner = tokio::spawn(async move {
+                core::app::handle_with_provider(provider, request.request).await
+            });
+
+            let response = match inner.await {
+                Ok(Ok(result)) => BackendResponse::success(request_id, result),
+                Ok(Err(error)) => BackendResponse::error(request_id, error),
+                Err(join_error) => {
+                    let msg = if join_error.is_panic() {
+                        let panic_value = join_error.into_panic();
+                        panic_value
+                            .downcast_ref::<&str>()
+                            .map(|s| s.to_string())
+                            .or_else(|| panic_value.downcast_ref::<String>().cloned())
+                            .unwrap_or_else(|| "unknown panic".into())
+                    } else {
+                        "Task cancelled".into()
+                    };
                     eprintln!("[backend] PANIC in req #{request_id} {method}: {msg}");
                     BackendResponse::error(
                         request_id,
                         protocol::BackendError::internal(format!("Internal panic: {msg}")),
                     )
-                });
+                }
+            };
 
             let elapsed = start.elapsed();
             let status = match &response {
@@ -107,14 +108,8 @@ fn main() {
         });
     }
 
-    // Drop the sender so the writer thread exits when all in-flight requests finish.
+    // Drop the sender so the writer task exits when all in-flight requests finish.
     drop(tx);
-    let _ = writer_handle.join();
+    let _ = writer_handle.await;
     eprintln!("[backend] shutdown complete");
-}
-
-fn write_response(writer: &mut impl Write, response: &BackendResponse) -> io::Result<()> {
-    serde_json::to_writer(&mut *writer, response)?;
-    writer.write_all(b"\n")?;
-    writer.flush()
 }
