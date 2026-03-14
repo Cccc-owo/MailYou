@@ -127,24 +127,38 @@ export const useMessagesStore = defineStore('messages', () => {
 
   const toggleStar = async (accountId: string, messageId: string) => {
     error.value = null
-    const updated = await mailRepository.toggleStar(accountId, messageId)
+    const original = messages.value.find((m) => m.id === messageId)
+    if (!original) return
+    const optimisticStar = !original.isStarred
+    messages.value = messages.value.map((m) => (m.id === messageId ? { ...m, isStarred: optimisticStar } : m))
 
-    if (!updated) {
-      return
+    try {
+      const updated = await mailRepository.toggleStar(accountId, messageId)
+      if (updated) {
+        messages.value = messages.value.map((m) => (m.id === messageId ? updated : m))
+      }
+    } catch {
+      messages.value = messages.value.map((m) => (m.id === messageId ? { ...m, isStarred: !optimisticStar } : m))
     }
-
-    messages.value = messages.value.map((message) => (message.id === messageId ? updated : message))
   }
 
   const toggleRead = async (accountId: string, messageId: string) => {
     error.value = null
-    const updated = await mailRepository.toggleRead(accountId, messageId)
+    // Optimistic update
+    const original = messages.value.find((m) => m.id === messageId)
+    if (!original) return
+    const optimisticRead = !original.isRead
+    messages.value = messages.value.map((m) => (m.id === messageId ? { ...m, isRead: optimisticRead } : m))
 
-    if (!updated) {
-      return
+    try {
+      const updated = await mailRepository.toggleRead(accountId, messageId)
+      if (updated) {
+        messages.value = messages.value.map((m) => (m.id === messageId ? updated : m))
+      }
+    } catch {
+      // Rollback on failure
+      messages.value = messages.value.map((m) => (m.id === messageId ? { ...m, isRead: !optimisticRead } : m))
     }
-
-    messages.value = messages.value.map((message) => (message.id === messageId ? updated : message))
   }
 
   const deleteMessage = async (accountId: string, messageId: string) => {
