@@ -98,7 +98,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const setMailboxBundle = (bundle: MailboxBundle, folderId: string | null) => {
-    error.value = null
     syncStatus.value = bundle.syncStatus
     setMessages(getMessagesForFolder(bundle.messages, bundle.folders, folderId))
   }

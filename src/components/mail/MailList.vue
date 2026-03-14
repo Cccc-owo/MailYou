@@ -65,7 +65,11 @@
       <v-btn size="small" variant="text" @click="$emit('clear-selection')">{{ t('common.cancel') }}</v-btn>
     </div>
 
-    <v-alert v-if="error" class="mb-4" type="error" variant="tonal">{{ error }}</v-alert>
+    <div v-if="showInlineError" class="mail-list__error" @click="errorDismissed = true">
+      <v-icon icon="mdi-alert-circle" size="14" />
+      <span class="mail-list__error-text">{{ error }}</span>
+      <v-icon icon="mdi-close" size="14" class="mail-list__error-close" />
+    </div>
     <v-progress-linear v-if="isLoading" indeterminate color="primary" />
 
     <div v-if="!isLoading && messages.length === 0" class="mail-list__empty">
@@ -169,7 +173,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MailMessage, MailboxFolder } from '@/types/mail'
 import ContextMenu from '@/components/ContextMenu.vue'
@@ -215,6 +219,13 @@ const emit = defineEmits<{
   'context-delete': [messageId: string]
   'context-move': [messageId: string, folderId: string]
 }>()
+
+const errorDismissed = ref(false)
+const showInlineError = computed(() => Boolean(props.error) && !errorDismissed.value)
+
+watch(() => props.error, () => {
+  errorDismissed.value = false
+})
 
 const hasUnread = computed(() => props.messages.some((m) => !m.isRead))
 
@@ -295,6 +306,34 @@ const formatDate = (value: string) =>
   gap: 12px;
   margin-bottom: 12px;
   flex-shrink: 0;
+}
+
+.mail-list__error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-bottom: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(var(--v-theme-error), 0.1);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: rgb(var(--v-theme-error));
+  cursor: pointer;
+}
+
+.mail-list__error-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-list__error-close {
+  flex-shrink: 0;
+  opacity: 0.6;
 }
 
 .mail-list__select-all {

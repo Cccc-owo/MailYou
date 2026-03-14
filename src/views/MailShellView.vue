@@ -108,11 +108,12 @@
 
   <v-snackbar
     :model-value="Boolean(composerStore.error)"
+    class="mail-shell__snackbar"
     color="error"
     location="bottom right"
     @update:model-value="!$event && composerStore.clearFeedback()"
   >
-    {{ composerStore.error }}
+    <span class="mail-shell__snackbar-text">{{ composerStore.error }}</span>
   </v-snackbar>
 
   <v-snackbar
@@ -126,12 +127,13 @@
 
   <v-snackbar
     :model-value="Boolean(messagesStore.error)"
+    class="mail-shell__snackbar"
     color="error"
     location="bottom right"
     :timeout="-1"
     @update:model-value="!$event && messagesStore.clearError()"
   >
-    {{ messagesStore.error }}
+    <span class="mail-shell__snackbar-text">{{ messagesStore.error }}</span>
     <template #actions>
       <v-btn variant="text" @click="retryLastAction">{{ t('common.retry') }}</v-btn>
       <v-btn variant="text" @click="messagesStore.clearError()">{{ t('common.dismiss') }}</v-btn>
@@ -180,6 +182,7 @@ const { currentAccount } = storeToRefs(accountsStore)
 const { syncStatus } = storeToRefs(messagesStore)
 
 const deleteConfirmDialog = ref(false)
+const lastFailedAction = ref<(() => Promise<void>) | null>(null)
 
 interface UndoableAction {
   label: string
@@ -251,7 +254,11 @@ const refreshMailbox = async () => {
 
 const retryLastAction = async () => {
   messagesStore.clearError()
-  if (accountsStore.currentAccountId && mailboxesStore.currentFolderId) {
+  if (lastFailedAction.value) {
+    const action = lastFailedAction.value
+    lastFailedAction.value = null
+    await action()
+  } else if (accountsStore.currentAccountId && mailboxesStore.currentFolderId) {
     await handleFolderChange(mailboxesStore.currentFolderId)
   } else if (accountsStore.currentAccountId) {
     await handleAccountChange(accountsStore.currentAccountId)
@@ -275,6 +282,8 @@ const handleSelectMessage = async (messageId: string) => {
 const handleAccountChange = async (accountId: string) => {
   accountsStore.selectAccount(accountId)
   messagesStore.clearSelection()
+  messagesStore.clearError()
+  lastFailedAction.value = null
   try {
     await loadMailbox(accountId)
   } catch {
@@ -291,6 +300,8 @@ const handleDeleteAccount = async (accountId: string) => {
 
   mailboxesStore.setFolders([])
   messagesStore.clearAll()
+  messagesStore.clearError()
+  lastFailedAction.value = null
 
   if (accountsStore.currentAccountId) {
     await loadMailbox(accountsStore.currentAccountId)
@@ -606,7 +617,11 @@ const handleSyncAccount = async (accountId: string) => {
   })
 
   await messagesStore.syncAccount(accountId)
-  await refreshMailbox()
+  if (messagesStore.error) {
+    lastFailedAction.value = () => handleSyncAccount(accountId)
+  } else {
+    await refreshMailbox()
+  }
 }
 
 const handleMarkFolderRead = async (folderId: string) => {
@@ -631,6 +646,11 @@ const syncCurrentAccount = async () => {
 
   const oldIds = new Set(knownMessageIds.value)
   await messagesStore.syncAccount(accountsStore.currentAccountId)
+  if (messagesStore.error) {
+    const accountId = accountsStore.currentAccountId
+    lastFailedAction.value = () => handleSyncAccount(accountId)
+    return
+  }
   await refreshMailbox()
 
   // Detect new unread messages and show desktop notification
@@ -762,3 +782,27 @@ watch(SYNC_INTERVAL_MS, (newMs) => {
   }, newMs)
 })
 </script>
+
+<style>
+.mail-shell__snackbar .v-snackbar__wrapper {
+  max-width: min(480px, calc(100vw - 48px));
+}
+
+.mail-shell__snackbar .v-snackbar__content {
+  max-height: 8em;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.mail-shell__snackbar-text {
+  word-break: break-word;
+}
+
+@media (max-width: 600px) {
+  .mail-shell__snackbar .v-snackbar__wrapper {
+    max-width: calc(100vw - 32px);
+  }
+}
+</style>
