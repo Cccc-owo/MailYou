@@ -108,8 +108,7 @@
 
   <v-snackbar
     :model-value="Boolean(composerStore.error)"
-    class="mail-shell__snackbar"
-    color="error"
+    class="mail-shell__snackbar mail-shell__snackbar--error"
     location="bottom right"
     @update:model-value="!$event && composerStore.clearFeedback()"
   >
@@ -118,7 +117,7 @@
 
   <v-snackbar
     :model-value="Boolean(composerStore.successMessage)"
-    color="secondary"
+    color="surface-variant"
     location="bottom right"
     @update:model-value="!$event && composerStore.clearFeedback()"
   >
@@ -127,8 +126,7 @@
 
   <v-snackbar
     :model-value="Boolean(messagesStore.error)"
-    class="mail-shell__snackbar"
-    color="error"
+    class="mail-shell__snackbar mail-shell__snackbar--error"
     location="bottom right"
     :timeout="-1"
     @update:model-value="!$event && messagesStore.clearError()"
@@ -794,6 +792,13 @@ watch(SYNC_INTERVAL_MS, (newMs) => {
   overscroll-behavior: contain;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.mail-shell__snackbar--error .v-snackbar__wrapper {
+  background:
+    linear-gradient(rgba(var(--v-theme-error), 0.1), rgba(var(--v-theme-error), 0.1)),
+    rgb(var(--v-theme-background));
+  color: rgb(var(--v-theme-error));
 }
 
 .mail-shell__snackbar-text {
