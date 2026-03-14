@@ -1,6 +1,6 @@
 <template>
   <div class="mail-list">
-    <div class="mail-list__header d-flex align-center justify-space-between ga-3 flex-wrap">
+    <div class="mail-list__header">
       <div class="d-flex align-center ga-2">
         <v-checkbox
           v-if="messages.length > 0"
@@ -11,10 +11,7 @@
           class="mail-list__select-all"
           @update:model-value="onToggleSelectAll"
         />
-        <div>
-          <div class="text-overline">{{ t('mailList.mailbox') }}</div>
-          <div class="text-h5">{{ title }}</div>
-        </div>
+        <div class="text-subtitle-2">{{ title }}</div>
       </div>
       <div class="d-flex align-center ga-2">
         <v-btn
@@ -26,8 +23,8 @@
         >
           {{ t('mailList.markAllRead') }}
         </v-btn>
-        <v-chip v-if="unreadCount > 0" size="small" color="primary">{{ t('mailList.unreadCount', { count: unreadCount }) }}</v-chip>
-        <v-chip size="small" color="secondary" variant="tonal">{{ t('mailList.totalCount', { count: messages.length }) }}</v-chip>
+        <v-chip v-if="unreadCount > 0" size="x-small" color="primary" variant="tonal">{{ unreadCount }}</v-chip>
+        <span class="text-caption text-medium-emphasis">{{ t('mailList.totalCount', { count: messages.length }) }}</span>
       </div>
     </div>
 
@@ -356,10 +353,8 @@ const formatDate = (value: string) =>
   display: grid;
   place-items: center;
   text-align: center;
-  min-height: 240px;
+  min-height: 200px;
   padding: 24px;
-  border: 1px dashed rgba(var(--v-theme-on-surface), 0.12);
-  border-radius: 24px;
 }
 
 .mail-list__items {
@@ -378,8 +373,7 @@ const formatDate = (value: string) =>
 }
 
 .mail-list__item {
-  margin-bottom: 6px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.05);
+  margin-bottom: 2px;
 }
 
 .mail-list__item--unread {

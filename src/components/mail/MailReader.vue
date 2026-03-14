@@ -1,10 +1,7 @@
 <template>
   <div v-if="message" class="mail-reader" @contextmenu="openReaderMenu($event)">
     <div class="mail-reader__toolbar">
-      <div>
-        <div class="text-overline">{{ t('reader.conversation') }}</div>
-        <div class="text-h4">{{ message.subject }}</div>
-      </div>
+      <div class="mail-reader__toolbar-subject text-subtitle-1">{{ message.subject }}</div>
       <div class="mail-reader__toolbar-actions d-flex flex-wrap ga-2">
         <v-tooltip :text="t('reader.reply')" location="bottom">
           <template #activator="{ props: tip }">
@@ -72,13 +69,13 @@
     </div>
 
     <div class="mail-reader__scroll">
-    <v-card class="mail-reader__message" color="surface">
-      <div class="mail-reader__meta d-flex justify-space-between ga-4 flex-wrap">
+    <div class="mail-reader__message">
+      <div class="mail-reader__meta">
         <div>
-          <div class="text-h6">{{ message.from }}</div>
+          <div class="text-subtitle-1 font-weight-medium">{{ message.from }}</div>
           <div class="text-body-2 text-medium-emphasis">{{ message.fromEmail }}</div>
         </div>
-        <div class="text-body-2 text-medium-emphasis text-sm-left text-md-right">
+        <div class="text-body-2 text-medium-emphasis text-right">
           <div>{{ formattedDate }}</div>
           <div>{{ t('reader.to', { recipients: message.to.join(', ') }) }}</div>
           <div v-if="message.cc.length > 0">{{ t('reader.cc', { recipients: message.cc.join(', ') }) }}</div>
@@ -115,7 +112,7 @@
           </template>
         </v-list-item>
       </v-list>
-    </v-card>
+    </div>
     </div>
 
     <!-- Right-click context menu -->
@@ -411,19 +408,27 @@ const formatSize = (value: number) => {
 
 .mail-reader__toolbar {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
   flex-shrink: 0;
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+}
+
+.mail-reader__toolbar-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
 }
 
 .mail-reader__toolbar-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .mail-reader__scroll {
@@ -433,14 +438,16 @@ const formatSize = (value: number) => {
 }
 
 .mail-reader__message {
-  padding: 16px;
+  padding: 0;
 }
 
 .mail-reader__meta {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
 }
 
 .mail-reader__chips {
@@ -474,45 +481,6 @@ const formatSize = (value: number) => {
 
   .mail-reader__toolbar-actions :deep(.v-btn .v-btn__prepend) {
     margin-inline-end: 0;
-  }
-}
-
-@media (max-width: 840px) {
-  .mail-reader__toolbar {
-    padding: 16px 16px 12px;
-  }
-
-  .mail-reader__scroll {
-    padding: 16px;
-  }
-
-  .mail-reader__toolbar,
-  .mail-reader__meta {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .mail-reader__toolbar-actions {
-    justify-content: flex-start;
-  }
-}
-
-@media (max-width: 600px) {
-  .mail-reader__toolbar {
-    padding: 12px 12px 10px;
-  }
-
-  .mail-reader__scroll {
-    padding: 12px;
-  }
-
-  .mail-reader__message {
-    padding: 16px;
-  }
-
-  .mail-reader__toolbar-actions :deep(.v-btn) {
-    width: 100%;
-    justify-content: center;
   }
 }
 </style>

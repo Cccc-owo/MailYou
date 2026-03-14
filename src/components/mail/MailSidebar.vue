@@ -1,91 +1,78 @@
 <template>
   <div class="mail-sidebar">
-    <v-card class="mail-sidebar__panel" color="surface">
-      <div class="mail-sidebar__header d-flex align-center justify-space-between ga-3 flex-wrap">
-        <div>
-          <div class="text-overline">{{ t('sidebar.accounts') }}</div>
-          <div class="text-h6">{{ t('sidebar.unifiedInbox') }}</div>
-        </div>
+    <div class="mail-sidebar__section">
+      <div class="mail-sidebar__section-header">
+        <v-icon icon="mdi-account-multiple-outline" size="18" />
+        <span>{{ t('sidebar.accounts') }}</span>
+        <v-spacer />
         <v-tooltip :text="t('sidebar.addAccount')" location="bottom">
           <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" icon="mdi-plus" size="small" @click="$emit('add-account')" />
+            <v-btn v-bind="tip" icon="mdi-plus" size="x-small" variant="text" @click="$emit('add-account')" />
           </template>
         </v-tooltip>
       </div>
 
-      <v-list v-if="accounts.length" class="mail-sidebar__accounts" lines="two">
+      <v-list v-if="accounts.length" class="mail-sidebar__list" lines="two">
         <v-list-item
           v-for="account in accounts"
           :key="account.id"
           :active="account.id === currentAccountId"
-          rounded="xl"
           @click="$emit('select-account', account.id)"
           @contextmenu="accountCtx.open($event, account)"
         >
           <template #prepend>
-            <v-avatar :color="account.color" size="36">{{ account.initials }}</v-avatar>
+            <v-avatar :color="account.color" size="32">
+              <span class="text-caption">{{ account.initials }}</span>
+            </v-avatar>
           </template>
-          <v-list-item-title>{{ account.name }}</v-list-item-title>
-          <v-list-item-subtitle>{{ account.email }}</v-list-item-subtitle>
+          <v-list-item-title class="text-body-2">{{ account.name }}</v-list-item-title>
+          <v-list-item-subtitle class="text-caption">{{ account.email }}</v-list-item-subtitle>
           <template #append>
-            <v-chip size="small" :color="account.status === 'attention' ? 'error' : 'primary'">
+            <v-chip size="x-small" :color="account.status === 'attention' ? 'error' : 'primary'" variant="tonal">
               {{ account.unreadCount }}
             </v-chip>
-            <v-tooltip :text="t('common.delete')" location="bottom">
-              <template #activator="{ props: tip }">
-                <v-btn
-                  v-bind="tip"
-                  class="ml-1"
-                  icon="mdi-delete-outline"
-                  size="x-small"
-                  variant="text"
-                  @click.stop="confirmDelete(account)"
-                />
-              </template>
-            </v-tooltip>
           </template>
         </v-list-item>
       </v-list>
 
       <div v-else class="mail-sidebar__empty">
-        <v-icon icon="mdi-email-plus-outline" size="36" class="mb-2" />
+        <v-icon icon="mdi-email-plus-outline" size="32" class="mb-2" />
         <div class="text-body-2 text-medium-emphasis mb-3">{{ t('sidebar.noAccounts') }}</div>
         <v-btn size="small" prepend-icon="mdi-plus" @click="$emit('add-account')">{{ t('sidebar.addAccount') }}</v-btn>
       </div>
-    </v-card>
+    </div>
 
-    <v-card class="mail-sidebar__panel" color="surface">
-      <div class="mail-sidebar__header d-flex align-center justify-space-between ga-3 flex-wrap">
-        <div>
-          <div class="text-overline">{{ t('sidebar.folders') }}</div>
-          <div class="text-h6">{{ currentAccount?.name ?? t('sidebar.selectAccount') }}</div>
-        </div>
-        <v-btn prepend-icon="mdi-pencil-plus-outline" @click="$emit('compose')">{{ t('sidebar.compose') }}</v-btn>
+    <v-divider />
+
+    <div class="mail-sidebar__section">
+      <div class="mail-sidebar__section-header">
+        <v-icon icon="mdi-folder-outline" size="18" />
+        <span>{{ currentAccount?.name ?? t('sidebar.selectAccount') }}</span>
+        <v-spacer />
+        <v-btn size="small" variant="tonal" prepend-icon="mdi-pencil-plus-outline" @click="$emit('compose')">{{ t('sidebar.compose') }}</v-btn>
       </div>
 
-      <v-progress-linear v-if="isFoldersLoading" indeterminate color="primary" class="mb-2" />
+      <v-progress-linear v-if="isFoldersLoading" indeterminate color="primary" class="mb-1" />
 
-      <v-list v-if="folders.length" nav>
+      <v-list v-if="folders.length" class="mail-sidebar__list" nav density="compact">
         <v-list-item
           v-for="folder in folders"
           :key="folder.id"
           :active="folder.id === currentFolderId"
-          rounded="xl"
           @click="$emit('select-folder', folder.id)"
           @contextmenu="folderCtx.open($event, folder)"
         >
           <template #prepend>
-            <v-icon :icon="folder.icon" />
+            <v-icon :icon="folder.icon" size="20" />
           </template>
-          <v-list-item-title>{{ folderDisplayName(folder) }}</v-list-item-title>
+          <v-list-item-title class="text-body-2">{{ folderDisplayName(folder) }}</v-list-item-title>
           <template #append>
             <div class="mail-sidebar__folder-counts d-flex align-center ga-1">
               <v-chip
                 v-if="folder.unreadCount > 0"
                 size="x-small"
                 color="primary"
-                variant="flat"
-                density="comfortable"
+                variant="tonal"
               >
                 {{ folder.unreadCount }}
               </v-chip>
@@ -96,12 +83,12 @@
       </v-list>
 
       <div v-else class="mail-sidebar__empty">
-        <v-icon icon="mdi-folder-outline" size="36" class="mb-2" />
+        <v-icon icon="mdi-folder-outline" size="32" class="mb-2" />
         <div class="text-body-2 text-medium-emphasis">
           {{ accounts.length ? t('sidebar.selectAccountToView') : t('sidebar.addAccountToStart') }}
         </div>
       </div>
-    </v-card>
+    </div>
 
     <!-- Account context menu -->
     <ContextMenu v-model="accountCtx.isOpen.value" :x="accountCtx.x.value" :y="accountCtx.y.value">
@@ -186,29 +173,29 @@ const emitDelete = () => {
 
 <style scoped>
 .mail-sidebar {
-  display: grid;
-  gap: 12px;
-  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
 }
 
-.mail-sidebar__panel {
-  padding: 12px;
+.mail-sidebar__section {
+  padding: 0 8px;
 }
 
-.mail-sidebar__header {
+.mail-sidebar__section-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  margin-bottom: 8px;
+  padding: 8px 8px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgb(var(--v-theme-primary));
 }
 
-.mail-sidebar__header :deep(.v-btn) {
-  flex-shrink: 0;
-}
-
-.mail-sidebar__accounts {
-  padding-inline: 0;
+.mail-sidebar__list {
+  padding: 0;
 }
 
 .mail-sidebar__empty {
@@ -218,38 +205,8 @@ const emitDelete = () => {
   padding: 24px 16px;
 }
 
-@media (max-width: 1280px) {
-  .mail-sidebar {
-    padding: 12px;
-  }
-
-  .mail-sidebar__panel {
-    padding: 12px;
-  }
-}
-
-@media (max-width: 840px) {
-  .mail-sidebar {
-    padding: 16px 16px 12px;
-  }
-}
-
 @media (max-width: 600px) {
-  .mail-sidebar {
-    gap: 12px;
-    padding: 12px;
-  }
-
-  .mail-sidebar__panel {
-    padding: 12px;
-  }
-
-  .mail-sidebar__header {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .mail-sidebar__header :deep(.v-btn) {
+  .mail-sidebar__section-header :deep(.v-btn) {
     width: 100%;
     justify-content: center;
   }
