@@ -1,8 +1,11 @@
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use async_imap::Session as ImapSession;
 use async_trait::async_trait;
 use futures::TryStreamExt;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::TcpStream;
 use tokio_native_tls::TlsStream;
 
@@ -17,7 +20,46 @@ use crate::storage::persisted;
 
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-type ImapTlsSession = ImapSession<TlsStream<TcpStream>>;
+/// A stream that supports both plain TCP and TLS connections.
+#[derive(Debug)]
+enum ImapStream {
+    Plain(TcpStream),
+    Tls(TlsStream<TcpStream>),
+}
+
+impl AsyncRead for ImapStream {
+    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            ImapStream::Plain(s) => Pin::new(s).poll_read(cx, buf),
+            ImapStream::Tls(s) => Pin::new(s).poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for ImapStream {
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            ImapStream::Plain(s) => Pin::new(s).poll_write(cx, buf),
+            ImapStream::Tls(s) => Pin::new(s).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            ImapStream::Plain(s) => Pin::new(s).poll_flush(cx),
+            ImapStream::Tls(s) => Pin::new(s).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            ImapStream::Plain(s) => Pin::new(s).poll_shutdown(cx),
+            ImapStream::Tls(s) => Pin::new(s).poll_shutdown(cx),
+        }
+    }
+}
+
+type ImapAnySession = ImapSession<ImapStream>;
 
 pub struct ImapSmtpProvider;
 
@@ -347,16 +389,22 @@ async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), BackendError> 
     Ok(())
 }
 
-async fn imap_connect(state: &StoredAccountState) -> Result<ImapTlsSession, BackendError> {
+async fn imap_connect(state: &StoredAccountState) -> Result<ImapAnySession, BackendError> {
     let host = state.config.incoming_host.trim();
     let port = state.config.incoming_port;
+    let use_tls = state.config.use_tls;
 
-    eprintln!("[imap] connecting to {host}:{port}...");
+    eprintln!("[imap] connecting to {host}:{port} (tls={use_tls})...");
     let start = Instant::now();
     let tcp = imap_tcp_connect(host, port).await?;
-    let tls_stream = imap_tls_connect(host, tcp).await?;
 
-    let client = async_imap::Client::new(tls_stream);
+    let stream = if use_tls {
+        ImapStream::Tls(imap_tls_connect(host, tcp).await?)
+    } else {
+        ImapStream::Plain(tcp)
+    };
+
+    let client = async_imap::Client::new(stream);
     let session = client
         .login(state.config.username.trim(), state.config.password.trim())
         .await
@@ -366,7 +414,7 @@ async fn imap_connect(state: &StoredAccountState) -> Result<ImapTlsSession, Back
     Ok(session)
 }
 
-async fn imap_connect_by_account(account_id: &str) -> Result<ImapTlsSession, BackendError> {
+async fn imap_connect_by_account(account_id: &str) -> Result<ImapAnySession, BackendError> {
     let state = memory::get_account_state(account_id)
         .ok_or_else(|| BackendError::not_found("Account not found"))?;
     imap_connect(&state).await
@@ -531,7 +579,7 @@ async fn imap_fetch_mailbox(
 type ExistingBodies = std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>)>;
 
 async fn fetch_folder_contents(
-    session: &mut ImapTlsSession,
+    session: &mut ImapAnySession,
     account_id: &str,
     folder_id: &str,
     mailbox_name: &str,
