@@ -43,7 +43,7 @@ const createMainWindow = async () => {
     return window
   }
 
-  await window.loadFile(join(__dirname, '../dist/index.html'))
+  await window.loadFile(join(__dirname, '../index.html'))
   return window
 }
 
