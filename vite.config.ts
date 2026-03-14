@@ -27,6 +27,24 @@ export default defineConfig({
         ]
       : []),
   ],
+  build: {
+    chunkSizeWarningLimit: 550,
+    rolldownOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/vuetify')) return 'vuetify'
+          if (
+            id.includes('node_modules/vue/') ||
+            id.includes('node_modules/@vue/') ||
+            id.includes('node_modules/vue-router') ||
+            id.includes('node_modules/pinia') ||
+            id.includes('node_modules/vue-i18n') ||
+            id.includes('node_modules/@intlify/')
+          ) return 'vendor'
+        },
+      },
+    },
+  },
   define: {
     __MAILYOU_RUNTIME__: JSON.stringify(isWebTarget ? 'web' : 'electron'),
   },
