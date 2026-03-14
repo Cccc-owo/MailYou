@@ -22,21 +22,34 @@
     </div>
 
     <div v-if="isSupported" class="app-title-bar__window-controls app-title-bar__no-drag">
-      <v-btn icon variant="text" size="small" :aria-label="t('titleBar.minimize')" @click="minimize">
-        <v-icon icon="mdi-window-minimize" />
-      </v-btn>
-      <v-btn
-        icon
-        variant="text"
-        size="small"
-        :aria-label="isMaximized ? t('titleBar.restore') : t('titleBar.maximize')"
-        @click="toggleMaximize"
-      >
-        <v-icon :icon="isMaximized ? 'mdi-window-restore' : 'mdi-window-maximize'" />
-      </v-btn>
-      <v-btn icon variant="text" size="small" :aria-label="t('titleBar.close')" class="app-title-bar__close" @click="close">
-        <v-icon icon="mdi-close" />
-      </v-btn>
+      <v-tooltip :text="t('titleBar.minimize')" location="bottom">
+        <template #activator="{ props: tip }">
+          <v-btn v-bind="tip" icon variant="text" size="small" :aria-label="t('titleBar.minimize')" @click="minimize">
+            <v-icon icon="mdi-window-minimize" />
+          </v-btn>
+        </template>
+      </v-tooltip>
+      <v-tooltip :text="isMaximized ? t('titleBar.restore') : t('titleBar.maximize')" location="bottom">
+        <template #activator="{ props: tip }">
+          <v-btn
+            v-bind="tip"
+            icon
+            variant="text"
+            size="small"
+            :aria-label="isMaximized ? t('titleBar.restore') : t('titleBar.maximize')"
+            @click="toggleMaximize"
+          >
+            <v-icon :icon="isMaximized ? 'mdi-window-restore' : 'mdi-window-maximize'" />
+          </v-btn>
+        </template>
+      </v-tooltip>
+      <v-tooltip :text="t('titleBar.close')" location="bottom">
+        <template #activator="{ props: tip }">
+          <v-btn v-bind="tip" icon variant="text" size="small" :aria-label="t('titleBar.close')" class="app-title-bar__close" @click="close">
+            <v-icon icon="mdi-close" />
+          </v-btn>
+        </template>
+      </v-tooltip>
     </div>
   </header>
 </template>

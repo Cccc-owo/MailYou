@@ -153,6 +153,8 @@
   },
   "shell": {
     "sync": "同步",
+    "toggleTheme": "切换主题",
+    "settings": "设置",
     "confirmDelete": "确认删除",
     "confirmDeleteText": "确定要删除这封邮件吗？它将被移至回收站。",
     "addAccountHint": "添加账户以开始使用 MailYou",

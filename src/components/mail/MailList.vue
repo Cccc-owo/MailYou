@@ -117,11 +117,16 @@
 
           <template #append>
             <div class="mail-list__append d-flex align-center ga-2">
-              <v-icon
-                :icon="item.message.isStarred ? 'mdi-star' : 'mdi-star-outline'"
-                :color="item.message.isStarred ? 'warning' : undefined"
-                @click.stop="$emit('toggle-star', item.message.id)"
-              />
+              <v-tooltip :text="item.message.isStarred ? t('common.unstar') : t('common.star')" location="bottom">
+                <template #activator="{ props: tip }">
+                  <v-icon
+                    v-bind="tip"
+                    :icon="item.message.isStarred ? 'mdi-star' : 'mdi-star-outline'"
+                    :color="item.message.isStarred ? 'warning' : undefined"
+                    @click.stop="$emit('toggle-star', item.message.id)"
+                  />
+                </template>
+              </v-tooltip>
               <v-icon v-if="item.message.hasAttachments" icon="mdi-paperclip" size="18" />
             </div>
           </template>

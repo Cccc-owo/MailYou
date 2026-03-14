@@ -153,6 +153,8 @@
   },
   "shell": {
     "sync": "Sync",
+    "toggleTheme": "Toggle theme",
+    "settings": "Settings",
     "confirmDelete": "Confirm Delete",
     "confirmDeleteText": "Are you sure you want to delete this message? It will be moved to Trash.",
     "addAccountHint": "Add an account to start using MailYou",

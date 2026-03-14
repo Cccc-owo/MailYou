@@ -6,7 +6,11 @@
           <div class="text-overline">{{ t('sidebar.accounts') }}</div>
           <div class="text-h6">{{ t('sidebar.unifiedInbox') }}</div>
         </div>
-        <v-btn icon="mdi-plus" size="small" @click="$emit('add-account')" />
+        <v-tooltip :text="t('sidebar.addAccount')" location="bottom">
+          <template #activator="{ props: tip }">
+            <v-btn v-bind="tip" icon="mdi-plus" size="small" @click="$emit('add-account')" />
+          </template>
+        </v-tooltip>
       </div>
 
       <v-list v-if="accounts.length" class="mail-sidebar__accounts" lines="two">
@@ -27,13 +31,18 @@
             <v-chip size="small" :color="account.status === 'attention' ? 'error' : 'primary'">
               {{ account.unreadCount }}
             </v-chip>
-            <v-btn
-              class="ml-1"
-              icon="mdi-delete-outline"
-              size="x-small"
-              variant="text"
-              @click.stop="confirmDelete(account)"
-            />
+            <v-tooltip :text="t('common.delete')" location="bottom">
+              <template #activator="{ props: tip }">
+                <v-btn
+                  v-bind="tip"
+                  class="ml-1"
+                  icon="mdi-delete-outline"
+                  size="x-small"
+                  variant="text"
+                  @click.stop="confirmDelete(account)"
+                />
+              </template>
+            </v-tooltip>
           </template>
         </v-list-item>
       </v-list>

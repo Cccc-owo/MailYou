@@ -6,16 +6,36 @@
         <div class="text-h4">{{ message.subject }}</div>
       </div>
       <div class="mail-reader__toolbar-actions d-flex flex-wrap ga-2">
-        <v-btn prepend-icon="mdi-reply-outline" @click="$emit('reply')">{{ t('reader.reply') }}</v-btn>
-        <v-btn prepend-icon="mdi-reply-all-outline" @click="$emit('reply-all')">{{ t('reader.replyAll') }}</v-btn>
-        <v-btn prepend-icon="mdi-arrow-top-right" @click="$emit('forward')">{{ t('reader.forward') }}</v-btn>
-        <v-btn prepend-icon="mdi-email-open-outline" @click="$emit('toggle-read')">
-          {{ message.isRead ? t('reader.markUnread') : t('reader.markRead') }}
-        </v-btn>
+        <v-tooltip :text="t('reader.reply')" location="bottom">
+          <template #activator="{ props: tip }">
+            <v-btn v-bind="tip" prepend-icon="mdi-reply-outline" @click="$emit('reply')">{{ t('reader.reply') }}</v-btn>
+          </template>
+        </v-tooltip>
+        <v-tooltip :text="t('reader.replyAll')" location="bottom">
+          <template #activator="{ props: tip }">
+            <v-btn v-bind="tip" prepend-icon="mdi-reply-all-outline" @click="$emit('reply-all')">{{ t('reader.replyAll') }}</v-btn>
+          </template>
+        </v-tooltip>
+        <v-tooltip :text="t('reader.forward')" location="bottom">
+          <template #activator="{ props: tip }">
+            <v-btn v-bind="tip" prepend-icon="mdi-arrow-top-right" @click="$emit('forward')">{{ t('reader.forward') }}</v-btn>
+          </template>
+        </v-tooltip>
+        <v-tooltip :text="message.isRead ? t('reader.markUnread') : t('reader.markRead')" location="bottom">
+          <template #activator="{ props: tip }">
+            <v-btn v-bind="tip" prepend-icon="mdi-email-open-outline" @click="$emit('toggle-read')">
+              {{ message.isRead ? t('reader.markUnread') : t('reader.markRead') }}
+            </v-btn>
+          </template>
+        </v-tooltip>
 
         <v-menu v-if="moveTargetFolders.length > 0">
           <template #activator="{ props: menuProps }">
-            <v-btn prepend-icon="mdi-folder-move-outline" v-bind="menuProps">{{ t('reader.moveTo') }}</v-btn>
+            <v-tooltip :text="t('reader.moveTo')" location="bottom">
+              <template #activator="{ props: tip }">
+                <v-btn v-bind="{ ...tip, ...menuProps }" prepend-icon="mdi-folder-move-outline">{{ t('reader.moveTo') }}</v-btn>
+              </template>
+            </v-tooltip>
           </template>
           <v-list density="compact">
             <v-list-item
@@ -29,13 +49,25 @@
         </v-menu>
 
         <template v-if="isTrashOrArchive">
-          <v-btn prepend-icon="mdi-inbox-arrow-down" @click="$emit('restore')">{{ t('reader.restoreToInbox') }}</v-btn>
+          <v-tooltip :text="t('reader.restoreToInbox')" location="bottom">
+            <template #activator="{ props: tip }">
+              <v-btn v-bind="tip" prepend-icon="mdi-inbox-arrow-down" @click="$emit('restore')">{{ t('reader.restoreToInbox') }}</v-btn>
+            </template>
+          </v-tooltip>
         </template>
         <template v-else>
-          <v-btn prepend-icon="mdi-archive-outline" @click="$emit('archive')">{{ t('reader.archive') }}</v-btn>
+          <v-tooltip :text="t('reader.archive')" location="bottom">
+            <template #activator="{ props: tip }">
+              <v-btn v-bind="tip" prepend-icon="mdi-archive-outline" @click="$emit('archive')">{{ t('reader.archive') }}</v-btn>
+            </template>
+          </v-tooltip>
         </template>
 
-        <v-btn prepend-icon="mdi-delete-outline" color="error" @click="$emit('delete')">{{ t('common.delete') }}</v-btn>
+        <v-tooltip :text="t('common.delete')" location="bottom">
+          <template #activator="{ props: tip }">
+            <v-btn v-bind="tip" prepend-icon="mdi-delete-outline" color="error" @click="$emit('delete')">{{ t('common.delete') }}</v-btn>
+          </template>
+        </v-tooltip>
       </div>
     </div>
 
@@ -68,13 +100,18 @@
           <v-list-item-title>{{ attachment.fileName }}</v-list-item-title>
           <v-list-item-subtitle>{{ formatSize(attachment.sizeBytes) }}</v-list-item-subtitle>
           <template #append>
-            <v-btn
-              icon="mdi-download"
-              variant="text"
-              size="small"
-              :loading="downloadingId === attachment.id"
-              @click="downloadAttachment(attachment)"
-            />
+            <v-tooltip :text="t('reader.download')" location="bottom">
+              <template #activator="{ props: tip }">
+                <v-btn
+                  v-bind="tip"
+                  icon="mdi-download"
+                  variant="text"
+                  size="small"
+                  :loading="downloadingId === attachment.id"
+                  @click="downloadAttachment(attachment)"
+                />
+              </template>
+            </v-tooltip>
           </template>
         </v-list-item>
       </v-list>

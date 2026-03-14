@@ -1,11 +1,23 @@
 <template>
   <MailShellLayout :search="messagesStore.query" :subtitle="subtitle" @update:search="messagesStore.query = $event">
     <template #actions>
-      <v-btn prepend-icon="mdi-sync" :disabled="!accountsStore.currentAccountId" :loading="isSyncing" @click="syncCurrentAccount">
-        {{ t('shell.sync') }}
-      </v-btn>
-      <v-btn icon="mdi-theme-light-dark" @click="uiStore.toggleAppearance" />
-      <v-btn icon="mdi-cog-outline" @click="router.push('/settings')" />
+      <v-tooltip :text="t('shell.sync')" location="bottom">
+        <template #activator="{ props: tip }">
+          <v-btn v-bind="tip" prepend-icon="mdi-sync" :disabled="!accountsStore.currentAccountId" :loading="isSyncing" @click="syncCurrentAccount">
+            {{ t('shell.sync') }}
+          </v-btn>
+        </template>
+      </v-tooltip>
+      <v-tooltip :text="t('shell.toggleTheme')" location="bottom">
+        <template #activator="{ props: tip }">
+          <v-btn v-bind="tip" icon="mdi-theme-light-dark" @click="uiStore.toggleAppearance" />
+        </template>
+      </v-tooltip>
+      <v-tooltip :text="t('shell.settings')" location="bottom">
+        <template #activator="{ props: tip }">
+          <v-btn v-bind="tip" icon="mdi-cog-outline" @click="router.push('/settings')" />
+        </template>
+      </v-tooltip>
     </template>
 
     <template #sidebar>

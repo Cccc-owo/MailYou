@@ -40,4 +40,15 @@ useThemeController()
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Tooltip — high-contrast, not theme-dependent */
+.v-tooltip > .v-overlay__content {
+  background: #1a1a1a !important;
+  color: #f0f0f0 !important;
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
 </style>
