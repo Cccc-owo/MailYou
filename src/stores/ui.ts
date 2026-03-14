@@ -3,12 +3,10 @@ import { defineStore } from 'pinia'
 import { i18n } from '@/i18n'
 
 export type AppearanceMode = 'light' | 'dark'
-export type DensityMode = 'comfortable' | 'compact'
 export type LocaleMode = 'en' | 'zh'
 
 const APPEARANCE_KEY = 'mailyou.appearance'
 const THEME_SEED_KEY = 'mailyou.themeSeed'
-const DENSITY_KEY = 'mailyou.density'
 const SYNC_INTERVAL_KEY = 'mailyou.syncIntervalMinutes'
 const FETCH_LIMIT_KEY = 'mailyou.fetchLimit'
 const LOCALE_KEY = 'mailyou.locale'
@@ -22,7 +20,6 @@ const getDefaultLocale = (): LocaleMode => {
 export const useUiStore = defineStore('ui', () => {
   const appearance = ref<AppearanceMode>((localStorage.getItem(APPEARANCE_KEY) as AppearanceMode) || 'light')
   const themeSeed = ref(localStorage.getItem(THEME_SEED_KEY) || '#6750A4')
-  const density = ref<DensityMode>((localStorage.getItem(DENSITY_KEY) as DensityMode) || 'comfortable')
   const syncIntervalMinutes = ref(Number(localStorage.getItem(SYNC_INTERVAL_KEY)) || 5)
   const fetchLimit = ref(Number(localStorage.getItem(FETCH_LIMIT_KEY)) || 50)
   const locale = ref<LocaleMode>(getDefaultLocale())
@@ -39,11 +36,6 @@ export const useUiStore = defineStore('ui', () => {
   const setThemeSeed = (value: string) => {
     themeSeed.value = value
     localStorage.setItem(THEME_SEED_KEY, value)
-  }
-
-  const setDensity = (value: DensityMode) => {
-    density.value = value
-    localStorage.setItem(DENSITY_KEY, value)
   }
 
   const setSyncIntervalMinutes = (value: number) => {
@@ -65,14 +57,12 @@ export const useUiStore = defineStore('ui', () => {
   return {
     appearance,
     themeSeed,
-    density,
     syncIntervalMinutes,
     fetchLimit,
     locale,
     setAppearance,
     toggleAppearance,
     setThemeSeed,
-    setDensity,
     setSyncIntervalMinutes,
     setFetchLimit,
     setLocale,
