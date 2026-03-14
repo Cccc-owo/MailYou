@@ -104,7 +104,6 @@ export const useMessagesStore = defineStore('messages', () => {
 
   const loadMessages = async (accountId: string, folderId: string) => {
     isLoading.value = true
-    error.value = null
     const gen = ++loadGeneration
 
     try {
@@ -126,7 +125,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const toggleStar = async (accountId: string, messageId: string) => {
-    error.value = null
     const original = messages.value.find((m) => m.id === messageId)
     if (!original) return
     const optimisticStar = !original.isStarred
@@ -143,7 +141,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const toggleRead = async (accountId: string, messageId: string) => {
-    error.value = null
     // Optimistic update
     const original = messages.value.find((m) => m.id === messageId)
     if (!original) return
@@ -162,7 +159,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const deleteMessage = async (accountId: string, messageId: string) => {
-    error.value = null
     const nextId = computeNextSelectedId(messageId)
     await mailRepository.deleteMessage(accountId, messageId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
@@ -170,7 +166,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const archiveMessage = async (accountId: string, messageId: string) => {
-    error.value = null
     const nextId = computeNextSelectedId(messageId)
     await mailRepository.archiveMessage(accountId, messageId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
@@ -178,7 +173,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const restoreMessage = async (accountId: string, messageId: string) => {
-    error.value = null
     const nextId = computeNextSelectedId(messageId)
     await mailRepository.restoreMessage(accountId, messageId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
@@ -186,7 +180,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const moveMessage = async (accountId: string, messageId: string, folderId: string) => {
-    error.value = null
     const nextId = computeNextSelectedId(messageId)
     await mailRepository.moveMessage(accountId, messageId, folderId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
@@ -194,7 +187,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const markAllRead = async (accountId: string, folderId: string) => {
-    error.value = null
     await mailRepository.markAllRead(accountId, folderId)
     messages.value = messages.value.map((message) => ({ ...message, isRead: true }))
   }
@@ -219,7 +211,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const batchDelete = async (accountId: string) => {
-    error.value = null
     const ids = [...selectedIds]
     const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
       ? computeNextSelectedId(selectedMessageId.value)
@@ -239,7 +230,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const batchArchive = async (accountId: string) => {
-    error.value = null
     const ids = [...selectedIds]
     const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
       ? computeNextSelectedId(selectedMessageId.value)
@@ -259,7 +249,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const batchToggleRead = async (accountId: string, markRead: boolean) => {
-    error.value = null
     const ids = [...selectedIds]
     const succeeded = new Set<string>()
     try {
@@ -280,7 +269,6 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const batchMove = async (accountId: string, folderId: string) => {
-    error.value = null
     const ids = [...selectedIds]
     const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
       ? computeNextSelectedId(selectedMessageId.value)

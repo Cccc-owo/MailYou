@@ -27,7 +27,7 @@
         :current-account-id="accountsStore.currentAccountId"
         :current-folder-id="mailboxesStore.currentFolderId"
         :folders="mailboxesStore.folders"
-        :is-folders-loading="messagesStore.isLoading || isSyncing"
+        :is-folders-loading="isSyncing"
         @add-account="router.push('/account-setup')"
         @compose="openComposer"
         @delete-account="handleDeleteAccount"
@@ -350,7 +350,6 @@ const handleFolderChange = async (folderId: string) => {
     return
   }
 
-  messagesStore.clearError()
   messagesStore.clearSelection()
   mailboxesStore.selectFolder(folderId)
   try {
@@ -717,6 +716,9 @@ onMounted(async () => {
   if ('Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission()
   }
+
+  // Skip re-initialization if already loaded (e.g. returning from settings)
+  if (accountsStore.accounts.length > 0) return
 
   await accountsStore.loadAccounts()
 
