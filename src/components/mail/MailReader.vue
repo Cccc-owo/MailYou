@@ -1,6 +1,6 @@
 <template>
   <div v-if="message" class="mail-reader" @contextmenu="openReaderMenu($event)">
-    <div class="mail-reader__toolbar d-flex justify-space-between ga-4 flex-wrap">
+    <div class="mail-reader__toolbar">
       <div>
         <div class="text-overline">{{ t('reader.conversation') }}</div>
         <div class="text-h4">{{ message.subject }}</div>
@@ -39,6 +39,7 @@
       </div>
     </div>
 
+    <div class="mail-reader__scroll">
     <v-card class="mail-reader__message" color="surface">
       <div class="mail-reader__meta d-flex justify-space-between ga-4 flex-wrap">
         <div>
@@ -78,6 +79,7 @@
         </v-list-item>
       </v-list>
     </v-card>
+    </div>
 
     <!-- Right-click context menu -->
     <ContextMenu v-model="ctxMenu.isOpen.value" :x="ctxMenu.x.value" :y="ctxMenu.y.value">
@@ -364,14 +366,20 @@ const formatSize = (value: number) => {
 
 <style scoped>
 .mail-reader {
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .mail-reader__toolbar {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
 }
 
 .mail-reader__toolbar-actions {
@@ -379,6 +387,12 @@ const formatSize = (value: number) => {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.mail-reader__scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
 }
 
 .mail-reader__message {
@@ -427,7 +441,11 @@ const formatSize = (value: number) => {
 }
 
 @media (max-width: 840px) {
-  .mail-reader {
+  .mail-reader__toolbar {
+    padding: 16px 16px 12px;
+  }
+
+  .mail-reader__scroll {
     padding: 16px;
   }
 
@@ -443,7 +461,11 @@ const formatSize = (value: number) => {
 }
 
 @media (max-width: 600px) {
-  .mail-reader {
+  .mail-reader__toolbar {
+    padding: 12px 12px 10px;
+  }
+
+  .mail-reader__scroll {
     padding: 12px;
   }
 
