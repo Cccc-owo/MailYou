@@ -209,6 +209,16 @@ const emitDelete = () => {
   padding: 24px 16px;
 }
 
+@media (max-width: 1280px) {
+  .mail-sidebar {
+    padding: 12px;
+  }
+
+  .mail-sidebar__panel {
+    padding: 12px;
+  }
+}
+
 @media (max-width: 840px) {
   .mail-sidebar {
     padding: 16px 16px 12px;

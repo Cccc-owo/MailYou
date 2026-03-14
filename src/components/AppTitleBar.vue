@@ -67,7 +67,7 @@ const { close, isMaximized, isSupported, minimize, toggleMaximize } = useWindowC
   top: 0;
   z-index: 100;
   display: grid;
-  grid-template-columns: minmax(0, 280px) minmax(220px, 1fr) auto auto;
+  grid-template-columns: minmax(0, 260px) minmax(220px, 1fr) auto auto;
   grid-template-areas: 'brand center actions controls';
   gap: 16px;
   align-items: center;

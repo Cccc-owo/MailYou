@@ -22,10 +22,10 @@ configureLinuxWindowSystem()
 
 const createMainWindow = async () => {
   const window = new BrowserWindow({
-    width: 1440,
-    height: 960,
-    minWidth: 1100,
-    minHeight: 720,
+    width: 1280,
+    height: 820,
+    minWidth: 1000,
+    minHeight: 640,
     titleBarStyle: 'hidden',
     titleBarOverlay: false,
     backgroundColor: '#10131c',

@@ -416,6 +416,16 @@ const formatSize = (value: number) => {
   padding: 32px;
 }
 
+@media (max-width: 1280px) {
+  .mail-reader__toolbar-actions :deep(.v-btn .v-btn__content) {
+    font-size: 0;
+  }
+
+  .mail-reader__toolbar-actions :deep(.v-btn .v-btn__prepend) {
+    margin-inline-end: 0;
+  }
+}
+
 @media (max-width: 840px) {
   .mail-reader {
     padding: 16px;
