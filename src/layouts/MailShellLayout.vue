@@ -1,17 +1,6 @@
 <template>
   <div class="mail-shell-layout">
-    <AppTitleBar :subtitle="subtitle">
-      <template #center>
-        <v-text-field
-          :model-value="search"
-          prepend-inner-icon="mdi-magnify"
-          hide-details
-          density="comfortable"
-          :placeholder="t('shell.searchPlaceholder')"
-          @update:model-value="$emit('update:search', $event)"
-        />
-      </template>
-
+    <AppTitleBar :search="search" :search-placeholder="t('shell.searchPlaceholder')" @update:search="$emit('update:search', $event)">
       <template #actions>
         <slot name="actions" />
       </template>
@@ -66,7 +55,6 @@ const { t } = useI18n()
 
 defineProps<{
   search: string
-  subtitle: string
 }>()
 
 defineEmits<{

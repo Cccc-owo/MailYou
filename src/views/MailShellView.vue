@@ -1,5 +1,5 @@
 <template>
-  <MailShellLayout :search="messagesStore.query" :subtitle="subtitle" @update:search="messagesStore.query = $event">
+  <MailShellLayout :search="messagesStore.query" @update:search="messagesStore.query = $event">
     <template #actions>
       <v-tooltip :text="t('shell.sync')" location="bottom">
         <template #activator="{ props: tip }">
@@ -265,18 +265,6 @@ const currentFolderDisplayName = computed(() => {
   const folder = mailboxesStore.currentFolder
   if (!folder) return t('common.mailbox')
   return folder.kind !== 'custom' ? t(`folders.${folder.kind}`) : folder.name
-})
-
-const subtitle = computed(() => {
-  if (!accountsStore.accounts.length) {
-    return t('shell.addAccountHint')
-  }
-
-  if (!currentAccount.value) {
-    return t('shell.chooseAccountHint')
-  }
-
-  return syncStatus.value?.message ?? `${currentAccount.value.provider} · ${currentAccount.value.email}`
 })
 
 const isSyncing = computed(() => syncStatus.value?.state === 'syncing')

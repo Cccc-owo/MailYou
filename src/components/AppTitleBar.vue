@@ -8,20 +8,44 @@
         </svg>
       </div>
       <div class="app-title-bar__copy">
-        <div class="text-h6">{{ title }}</div>
-        <div v-if="subtitle" class="text-caption text-medium-emphasis">{{ subtitle }}</div>
+        <div class="text-h1">{{ title }}</div>
       </div>
     </div>
 
-    <div v-if="$slots.center" class="app-title-bar__center app-title-bar__no-drag">
-      <slot name="center" />
-    </div>
-
-    <div v-if="$slots.actions" class="app-title-bar__actions app-title-bar__no-drag">
+    <div class="app-title-bar__actions">
+      <div class="app-title-bar__search" :class="{ 'app-title-bar__search--open': searchOpen }">
+        <v-text-field
+          v-if="searchOpen"
+          ref="searchFieldRef"
+          :model-value="search"
+          prepend-inner-icon="mdi-magnify"
+          append-inner-icon="mdi-close"
+          hide-details
+          density="compact"
+          :placeholder="searchPlaceholder"
+          class="app-title-bar__search-field"
+          @update:model-value="$emit('update:search', $event)"
+          @click:append-inner="closeSearch"
+          @keydown.escape="closeSearch"
+          @contextmenu="openSearchMenu"
+        />
+        <v-tooltip v-else :text="searchPlaceholder" location="bottom">
+          <template #activator="{ props: tip }">
+            <v-btn v-bind="tip" icon="mdi-magnify" @click="openSearch" />
+          </template>
+        </v-tooltip>
+      </div>
       <slot name="actions" />
     </div>
 
-    <div v-if="isSupported" class="app-title-bar__window-controls app-title-bar__no-drag">
+    <ContextMenu v-model="searchCtx.isOpen.value" :x="searchCtx.x.value" :y="searchCtx.y.value">
+      <v-list-item v-if="searchHasSelection" prepend-icon="mdi-content-copy" :title="t('reader.copy')" @click="searchCopy" />
+      <v-list-item prepend-icon="mdi-content-paste" :title="t('reader.paste')" @click="searchPaste" />
+      <v-divider />
+      <v-list-item prepend-icon="mdi-select-all" :title="t('reader.selectAll')" @click="searchSelectAll" />
+    </ContextMenu>
+
+    <div v-if="isSupported" class="app-title-bar__window-controls">
       <v-tooltip :text="t('titleBar.minimize')" location="bottom">
         <template #activator="{ props: tip }">
           <v-btn v-bind="tip" icon variant="text" size="small" :aria-label="t('titleBar.minimize')" @click="minimize">
@@ -55,23 +79,82 @@
 </template>
 
 <script setup lang="ts">
+import { nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useWindowControls } from '@/composables/useWindowControls'
+import { useContextMenu } from '@/composables/useContextMenu'
+import ContextMenu from '@/components/ContextMenu.vue'
 
 const { t } = useI18n()
 
 withDefaults(
   defineProps<{
-    subtitle?: string
+    search?: string
+    searchPlaceholder?: string
     title?: string
   }>(),
   {
-    subtitle: undefined,
+    search: '',
+    searchPlaceholder: '',
     title: 'MailYou',
   },
 )
 
+const emit = defineEmits<{
+  'update:search': [value: string]
+}>()
+
 const { close, isMaximized, isSupported, minimize, toggleMaximize } = useWindowControls()
+
+const searchOpen = ref(false)
+const searchFieldRef = ref<{ focus: () => void } | null>(null)
+
+const openSearch = async () => {
+  searchOpen.value = true
+  await nextTick()
+  searchFieldRef.value?.focus()
+}
+
+const closeSearch = () => {
+  searchOpen.value = false
+}
+
+const searchCtx = useContextMenu()
+const searchHasSelection = ref(false)
+
+const getSearchInput = (): HTMLInputElement | null => {
+  const el = searchFieldRef.value as unknown as { $el?: HTMLElement } | null
+  return el?.$el?.querySelector('input') ?? null
+}
+
+const openSearchMenu = (e: MouseEvent) => {
+  searchHasSelection.value = Boolean(window.getSelection()?.toString())
+  searchCtx.open(e)
+}
+
+const searchCopy = () => {
+  const input = getSearchInput()
+  if (!input) return
+  const selected = input.value.substring(input.selectionStart ?? 0, input.selectionEnd ?? 0)
+  if (selected) navigator.clipboard.writeText(selected)
+}
+
+const searchPaste = async () => {
+  const input = getSearchInput()
+  if (!input) return
+  const text = await navigator.clipboard.readText()
+  const start = input.selectionStart ?? input.value.length
+  const end = input.selectionEnd ?? input.value.length
+  const newValue = input.value.substring(0, start) + text + input.value.substring(end)
+  emit('update:search', newValue)
+  await nextTick()
+  const pos = start + text.length
+  input.setSelectionRange(pos, pos)
+}
+
+const searchSelectAll = () => {
+  getSearchInput()?.select()
+}
 </script>
 
 <style scoped>
@@ -80,8 +163,8 @@ const { close, isMaximized, isSupported, minimize, toggleMaximize } = useWindowC
   top: 0;
   z-index: 100;
   display: grid;
-  grid-template-columns: minmax(0, 260px) minmax(220px, 1fr) auto auto;
-  grid-template-areas: 'brand center actions controls';
+  grid-template-columns: minmax(0, 260px) 1fr auto;
+  grid-template-areas: 'brand actions controls';
   gap: 16px;
   align-items: center;
   padding: 8px 20px;
@@ -121,20 +204,27 @@ const { close, isMaximized, isSupported, minimize, toggleMaximize } = useWindowC
   white-space: nowrap;
 }
 
-.app-title-bar__center {
-  grid-area: center;
-  min-width: 0;
-  max-width: 720px;
-}
-
 .app-title-bar__actions {
   grid-area: actions;
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
-  flex-wrap: wrap;
+}
+
+.app-title-bar__search {
+  flex-shrink: 0;
+}
+
+.app-title-bar__search--open {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 480px;
+}
+
+.app-title-bar__search-field {
+  font-size: 0.875rem;
 }
 
 .app-title-bar__window-controls {
@@ -145,8 +235,9 @@ const { close, isMaximized, isSupported, minimize, toggleMaximize } = useWindowC
   gap: 4px;
 }
 
-.app-title-bar__no-drag,
-.app-title-bar__no-drag :deep(*) {
+.app-title-bar :deep(.v-btn),
+.app-title-bar :deep(.v-field),
+.app-title-bar :deep(input) {
   -webkit-app-region: no-drag;
 }
 
@@ -163,42 +254,10 @@ const { close, isMaximized, isSupported, minimize, toggleMaximize } = useWindowC
   color: rgb(var(--v-theme-error));
 }
 
-@media (max-width: 1280px) {
-  .app-title-bar {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    grid-template-areas:
-      'brand actions controls'
-      'center center center';
-  }
-
-  .app-title-bar__center {
-    max-width: none;
-  }
-
-  .app-title-bar__actions {
-    justify-content: flex-start;
-  }
-}
-
-@media (max-width: 840px) {
-  .app-title-bar {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      'brand controls'
-      'actions actions'
-      'center center';
-    padding: 12px 16px;
-  }
-
-  .app-title-bar__actions {
-    justify-content: flex-start;
-  }
-}
-
 @media (max-width: 600px) {
   .app-title-bar {
     gap: 12px;
-    padding: 12px;
+    padding: 8px 12px;
   }
 
   .app-title-bar__brand {
