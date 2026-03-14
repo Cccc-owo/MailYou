@@ -178,20 +178,20 @@ const emitDelete = () => {
 <style scoped>
 .mail-sidebar {
   display: grid;
-  gap: 16px;
-  padding: 16px;
+  gap: 12px;
+  padding: 12px;
 }
 
 .mail-sidebar__panel {
-  padding: 16px;
+  padding: 12px;
 }
 
 .mail-sidebar__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .mail-sidebar__header :deep(.v-btn) {

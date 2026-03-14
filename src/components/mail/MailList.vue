@@ -296,15 +296,15 @@ const formatDate = (value: string) =>
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  padding: 20px 16px 0;
+  padding: 12px 12px 0;
 }
 
 .mail-list__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 8px;
   flex-shrink: 0;
 }
 
@@ -358,13 +358,13 @@ const formatDate = (value: string) =>
 }
 
 .mail-list__items {
-  padding: 0 0 16px;
+  padding: 0 0 12px;
   flex: 1;
   min-height: 0;
 }
 
 .mail-list__date-header {
-  padding: 12px 16px 4px;
+  padding: 8px 12px 2px;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -373,7 +373,7 @@ const formatDate = (value: string) =>
 }
 
 .mail-list__item {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.05);
 }
 

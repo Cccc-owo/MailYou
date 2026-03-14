@@ -71,7 +71,7 @@ const { close, isMaximized, isSupported, minimize, toggleMaximize } = useWindowC
   grid-template-areas: 'brand center actions controls';
   gap: 16px;
   align-items: center;
-  padding: 12px 20px;
+  padding: 8px 20px;
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   background: rgba(var(--v-theme-surface), 0.92);
   backdrop-filter: blur(20px);

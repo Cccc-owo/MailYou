@@ -378,7 +378,7 @@ const formatSize = (value: number) => {
   gap: 16px;
   flex-wrap: wrap;
   flex-shrink: 0;
-  padding: 20px 20px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
 }
 
@@ -392,25 +392,25 @@ const formatSize = (value: number) => {
 .mail-reader__scroll {
   flex: 1;
   overflow: auto;
-  padding: 20px;
+  padding: 16px;
 }
 
 .mail-reader__message {
-  padding: 24px;
+  padding: 16px;
 }
 
 .mail-reader__meta {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .mail-reader__chips {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .mail-reader__body {
