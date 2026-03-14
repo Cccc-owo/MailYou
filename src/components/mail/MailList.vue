@@ -86,8 +86,11 @@
           v-else
           :key="item.key"
           :active="item.message.id === selectedMessageId"
-          :class="['mail-list__item', { 'mail-list__item--unread': !item.message.isRead }]"
-          rounded="xl"
+          :class="[
+            'mail-list__item',
+            { 'mail-list__item--unread': !item.message.isRead },
+            { 'mail-list__item--checked': selectedIds.has(item.message.id) },
+          ]"
           @click="$emit('select-message', item.message.id)"
           @contextmenu="ctxMenu.open($event, item.message)"
         >
@@ -96,36 +99,33 @@
               :model-value="selectedIds.has(item.message.id)"
               hide-details
               density="compact"
-              class="mail-list__checkbox mr-2"
+              class="mail-list__checkbox"
               @click.stop
               @update:model-value="$emit('toggle-selection', item.message.id)"
             />
-            <v-avatar color="primary-container" size="40">{{ item.message.from.slice(0, 1) }}</v-avatar>
           </template>
 
-          <v-list-item-title class="d-flex align-center justify-space-between ga-4 flex-wrap">
-            <span :class="{ 'font-weight-bold': !item.message.isRead }">{{ item.message.from }}</span>
-            <span class="text-caption text-medium-emphasis">{{ formatDate(item.message.receivedAt) }}</span>
-          </v-list-item-title>
-          <v-list-item-subtitle>
-            <div :class="['mb-1', item.message.isRead ? 'font-weight-medium' : 'font-weight-bold']">{{ item.message.subject }}</div>
-            <div class="text-body-2 text-medium-emphasis text-truncate">{{ item.message.preview }}</div>
-          </v-list-item-subtitle>
+          <div class="mail-list__row1">
+            <span class="mail-list__from" :class="{ 'font-weight-bold': !item.message.isRead }">{{ item.message.from }}</span>
+            <span class="mail-list__date text-caption text-medium-emphasis">{{ formatDate(item.message.receivedAt) }}</span>
+            <v-tooltip :text="item.message.isStarred ? t('common.unstar') : t('common.star')" location="bottom">
+              <template #activator="{ props: tip }">
+                <v-icon
+                  v-bind="tip"
+                  :icon="item.message.isStarred ? 'mdi-star' : 'mdi-star-outline'"
+                  :color="item.message.isStarred ? 'warning' : undefined"
+                  size="18"
+                  class="mail-list__star"
+                  @click.stop="$emit('toggle-star', item.message.id)"
+                />
+              </template>
+            </v-tooltip>
+          </div>
+          <div class="mail-list__row2" :class="{ 'font-weight-medium': !item.message.isRead }">{{ item.message.subject }}</div>
+          <div class="mail-list__row3 text-medium-emphasis">{{ item.message.preview }}</div>
 
-          <template #append>
-            <div class="mail-list__append d-flex align-center ga-2">
-              <v-tooltip :text="item.message.isStarred ? t('common.unstar') : t('common.star')" location="bottom">
-                <template #activator="{ props: tip }">
-                  <v-icon
-                    v-bind="tip"
-                    :icon="item.message.isStarred ? 'mdi-star' : 'mdi-star-outline'"
-                    :color="item.message.isStarred ? 'warning' : undefined"
-                    @click.stop="$emit('toggle-star', item.message.id)"
-                  />
-                </template>
-              </v-tooltip>
-              <v-icon v-if="item.message.hasAttachments" icon="mdi-paperclip" size="18" />
-            </div>
+          <template v-if="item.message.hasAttachments" #append>
+            <v-icon icon="mdi-paperclip" size="16" class="text-medium-emphasis" />
           </template>
         </v-list-item>
       </template>
@@ -373,7 +373,12 @@ const formatDate = (value: string) =>
 }
 
 .mail-list__item {
-  margin-bottom: 2px;
+  margin-bottom: 1px;
+}
+
+.mail-list__item :deep(.v-list-item__content) {
+  min-width: 0;
+  padding: 4px 0;
 }
 
 .mail-list__item--unread {
@@ -381,47 +386,68 @@ const formatDate = (value: string) =>
   background: rgba(var(--v-theme-primary), 0.04);
 }
 
-.mail-list__item :deep(.v-list-item__content) {
-  min-width: 0;
+.mail-list__item--checked {
+  background: rgba(var(--v-theme-primary), 0.08);
 }
 
-.mail-list__item :deep(.v-list-item-title) {
-  white-space: normal;
+.mail-list__item--checked.mail-list__item--unread {
+  background: rgba(var(--v-theme-primary), 0.12);
+}
+
+.mail-list__row1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.mail-list__from {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-list__date {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.mail-list__star {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.mail-list__row2 {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.mail-list__row3 {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 .mail-list__checkbox {
   flex: none;
 }
 
-.mail-list__append {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 @media (max-width: 840px) {
   .mail-list {
-    padding: 16px 16px 0;
+    padding: 12px 12px 0;
   }
 
   .mail-list__header {
     flex-wrap: wrap;
     align-items: flex-start;
-  }
-}
-
-@media (max-width: 600px) {
-  .mail-list {
-    padding: 12px 12px 0;
-  }
-
-  .mail-list__item :deep(.v-list-item__append) {
-    align-self: flex-start;
-    margin-inline-start: 8px;
-  }
-
-  .mail-list__append {
-    padding-top: 4px;
   }
 }
 </style>
