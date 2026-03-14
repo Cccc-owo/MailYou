@@ -29,4 +29,6 @@ export const electronMailRepository: MailRepository = {
   syncAccount: (accountId) => getBridge().syncAccount(accountId),
   getMailboxBundle: (accountId) => getBridge().getMailboxBundle(accountId),
   getAttachmentContent: (accountId, messageId, attachmentId) => getBridge().getAttachmentContent(accountId, messageId, attachmentId),
+  getAccountConfig: (accountId) => getBridge().getAccountConfig(accountId),
+  updateAccount: (accountId, draft) => getBridge().updateAccount(accountId, draft),
 }

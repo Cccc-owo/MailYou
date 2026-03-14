@@ -19,6 +19,7 @@
         @add-account="router.push('/account-setup')"
         @compose="openComposer"
         @delete-account="handleDeleteAccount"
+        @edit-account="(id) => router.push('/account-setup/' + id)"
         @select-account="handleAccountChange"
         @select-folder="handleFolderChange"
         @sync-account="handleSyncAccount"

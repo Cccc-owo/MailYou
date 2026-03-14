@@ -89,6 +89,14 @@ export interface RustBackendMethodMap {
     params: { accountId: string; messageId: string; attachmentId: string }
     result: AttachmentContent
   }
+  getAccountConfig: {
+    params: { accountId: string }
+    result: AccountSetupDraft
+  }
+  updateAccount: {
+    params: { accountId: string; draft: AccountSetupDraft }
+    result: MailAccount
+  }
 }
 
 export type RustBackendMethod = keyof RustBackendMethodMap

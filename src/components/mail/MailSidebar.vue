@@ -97,6 +97,7 @@
     <!-- Account context menu -->
     <ContextMenu v-model="accountCtx.isOpen.value" :x="accountCtx.x.value" :y="accountCtx.y.value">
       <v-list-item prepend-icon="mdi-sync" :title="t('shell.sync')" @click="$emit('sync-account', accountCtx.target.value!.id)" />
+      <v-list-item prepend-icon="mdi-pencil-outline" :title="t('sidebar.editAccount')" @click="$emit('edit-account', accountCtx.target.value!.id)" />
       <v-divider />
       <v-list-item prepend-icon="mdi-delete-outline" :title="t('sidebar.deleteAccount')" base-color="error" @click="confirmDelete(accountCtx.target.value!)" />
     </ContextMenu>
@@ -150,6 +151,7 @@ const emit = defineEmits<{
   'select-account': [accountId: string]
   'select-folder': [folderId: string]
   'delete-account': [accountId: string]
+  'edit-account': [accountId: string]
   compose: []
   'add-account': []
   'sync-account': [accountId: string]

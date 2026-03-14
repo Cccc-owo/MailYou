@@ -21,4 +21,6 @@ export const rustMailBackend: MailBackend = {
   syncAccount: (accountId) => invokeRustBackend('syncAccount', { accountId }),
   getMailboxBundle: (accountId) => invokeRustBackend('getMailboxBundle', { accountId }),
   getAttachmentContent: (accountId, messageId, attachmentId) => invokeRustBackend('getAttachmentContent', { accountId, messageId, attachmentId }),
+  getAccountConfig: (accountId) => invokeRustBackend('getAccountConfig', { accountId }),
+  updateAccount: (accountId, draft) => invokeRustBackend('updateAccount', { accountId, draft }),
 }

@@ -1,6 +1,6 @@
 <template>
   <div class="account-setup-page">
-    <AppTitleBar title="MailYou" :subtitle="t('accountSetup.subtitle')">
+    <AppTitleBar title="MailYou" :subtitle="isEditMode ? t('accountSetup.editSubtitle') : t('accountSetup.subtitle')">
       <template #actions>
         <v-btn prepend-icon="mdi-arrow-left" @click="router.push('/')">{{ t('common.backToMail') }}</v-btn>
       </template>
@@ -9,7 +9,7 @@
     <v-container class="account-setup-page__content" max-width="720">
       <v-card class="pa-6">
         <div class="text-overline mb-2">{{ t('accountSetup.title') }}</div>
-        <div class="text-h4 mb-2">{{ t('accountSetup.heading') }}</div>
+        <div class="text-h4 mb-2">{{ isEditMode ? t('accountSetup.editHeading') : t('accountSetup.heading') }}</div>
         <div class="text-body-1 text-medium-emphasis mb-6">
           {{ t('accountSetup.description') }}
         </div>
@@ -56,7 +56,7 @@
               :loading="isSaving"
               @click="saveAccount"
             >
-              {{ t('accountSetup.saveAccount') }}
+              {{ isEditMode ? t('accountSetup.updateAccount') : t('accountSetup.saveAccount') }}
             </v-btn>
             </div>
           </div>
@@ -78,17 +78,21 @@
 
 <script setup lang="ts">
 import AppTitleBar from '@/components/AppTitleBar.vue'
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAccountsStore } from '@/stores/accounts'
 import type { AccountSetupDraft } from '@/types/account'
 
 const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const accountsStore = useAccountsStore()
 const isSaving = ref(false)
 const error = ref<string | null>(null)
+
+const editAccountId = computed(() => route.params.accountId as string | undefined)
+const isEditMode = computed(() => Boolean(editAccountId.value))
 
 const draft = reactive<AccountSetupDraft>({
   displayName: 'New account',
@@ -101,6 +105,17 @@ const draft = reactive<AccountSetupDraft>({
   username: '',
   password: '',
   useTls: true,
+})
+
+onMounted(async () => {
+  if (editAccountId.value) {
+    try {
+      const config = await accountsStore.getAccountConfig(editAccountId.value)
+      Object.assign(draft, config)
+    } catch (loadError) {
+      error.value = loadError instanceof Error ? loadError.message : 'Unable to load account config'
+    }
+  }
 })
 
 const canSave = computed(
@@ -137,7 +152,11 @@ const saveAccount = async () => {
   error.value = null
 
   try {
-    await accountsStore.createAccount({ ...draft })
+    if (isEditMode.value) {
+      await accountsStore.updateAccount(editAccountId.value!, { ...draft })
+    } else {
+      await accountsStore.createAccount({ ...draft })
+    }
     await router.push('/')
   } catch (saveError) {
     error.value = saveError instanceof Error ? saveError.message : 'Unable to save account'

@@ -379,6 +379,65 @@ pub fn get_account_state(account_id: &str) -> Option<StoredAccountState> {
         .cloned()
 }
 
+pub fn get_account_config(account_id: &str) -> Result<AccountSetupDraft, BackendError> {
+    let state = lock_state();
+    let account_state = state
+        .account_states
+        .iter()
+        .find(|s| s.account.id == account_id)
+        .ok_or_else(|| BackendError::not_found("Account not found"))?;
+
+    Ok(AccountSetupDraft {
+        display_name: account_state.account.name.clone(),
+        email: account_state.account.email.clone(),
+        provider: account_state.account.provider.clone(),
+        incoming_host: account_state.config.incoming_host.clone(),
+        incoming_port: account_state.config.incoming_port,
+        outgoing_host: account_state.config.outgoing_host.clone(),
+        outgoing_port: account_state.config.outgoing_port,
+        username: account_state.config.username.clone(),
+        password: account_state.config.password.clone(),
+        use_tls: account_state.config.use_tls,
+    })
+}
+
+pub fn update_account(account_id: &str, draft: AccountSetupDraft) -> Result<MailAccount, BackendError> {
+    let mut state = lock_state();
+    let account_state = state
+        .account_states
+        .iter_mut()
+        .find(|s| s.account.id == account_id)
+        .ok_or_else(|| BackendError::not_found("Account not found"))?;
+
+    let display_name = draft.display_name.trim();
+    let base_name = if display_name.is_empty() {
+        draft.email.trim()
+    } else {
+        display_name
+    };
+
+    let initials = base_name
+        .split_whitespace()
+        .filter_map(|part| part.chars().next())
+        .take(2)
+        .map(|character| character.to_uppercase().collect::<String>())
+        .collect::<String>();
+
+    account_state.account.name = base_name.to_string();
+    account_state.account.email = draft.email.clone();
+    account_state.account.provider = draft.provider.clone();
+    account_state.account.initials = if initials.is_empty() {
+        "NA".into()
+    } else {
+        initials
+    };
+    account_state.config = accounts::config_from_draft(&draft);
+
+    let updated = account_state.account.clone();
+    state.persist()?;
+    Ok(updated)
+}
+
 pub fn record_sent_message(draft: DraftMessage) -> Result<String, BackendError> {
     let mut state = lock_state();
     state.drafts.retain(|item| item.id != draft.id);

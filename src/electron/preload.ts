@@ -22,6 +22,8 @@ const mailyou: MailyouBridge = {
   syncAccount: (accountId) => ipcRenderer.invoke('mail:syncAccount', accountId),
   getMailboxBundle: (accountId) => ipcRenderer.invoke('mail:getMailboxBundle', accountId),
   getAttachmentContent: (accountId, messageId, attachmentId) => ipcRenderer.invoke('mail:getAttachmentContent', accountId, messageId, attachmentId),
+  getAccountConfig: (accountId) => ipcRenderer.invoke('mail:getAccountConfig', accountId),
+  updateAccount: (accountId, draft) => ipcRenderer.invoke('mail:updateAccount', accountId, draft),
 }
 
 const windowControls: WindowControlsBridge = {

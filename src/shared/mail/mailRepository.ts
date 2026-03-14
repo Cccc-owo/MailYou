@@ -28,4 +28,6 @@ export interface MailRepository {
   syncAccount(accountId: string): Promise<SyncStatus>
   getMailboxBundle(accountId: string): Promise<MailboxBundle>
   getAttachmentContent(accountId: string, messageId: string, attachmentId: string): Promise<AttachmentContent>
+  getAccountConfig(accountId: string): Promise<AccountSetupDraft>
+  updateAccount(accountId: string, draft: AccountSetupDraft): Promise<MailAccount>
 }

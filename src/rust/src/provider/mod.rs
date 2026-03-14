@@ -31,4 +31,6 @@ pub trait MailProvider: Send + Sync {
     async fn sync_account(&self, account_id: &str) -> Result<SyncStatus, BackendError>;
     async fn get_mailbox_bundle(&self, account_id: &str) -> Result<MailboxBundle, BackendError>;
     async fn get_attachment_content(&self, account_id: &str, message_id: &str, attachment_id: &str) -> Result<AttachmentContent, BackendError>;
+    async fn get_account_config(&self, account_id: &str) -> Result<AccountSetupDraft, BackendError>;
+    async fn update_account(&self, account_id: &str, draft: AccountSetupDraft) -> Result<MailAccount, BackendError>;
 }

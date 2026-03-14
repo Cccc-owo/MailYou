@@ -24,4 +24,6 @@ export const webMailRepository: MailRepository = {
   syncAccount: notAvailable,
   getMailboxBundle: notAvailable,
   getAttachmentContent: notAvailable,
+  getAccountConfig: notAvailable,
+  updateAccount: notAvailable,
 }

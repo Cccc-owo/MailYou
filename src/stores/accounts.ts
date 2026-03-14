@@ -90,6 +90,19 @@ export const useAccountsStore = defineStore('accounts', () => {
     }
   }
 
+  const getAccountConfig = async (accountId: string) => {
+    return await mailRepository.getAccountConfig(accountId)
+  }
+
+  const updateAccount = async (accountId: string, draft: AccountSetupDraft) => {
+    const updated = await mailRepository.updateAccount(accountId, draft)
+    const idx = accounts.value.findIndex((a) => a.id === accountId)
+    if (idx !== -1) {
+      accounts.value[idx] = updated
+    }
+    return updated
+  }
+
   return {
     accounts,
     currentAccount,
@@ -101,6 +114,8 @@ export const useAccountsStore = defineStore('accounts', () => {
     loadAccounts,
     createAccount,
     deleteAccount,
+    getAccountConfig,
+    updateAccount,
     selectAccount,
     testAccountConnection,
   }

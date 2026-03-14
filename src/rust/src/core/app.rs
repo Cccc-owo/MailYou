@@ -68,5 +68,7 @@ pub async fn handle_with_provider(
             message_id,
             attachment_id,
         } => serialize(provider.get_attachment_content(&account_id, &message_id, &attachment_id).await?),
+        BackendRequest::GetAccountConfig { account_id } => serialize(provider.get_account_config(&account_id).await?),
+        BackendRequest::UpdateAccount { account_id, draft } => serialize(provider.update_account(&account_id, draft).await?),
     }
 }

@@ -78,4 +78,10 @@ export const registerMailIpc = () => {
   handle('mail:getAttachmentContent', (accountId, messageId, attachmentId) =>
     mailBackend.getAttachmentContent(accountId as string, messageId as string, attachmentId as string),
   )
+  handle('mail:getAccountConfig', (accountId) =>
+    mailBackend.getAccountConfig(accountId as string),
+  )
+  handle('mail:updateAccount', (accountId, draft) =>
+    mailBackend.updateAccount(accountId as string, draft as AccountSetupDraft),
+  )
 }

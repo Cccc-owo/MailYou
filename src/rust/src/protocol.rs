@@ -43,6 +43,10 @@ pub enum BackendRequest {
     GetMailboxBundle { account_id: String },
     #[serde(rename_all = "camelCase")]
     GetAttachmentContent { account_id: String, message_id: String, attachment_id: String },
+    #[serde(rename_all = "camelCase")]
+    GetAccountConfig { account_id: String },
+    #[serde(rename_all = "camelCase")]
+    UpdateAccount { account_id: String, draft: AccountSetupDraft },
 }
 
 impl BackendRequest {
@@ -68,6 +72,8 @@ impl BackendRequest {
             Self::SyncAccount { .. } => "syncAccount",
             Self::GetMailboxBundle { .. } => "getMailboxBundle",
             Self::GetAttachmentContent { .. } => "getAttachmentContent",
+            Self::GetAccountConfig { .. } => "getAccountConfig",
+            Self::UpdateAccount { .. } => "updateAccount",
         }
     }
 }

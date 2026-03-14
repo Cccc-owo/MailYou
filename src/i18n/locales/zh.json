@@ -35,6 +35,7 @@
     "selectAccountToView": "选择一个账户以查看其文件夹。",
     "addAccountToStart": "添加账户以开始使用。",
     "deleteAccount": "删除账户",
+    "editAccount": "编辑账户",
     "deleteConfirmText": "确定要删除 {name}（{email}）吗？该账户的所有本地数据将被移除。"
   },
   "mailList": {
@@ -145,7 +146,10 @@
     "useTls": "使用 TLS",
     "backendNote": "后端现已支持本地验证和持久化账户设置",
     "testConnection": "测试连接",
-    "saveAccount": "保存账户"
+    "saveAccount": "保存账户",
+    "editSubtitle": "编辑邮箱设置",
+    "editHeading": "编辑邮箱",
+    "updateAccount": "更新账户"
   },
   "shell": {
     "sync": "同步",

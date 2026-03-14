@@ -265,6 +265,14 @@ impl MailProvider for ImapSmtpProvider {
             data_base64,
         })
     }
+
+    async fn get_account_config(&self, account_id: &str) -> Result<AccountSetupDraft, BackendError> {
+        memory::get_account_config(account_id)
+    }
+
+    async fn update_account(&self, account_id: &str, draft: AccountSetupDraft) -> Result<MailAccount, BackendError> {
+        memory::update_account(account_id, draft)
+    }
 }
 
 // ---------------------------------------------------------------------------

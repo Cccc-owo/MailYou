@@ -10,7 +10,7 @@ const routes = [
     component: MailShellView,
   },
   {
-    path: '/account-setup',
+    path: '/account-setup/:accountId?',
     name: 'account-setup',
     component: AccountSetupView,
   },
