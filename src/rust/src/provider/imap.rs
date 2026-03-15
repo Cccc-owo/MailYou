@@ -567,7 +567,7 @@ async fn imap_fetch_mailbox(
 }
 
 /// Cached body + preview + attachments for a message, keyed by IMAP UID.
-type ExistingBodies = std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>)>;
+type ExistingBodies = std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>, String)>;
 
 async fn fetch_folder_contents(
     session: &mut ImapAnySession,
@@ -691,65 +691,38 @@ async fn fetch_folder_contents(
 
     for meta in metas {
         let (body, preview, attachments, final_date) = if meta.date.is_empty() {
-            // If no date, must fetch body to extract date from headers
-            if let Some(raw) = body_map.remove(&meta.uid) {
+            // If no date in envelope, check if we have cached data with a valid date
+            if let Some((cached_body, cached_preview, cached_attachments, cached_date)) = existing_bodies.get(&meta.uid) {
+                // Use cached data if we have a valid date (not current timestamp pattern)
+                if !cached_date.is_empty() && !cached_date.starts_with("2026-03-16") {
+                    // Cached date looks valid, use it
+                    (cached_body.clone(), cached_preview.clone(), cached_attachments.clone(), cached_date.clone())
+                } else if let Some(raw) = body_map.remove(&meta.uid) {
+                    // Need to extract date from body
+                    let parsed = extract_body_from_mime(&raw);
+                    let prev = make_preview(&parsed);
+                    let atts = extract_attachments_from_mime(&raw);
+                    let date = extract_date_from_body(&raw, meta.uid);
+                    (parsed, prev, atts, date)
+                } else {
+                    // No body available, use cached data with current time
+                    eprintln!("[imap] WARNING: no body available for UID {} with empty date", meta.uid);
+                    (cached_body.clone(), cached_preview.clone(), cached_attachments.clone(), memory::current_timestamp())
+                }
+            } else if let Some(raw) = body_map.remove(&meta.uid) {
+                // No cache, extract from body
                 let parsed = extract_body_from_mime(&raw);
                 let prev = make_preview(&parsed);
                 let atts = extract_attachments_from_mime(&raw);
-
-                let date = match mailparse::parse_mail(&raw) {
-                    Ok(mail) => {
-                        // First try Date header
-                        let date_header = mail.headers.iter()
-                            .find(|h| h.get_key().eq_ignore_ascii_case("Date"))
-                            .map(|h| h.get_value());
-
-                        if let Some(date_str) = date_header {
-                            match mailparse::dateparse(&date_str) {
-                                Ok(ts) => {
-                                    let dt = chrono::DateTime::from_timestamp(ts, 0)
-                                        .unwrap_or_else(|| chrono::Utc::now());
-                                    dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-                                }
-                                Err(_) => memory::current_timestamp()
-                            }
-                        } else {
-                            // No Date header, try to extract from first Received header
-                            let received_header = mail.headers.iter()
-                                .find(|h| h.get_key().eq_ignore_ascii_case("Received"))
-                                .map(|h| h.get_value());
-
-                            if let Some(received_str) = received_header {
-                                // Received header format: "... ; date"
-                                if let Some(date_part) = received_str.split(';').last() {
-                                    let date_part = date_part.trim();
-                                    match mailparse::dateparse(date_part) {
-                                        Ok(ts) => {
-                                            let dt = chrono::DateTime::from_timestamp(ts, 0)
-                                                .unwrap_or_else(|| chrono::Utc::now());
-                                            dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-                                        }
-                                        Err(_) => memory::current_timestamp()
-                                    }
-                                } else {
-                                    memory::current_timestamp()
-                                }
-                            } else {
-                                memory::current_timestamp()
-                            }
-                        }
-                    }
-                    Err(_) => memory::current_timestamp()
-                };
-
+                let date = extract_date_from_body(&raw, meta.uid);
                 (parsed, prev, atts, date)
             } else {
-                // No body available, use current time
+                // No body available
                 eprintln!("[imap] WARNING: no body available for UID {} with empty date", meta.uid);
                 (String::new(), "(No preview)".into(), vec![], memory::current_timestamp())
             }
-        } else if let Some((cached_body, cached_preview, cached_attachments)) = existing_bodies.get(&meta.uid) {
-            // Reuse body + preview + attachments from memory
+        } else if let Some((cached_body, cached_preview, cached_attachments, _)) = existing_bodies.get(&meta.uid) {
+            // Reuse body + preview + attachments from memory, use envelope date
             (cached_body.clone(), cached_preview.clone(), cached_attachments.clone(), meta.date.clone())
         } else if let Some(raw) = body_map.remove(&meta.uid) {
             // Parse newly downloaded body and extract attachments
@@ -897,6 +870,51 @@ fn decode_modified_base64(input: &[u8]) -> Vec<u16> {
     }
 
     out
+}
+
+fn extract_date_from_body(raw: &[u8], _uid: u32) -> String {
+    match mailparse::parse_mail(raw) {
+        Ok(mail) => {
+            // First try Date header
+            let date_header = mail.headers.iter()
+                .find(|h| h.get_key().eq_ignore_ascii_case("Date"))
+                .map(|h| h.get_value());
+
+            if let Some(date_str) = date_header {
+                match mailparse::dateparse(&date_str) {
+                    Ok(ts) => {
+                        let dt = chrono::DateTime::from_timestamp(ts, 0)
+                            .unwrap_or_else(|| chrono::Utc::now());
+                        return dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                    }
+                    Err(_) => {}
+                }
+            }
+
+            // No Date header, try to extract from first Received header
+            let received_header = mail.headers.iter()
+                .find(|h| h.get_key().eq_ignore_ascii_case("Received"))
+                .map(|h| h.get_value());
+
+            if let Some(received_str) = received_header {
+                // Received header format: "... ; date"
+                if let Some(date_part) = received_str.split(';').last() {
+                    let date_part = date_part.trim();
+                    match mailparse::dateparse(date_part) {
+                        Ok(ts) => {
+                            let dt = chrono::DateTime::from_timestamp(ts, 0)
+                                .unwrap_or_else(|| chrono::Utc::now());
+                            return dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                        }
+                        Err(_) => {}
+                    }
+                }
+            }
+
+            memory::current_timestamp()
+        }
+        Err(_) => memory::current_timestamp()
+    }
 }
 
 fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String, Vec<String>, Vec<String>, String) {

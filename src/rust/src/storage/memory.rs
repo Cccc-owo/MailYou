@@ -357,16 +357,16 @@ pub fn get_mailbox_bundle(account_id: &str) -> Result<MailboxBundle, BackendErro
     })
 }
 
-/// Return cached (body, preview, attachments) keyed by IMAP UID for all messages that
+/// Return cached (body, preview, attachments, received_at) keyed by IMAP UID for all messages that
 /// belong to the given account and already have a downloaded body.
 /// Used by incremental sync to skip re-fetching bodies we already have.
-pub fn get_existing_bodies(account_id: &str) -> std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>)> {
+pub fn get_existing_bodies(account_id: &str) -> std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>, String)> {
     let state = lock_state();
     let mut map = std::collections::HashMap::new();
     for msg in state.messages.iter().filter(|m| m.account_id == account_id) {
         if let Some(uid) = msg.imap_uid {
             if !msg.body.is_empty() {
-                map.insert(uid, (msg.body.clone(), msg.preview.clone(), msg.attachments.clone()));
+                map.insert(uid, (msg.body.clone(), msg.preview.clone(), msg.attachments.clone(), msg.received_at.clone()));
             }
         }
     }
