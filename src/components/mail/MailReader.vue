@@ -2,27 +2,25 @@
   <div v-if="message" class="mail-reader" @contextmenu="openReaderMenu($event)">
     <div class="mail-reader__toolbar">
       <div class="mail-reader__toolbar-subject text-subtitle-1">{{ message.subject }}</div>
-      <div class="mail-reader__toolbar-actions d-flex flex-wrap ga-2">
+      <div class="mail-reader__toolbar-actions">
         <v-tooltip :text="t('reader.reply')" location="bottom">
           <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" prepend-icon="mdi-reply-outline" @click="$emit('reply')">{{ t('reader.reply') }}</v-btn>
+            <v-btn v-bind="tip" icon="mdi-reply-outline" variant="text" size="small" @click="$emit('reply')" />
           </template>
         </v-tooltip>
         <v-tooltip :text="t('reader.replyAll')" location="bottom">
           <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" prepend-icon="mdi-reply-all-outline" @click="$emit('reply-all')">{{ t('reader.replyAll') }}</v-btn>
+            <v-btn v-bind="tip" icon="mdi-reply-all-outline" variant="text" size="small" @click="$emit('reply-all')" />
           </template>
         </v-tooltip>
         <v-tooltip :text="t('reader.forward')" location="bottom">
           <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" prepend-icon="mdi-arrow-top-right" @click="$emit('forward')">{{ t('reader.forward') }}</v-btn>
+            <v-btn v-bind="tip" icon="mdi-arrow-top-right" variant="text" size="small" @click="$emit('forward')" />
           </template>
         </v-tooltip>
         <v-tooltip :text="message.isRead ? t('reader.markUnread') : t('reader.markRead')" location="bottom">
           <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" prepend-icon="mdi-email-open-outline" @click="$emit('toggle-read')">
-              {{ message.isRead ? t('reader.markUnread') : t('reader.markRead') }}
-            </v-btn>
+            <v-btn v-bind="tip" :icon="message.isRead ? 'mdi-email-outline' : 'mdi-email-open-outline'" variant="text" size="small" @click="$emit('toggle-read')" />
           </template>
         </v-tooltip>
 
@@ -30,7 +28,7 @@
           <template #activator="{ props: menuProps }">
             <v-tooltip :text="t('reader.moveTo')" location="bottom">
               <template #activator="{ props: tip }">
-                <v-btn v-bind="{ ...tip, ...menuProps }" prepend-icon="mdi-folder-move-outline">{{ t('reader.moveTo') }}</v-btn>
+                <v-btn v-bind="{ ...tip, ...menuProps }" icon="mdi-folder-move-outline" variant="text" size="small" />
               </template>
             </v-tooltip>
           </template>
@@ -48,21 +46,21 @@
         <template v-if="isTrashOrArchive">
           <v-tooltip :text="t('reader.restoreToInbox')" location="bottom">
             <template #activator="{ props: tip }">
-              <v-btn v-bind="tip" prepend-icon="mdi-inbox-arrow-down" @click="$emit('restore')">{{ t('reader.restoreToInbox') }}</v-btn>
+              <v-btn v-bind="tip" icon="mdi-inbox-arrow-down" variant="text" size="small" @click="$emit('restore')" />
             </template>
           </v-tooltip>
         </template>
         <template v-else>
           <v-tooltip :text="t('reader.archive')" location="bottom">
             <template #activator="{ props: tip }">
-              <v-btn v-bind="tip" prepend-icon="mdi-archive-outline" @click="$emit('archive')">{{ t('reader.archive') }}</v-btn>
+              <v-btn v-bind="tip" icon="mdi-archive-outline" variant="text" size="small" @click="$emit('archive')" />
             </template>
           </v-tooltip>
         </template>
 
         <v-tooltip :text="t('common.delete')" location="bottom">
           <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" prepend-icon="mdi-delete-outline" color="error" @click="$emit('delete')">{{ t('common.delete') }}</v-btn>
+            <v-btn v-bind="tip" icon="mdi-delete-outline" variant="text" size="small" color="error" @click="$emit('delete')" />
           </template>
         </v-tooltip>
       </div>
@@ -426,6 +424,7 @@ const formatSize = (value: number) => {
 
 .mail-reader__toolbar-actions {
   display: flex;
+  align-items: center;
   flex-wrap: nowrap;
   gap: 4px;
   flex-shrink: 0;
@@ -472,15 +471,5 @@ const formatSize = (value: number) => {
   min-height: 100%;
   text-align: center;
   padding: 32px;
-}
-
-@media (max-width: 1280px) {
-  .mail-reader__toolbar-actions :deep(.v-btn .v-btn__content) {
-    font-size: 0;
-  }
-
-  .mail-reader__toolbar-actions :deep(.v-btn .v-btn__prepend) {
-    margin-inline-end: 0;
-  }
 }
 </style>

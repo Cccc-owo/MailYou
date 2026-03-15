@@ -19,7 +19,7 @@
           @update:model-value="$emit('update:draft', { ...draft, body: $event })"
         />
 
-        <div v-if="draft.attachments.length" class="d-flex flex-wrap ga-2">
+        <div v-if="draft.attachments.length" class="d-flex flex-wrap align-center ga-2">
           <v-chip
             v-for="(att, index) in draft.attachments"
             :key="index"
@@ -33,7 +33,7 @@
       </v-card-text>
 
       <v-card-actions class="justify-space-between px-6 pb-6">
-        <div class="d-flex ga-2">
+        <div class="d-flex align-center ga-2">
           <v-btn prepend-icon="mdi-content-save-outline" :loading="isSaving" @click="$emit('save')">{{ t('composer.saveDraft') }}</v-btn>
           <v-btn prepend-icon="mdi-paperclip" @click="triggerFileInput">{{ t('composer.attach') }}</v-btn>
           <input ref="fileInput" type="file" multiple hidden @change="onFilesSelected" />
