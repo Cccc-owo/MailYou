@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { writeFile, unlink } from 'fs/promises'
-import { join } from 'path'
+import { writeFile, readFile, unlink } from 'fs/promises'
+import { join, basename } from 'path'
 import { tmpdir } from 'os'
 
 let registered = false
@@ -79,4 +79,37 @@ export const registerWindowIpc = () => {
       unlink(tmpHtmlPath).catch(() => {})
     }
   })
+
+  ipcMain.handle(
+    'window:openTextFile',
+    async (_event, filters: { name: string; extensions: string[] }[]) => {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        filters,
+        properties: ['openFile'],
+      })
+      if (canceled || filePaths.length === 0) return null
+      const filePath = filePaths[0]
+      const content = await readFile(filePath, 'utf-8')
+      return { content, fileName: basename(filePath) }
+    },
+  )
+
+  ipcMain.handle(
+    'window:saveTextFile',
+    async (
+      _event,
+      content: string,
+      suggestedName: string,
+      filters: { name: string; extensions: string[] }[],
+    ) => {
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: suggestedName,
+        filters,
+      })
+      if (canceled || !filePath) return false
+      await writeFile(filePath, content, 'utf-8')
+      shell.showItemInFolder(filePath)
+      return true
+    },
+  )
 }

@@ -23,6 +23,10 @@
         :title="currentGroupName"
         @select="contactsStore.selectContact"
         @add="contactsStore.startCreate()"
+        @import="handleImport"
+        @export-v-card="handleExportVCard"
+        @export-csv="handleExportCsv"
+        @merge="handleMerge"
       />
     </template>
 
@@ -66,6 +70,12 @@
   <v-snackbar v-model="snackbar" location="bottom right" color="primary">
     {{ snackbarText }}
   </v-snackbar>
+
+  <MergeContactsDialog
+    v-model="mergeDialogOpen"
+    :contacts="contactsStore.contacts"
+    @merged="handleMerged"
+  />
 </template>
 
 <script setup lang="ts">
@@ -76,9 +86,11 @@ import MailShellLayout from '@/layouts/MailShellLayout.vue'
 import ContactsSidebar from '@/components/contacts/ContactsSidebar.vue'
 import ContactsList from '@/components/contacts/ContactsList.vue'
 import ContactDetail from '@/components/contacts/ContactDetail.vue'
+import MergeContactsDialog from '@/components/contacts/MergeContactsDialog.vue'
 import { useContactsStore } from '@/stores/contacts'
 import { useComposerStore } from '@/stores/composer'
 import { useAccountsStore } from '@/stores/accounts'
+import { parseVCard, generateVCard, parseCsv, generateCsv } from '@/utils/contactIO'
 import type { Contact, ContactGroup } from '@/types/contact'
 
 const { t } = useI18n()
@@ -90,6 +102,7 @@ const accountsStore = useAccountsStore()
 const searchQuery = ref('')
 const snackbar = ref(false)
 const snackbarText = ref('')
+const mergeDialogOpen = ref(false)
 
 const groupDialog = reactive({
   open: false,
@@ -166,6 +179,48 @@ const composeToContact = (contact: Contact) => {
   if (!accountId) return
   composerStore.openNew(accountId)
   composerStore.draft.to = `${contact.name} <${contact.email}>`
+}
+
+// Import / Export / Merge
+const handleImport = async () => {
+  const result = await window.windowControls?.openTextFile([
+    { name: 'Contacts', extensions: ['vcf', 'csv'] },
+  ])
+  if (!result) return
+
+  const ext = result.fileName.split('.').pop()?.toLowerCase()
+  const parsed = ext === 'csv' ? parseCsv(result.content) : parseVCard(result.content)
+
+  let count = 0
+  for (const c of parsed) {
+    await contactsStore.createContact(c)
+    count++
+  }
+  showSnackbar(t('contacts.importSuccess', { count }))
+}
+
+const handleExportVCard = async () => {
+  const content = generateVCard(contactsStore.contacts)
+  const ok = await window.windowControls?.saveTextFile(content, 'contacts.vcf', [
+    { name: 'vCard', extensions: ['vcf'] },
+  ])
+  if (ok) showSnackbar(t('contacts.exportSuccess'))
+}
+
+const handleExportCsv = async () => {
+  const content = generateCsv(contactsStore.contacts)
+  const ok = await window.windowControls?.saveTextFile(content, 'contacts.csv', [
+    { name: 'CSV', extensions: ['csv'] },
+  ])
+  if (ok) showSnackbar(t('contacts.exportSuccess'))
+}
+
+const handleMerge = () => {
+  mergeDialogOpen.value = true
+}
+
+const handleMerged = (count: number) => {
+  showSnackbar(t('contacts.mergeSuccess', { count }))
 }
 
 onMounted(async () => {

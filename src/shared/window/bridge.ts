@@ -6,4 +6,12 @@ export interface WindowControlsBridge {
   openExternal(url: string): Promise<void>
   focus(): Promise<void>
   exportPdf(html: string, fileName: string): Promise<boolean>
+  openTextFile(
+    filters: { name: string; extensions: string[] }[],
+  ): Promise<{ content: string; fileName: string } | null>
+  saveTextFile(
+    content: string,
+    suggestedName: string,
+    filters: { name: string; extensions: string[] }[],
+  ): Promise<boolean>
 }

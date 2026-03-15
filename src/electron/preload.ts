@@ -46,6 +46,9 @@ const windowControls: WindowControlsBridge = {
   openExternal: (url) => ipcRenderer.invoke('window:openExternal', url),
   focus: () => ipcRenderer.invoke('window:focus'),
   exportPdf: (html, fileName) => ipcRenderer.invoke('window:exportPdf', html, fileName),
+  openTextFile: (filters) => ipcRenderer.invoke('window:openTextFile', filters),
+  saveTextFile: (content, suggestedName, filters) =>
+    ipcRenderer.invoke('window:saveTextFile', content, suggestedName, filters),
 }
 
 contextBridge.exposeInMainWorld('mailyou', mailyou)

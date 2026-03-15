@@ -237,6 +237,19 @@
     "groupNamePlaceholder": "Group name",
     "invalidEmail": "Please enter a valid email address",
     "changeAvatar": "Change avatar",
-    "removeAvatar": "Remove avatar"
+    "removeAvatar": "Remove avatar",
+    "manage": "Manage",
+    "importContacts": "Import contacts",
+    "exportAsVCard": "Export as vCard",
+    "exportAsCsv": "Export as CSV",
+    "mergeDuplicates": "Merge duplicates",
+    "importSuccess": "{count} contacts imported",
+    "exportSuccess": "Contacts exported",
+    "noDuplicates": "No duplicate contacts found",
+    "mergeSuccess": "{count} duplicates merged",
+    "mergeDialogTitle": "Merge duplicate contacts",
+    "mergeKeep": "Keep",
+    "mergeRemove": "Remove",
+    "mergeConfirm": "Merge selected"
   }
 }

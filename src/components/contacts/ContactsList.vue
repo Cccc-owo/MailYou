@@ -5,7 +5,21 @@
         <div class="text-subtitle-1 font-weight-medium">{{ title }}</div>
         <div class="text-caption text-medium-emphasis">{{ t('contacts.contactCount', { count: contacts.length }) }}</div>
       </div>
-      <v-btn icon="mdi-plus" size="small" variant="tonal" :title="t('contacts.addContact')" @click="$emit('add')" />
+      <div class="d-flex ga-1">
+        <v-menu>
+          <template #activator="{ props }">
+            <v-btn icon="mdi-dots-vertical" size="small" variant="tonal" :title="t('contacts.manage')" v-bind="props" />
+          </template>
+          <v-list density="compact">
+            <v-list-item prepend-icon="mdi-import" :title="t('contacts.importContacts')" @click="$emit('import')" />
+            <v-list-item prepend-icon="mdi-export" :title="t('contacts.exportAsVCard')" @click="$emit('exportVCard')" />
+            <v-list-item prepend-icon="mdi-file-delimited" :title="t('contacts.exportAsCsv')" @click="$emit('exportCsv')" />
+            <v-divider />
+            <v-list-item prepend-icon="mdi-merge" :title="t('contacts.mergeDuplicates')" @click="$emit('merge')" />
+          </v-list>
+        </v-menu>
+        <v-btn icon="mdi-plus" size="small" variant="tonal" :title="t('contacts.addContact')" @click="$emit('add')" />
+      </div>
     </div>
 
     <v-divider />
@@ -53,6 +67,10 @@ defineProps<{
 defineEmits<{
   select: [contactId: string]
   add: []
+  import: []
+  exportVCard: []
+  exportCsv: []
+  merge: []
 }>()
 
 const initials = (name: string) => {
