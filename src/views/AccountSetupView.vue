@@ -78,7 +78,7 @@
 
 <script setup lang="ts">
 import AppTitleBar from '@/components/AppTitleBar.vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAccountsStore } from '@/stores/accounts'
@@ -106,6 +106,36 @@ const draft = reactive<AccountSetupDraft>({
   password: '',
   useTls: true,
 })
+
+// ── Provider autoconfig ──
+
+interface ProviderPreset {
+  provider: string
+  incomingHost: string
+  incomingPort: number
+  outgoingHost: string
+  outgoingPort: number
+  useTls: boolean
+}
+
+const providerPresets: Record<string, ProviderPreset> = {
+  'qq.com': { provider: 'QQ', incomingHost: 'imap.qq.com', incomingPort: 993, outgoingHost: 'smtp.qq.com', outgoingPort: 465, useTls: true },
+  'foxmail.com': { provider: 'QQ', incomingHost: 'imap.qq.com', incomingPort: 993, outgoingHost: 'smtp.qq.com', outgoingPort: 465, useTls: true },
+}
+
+watch(
+  () => draft.email,
+  (email) => {
+    if (isEditMode.value) return
+    const domain = email.split('@')[1]?.toLowerCase()
+    if (!domain) return
+    const preset = providerPresets[domain]
+    if (preset) {
+      Object.assign(draft, preset)
+      draft.username = email
+    }
+  },
+)
 
 onMounted(async () => {
   if (editAccountId.value) {
