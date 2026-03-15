@@ -89,7 +89,9 @@
     "selectMessageHint": "Choose a message from the list to start reading.",
     "exportPdf": "Export as PDF",
     "from": "From",
-    "date": "Date"
+    "date": "Date",
+    "imagesBlocked": "Some images in this email have been blocked.",
+    "loadImages": "Load images"
   },
   "composer": {
     "compose": "Compose",
@@ -159,7 +161,12 @@
     "fetchLimit50": "50 messages",
     "fetchLimit100": "100 messages",
     "fetchLimit200": "200 messages",
-    "language": "Language"
+    "language": "Language",
+    "privacy": "Privacy",
+    "imageLoadPolicy": "Image loading",
+    "imageLoadNoRemote": "Block remote images",
+    "imageLoadNoHttp": "Block HTTP images",
+    "imageLoadAll": "Always load"
   },
   "accountSetup": {
     "subtitle": "Connect a new mailbox",

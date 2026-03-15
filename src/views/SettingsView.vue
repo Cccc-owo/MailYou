@@ -117,6 +117,34 @@
           </div>
         </div>
       </div>
+
+      <!-- Privacy -->
+      <div class="settings-page__section">
+        <div class="settings-page__section-header">
+          <v-icon icon="mdi-shield-outline" size="18" />
+          <span>{{ t('settings.privacy') }}</span>
+        </div>
+
+        <div class="settings-page__group">
+          <div class="settings-page__item">
+            <v-icon icon="mdi-image-outline" class="settings-page__item-icon" />
+            <div class="settings-page__item-body">
+              <div class="settings-page__item-label">{{ t('settings.imageLoadPolicy') }}</div>
+            </div>
+            <v-select
+              :items="imageLoadOptions"
+              :model-value="uiStore.imageLoadPolicy"
+              item-title="label"
+              item-value="value"
+              density="compact"
+              hide-details
+              variant="outlined"
+              class="settings-page__select"
+              @update:model-value="setImageLoadPolicy"
+            />
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -126,7 +154,7 @@ import { computed } from 'vue'
 import AppTitleBar from '@/components/AppTitleBar.vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { useUiStore, type AppearanceMode, type LocaleMode } from '@/stores/ui'
+import { useUiStore, type AppearanceMode, type LocaleMode, type ImageLoadPolicy } from '@/stores/ui'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -155,11 +183,18 @@ const fetchLimitOptions = computed(() => [
   { label: t('settings.fetchLimit200'), value: 200 },
 ] satisfies Array<{ label: string; value: number }>)
 
+const imageLoadOptions = computed(() => [
+  { label: t('settings.imageLoadNoRemote'), value: 'noRemote' },
+  { label: t('settings.imageLoadNoHttp'), value: 'noHttp' },
+  { label: t('settings.imageLoadAll'), value: 'all' },
+] satisfies Array<{ label: string; value: string }>)
+
 const setThemeSeed = (value: string) => uiStore.setThemeSeed(value)
 const setAppearance = (value: AppearanceMode | null) => { if (value) uiStore.setAppearance(value) }
 const setLocale = (value: LocaleMode | null) => { if (value) uiStore.setLocale(value) }
 const setSyncInterval = (value: number | null) => { if (value) uiStore.setSyncIntervalMinutes(value) }
 const setFetchLimit = (value: number | null) => { if (value) uiStore.setFetchLimit(value) }
+const setImageLoadPolicy = (value: ImageLoadPolicy | null) => { if (value) uiStore.setImageLoadPolicy(value) }
 </script>
 
 <style scoped>

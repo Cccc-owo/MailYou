@@ -144,6 +144,19 @@
         <v-chip v-if="message.hasAttachments" size="small" color="primary">{{ t('reader.attachmentsCount', { count: message.attachments.length }) }}</v-chip>
       </div>
 
+      <v-alert
+        v-if="hasBlockedImages"
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="mb-3"
+      >
+        <template #text>
+          <span>{{ t('reader.imagesBlocked') }}</span>
+          <v-btn variant="text" size="small" class="ml-2" @click="allowImagesForMessage = true">{{ t('reader.loadImages') }}</v-btn>
+        </template>
+      </v-alert>
+
       <div class="mail-reader__body text-body-1" v-html="sanitizedBody" @click="handleBodyClick" />
 
       <v-list v-if="message.attachments.length" class="mail-reader__attachments">
@@ -205,10 +218,13 @@ import EmailContactPopover from '@/components/mail/EmailContactPopover.vue'
 import { useContextMenu } from '@/composables/useContextMenu'
 import { mailRepository } from '@/services/mail'
 import { useContactsStore } from '@/stores/contacts'
+import { useUiStore } from '@/stores/ui'
 
 const { t, locale } = useI18n()
 const ctxMenu = useContextMenu()
 const contactsStore = useContactsStore()
+const uiStore = useUiStore()
+const allowImagesForMessage = ref(false)
 const hasSelection = ref(false)
 const targetHref = ref<string | null>(null)
 const targetImgSrc = ref<string | null>(null)
@@ -428,6 +444,7 @@ watch(
   () => props.message?.id,
   () => {
     subjectCollapsed.value = false
+    allowImagesForMessage.value = false
     nextTick(checkSubjectOverflow)
   },
 )
@@ -484,7 +501,7 @@ const sanitizedBody = computed(() => {
     return ''
   }
 
-  return DOMPurify.sanitize(props.message.body, {
+  let html = DOMPurify.sanitize(props.message.body, {
     ALLOWED_TAGS: [
       'p', 'br', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'td', 'th',
       'div', 'span', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li',
@@ -499,6 +516,53 @@ const sanitizedBody = computed(() => {
     ],
     ALLOW_DATA_ATTR: false,
   })
+
+  const policy = allowImagesForMessage.value ? 'all' : uiStore.imageLoadPolicy
+  if (policy === 'noRemote') {
+    html = html.replace(/<img\b([^>]*)>/gi, (_match, attrs: string) => {
+      const srcMatch = attrs.match(/src\s*=\s*["']([^"']*)["']/i)
+      if (srcMatch) {
+        const src = srcMatch[1]
+        if (src.startsWith('data:') || src.startsWith('mailyou-avatar:')) {
+          return `<img${attrs}>`
+        }
+      }
+      return ''
+    })
+  } else if (policy === 'noHttp') {
+    html = html.replace(/<img\b([^>]*)>/gi, (_match, attrs: string) => {
+      const srcMatch = attrs.match(/src\s*=\s*["']([^"']*)["']/i)
+      if (srcMatch) {
+        const src = srcMatch[1]
+        if (src.startsWith('http://')) {
+          return ''
+        }
+      }
+      return `<img${attrs}>`
+    })
+  }
+
+  return html
+})
+
+const hasBlockedImages = computed(() => {
+  if (!props.message || allowImagesForMessage.value || uiStore.imageLoadPolicy === 'all') return false
+  const body = props.message.body
+  const imgRegex = /<img\b[^>]*src\s*=\s*["']([^"']*)["'][^>]*>/gi
+  let m: RegExpExecArray | null
+  while ((m = imgRegex.exec(body)) !== null) {
+    const src = m[1]
+    if (uiStore.imageLoadPolicy === 'noRemote') {
+      if (!src.startsWith('data:') && !src.startsWith('cid:') && !src.startsWith('mailyou-avatar:')) {
+        return true
+      }
+    } else if (uiStore.imageLoadPolicy === 'noHttp') {
+      if (src.startsWith('http://')) {
+        return true
+      }
+    }
+  }
+  return false
 })
 
 const formatSize = (value: number) => {

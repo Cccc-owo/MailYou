@@ -89,7 +89,9 @@
     "selectMessageHint": "从列表中选择一封邮件开始阅读。",
     "exportPdf": "导出为 PDF",
     "from": "发件人",
-    "date": "日期"
+    "date": "日期",
+    "imagesBlocked": "此邮件中的部分图片已被拦截。",
+    "loadImages": "加载图片"
   },
   "composer": {
     "compose": "撰写邮件",
@@ -159,7 +161,12 @@
     "fetchLimit50": "50 封邮件",
     "fetchLimit100": "100 封邮件",
     "fetchLimit200": "200 封邮件",
-    "language": "语言"
+    "language": "语言",
+    "privacy": "隐私",
+    "imageLoadPolicy": "图片加载",
+    "imageLoadNoRemote": "不加载远程图片",
+    "imageLoadNoHttp": "不加载 HTTP 图片",
+    "imageLoadAll": "始终允许"
   },
   "accountSetup": {
     "subtitle": "连接新邮箱",

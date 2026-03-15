@@ -4,12 +4,14 @@ import { i18n } from '@/i18n'
 
 export type AppearanceMode = 'light' | 'dark'
 export type LocaleMode = 'en' | 'zh'
+export type ImageLoadPolicy = 'noRemote' | 'noHttp' | 'all'
 
 const APPEARANCE_KEY = 'mailyou.appearance'
 const THEME_SEED_KEY = 'mailyou.themeSeed'
 const SYNC_INTERVAL_KEY = 'mailyou.syncIntervalMinutes'
 const FETCH_LIMIT_KEY = 'mailyou.fetchLimit'
 const LOCALE_KEY = 'mailyou.locale'
+const IMAGE_LOAD_POLICY_KEY = 'mailyou.imageLoadPolicy'
 
 const getDefaultLocale = (): LocaleMode => {
   const saved = localStorage.getItem(LOCALE_KEY) as LocaleMode | null
@@ -23,6 +25,7 @@ export const useUiStore = defineStore('ui', () => {
   const syncIntervalMinutes = ref(Number(localStorage.getItem(SYNC_INTERVAL_KEY)) || 5)
   const fetchLimit = ref(Number(localStorage.getItem(FETCH_LIMIT_KEY)) || 50)
   const locale = ref<LocaleMode>(getDefaultLocale())
+  const imageLoadPolicy = ref<ImageLoadPolicy>((localStorage.getItem(IMAGE_LOAD_POLICY_KEY) as ImageLoadPolicy) || 'noRemote')
 
   const setAppearance = (value: AppearanceMode) => {
     appearance.value = value
@@ -54,17 +57,24 @@ export const useUiStore = defineStore('ui', () => {
     i18n.global.locale.value = value
   }
 
+  const setImageLoadPolicy = (value: ImageLoadPolicy) => {
+    imageLoadPolicy.value = value
+    localStorage.setItem(IMAGE_LOAD_POLICY_KEY, value)
+  }
+
   return {
     appearance,
     themeSeed,
     syncIntervalMinutes,
     fetchLimit,
     locale,
+    imageLoadPolicy,
     setAppearance,
     toggleAppearance,
     setThemeSeed,
     setSyncIntervalMinutes,
     setFetchLimit,
     setLocale,
+    setImageLoadPolicy,
   }
 })
