@@ -150,6 +150,10 @@
     @contextmenu="openSnackbarMenu"
   >
     <span class="mail-shell__snackbar-text">{{ composerStore.error }}</span>
+    <template #actions>
+      <v-btn variant="text" size="small" @click="retrySend">{{ t('common.retry') }}</v-btn>
+      <v-btn variant="text" size="small" icon="mdi-close" @click="composerStore.clearFeedback()" />
+    </template>
   </v-snackbar>
 
   <v-snackbar
@@ -447,6 +451,11 @@ const sendDraft = async () => {
 
   await composerStore.sendDraft()
   await refreshMailbox()
+}
+
+const retrySend = async () => {
+  composerStore.clearFeedback()
+  await sendDraft()
 }
 
 const toggleStar = async (messageId: string) => {
