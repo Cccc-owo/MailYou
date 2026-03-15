@@ -8,8 +8,27 @@ on:
     branches: [main]
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            builder-args: --linux
+            artifacts: |
+              release/*.AppImage
+              release/*.deb
+              release/*.rpm
+              release/*.zip
+          - os: windows-latest
+            platform: windows
+            builder-args: --win
+            artifacts: |
+              release/*.exe
+              release/*.zip
+
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -18,23 +37,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
       - run: npm run build
-      - run: npx electron-builder --linux --publish never
+      - run: npx electron-builder ${{ matrix.builder-args }} --publish never
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-appimage
-          path: release/*.AppImage
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-deb
-          path: release/*.deb
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-rpm
-          path: release/*.rpm
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-zip
-          path: release/*.zip
+          name: ${{ matrix.platform }}-dist
+          path: ${{ matrix.artifacts }}
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:

@@ -18,7 +18,11 @@
     "dist:appimage": "npm run build && electron-builder --linux AppImage",
     "dist:deb": "npm run build && electron-builder --linux deb",
     "dist:rpm": "npm run build && electron-builder --linux rpm",
-    "dist:zip": "npm run build && electron-builder --linux zip"
+    "dist:zip": "npm run build && electron-builder --linux zip",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:win:nsis": "npm run build && electron-builder --win nsis",
+    "dist:win:portable": "npm run build && electron-builder --win portable",
+    "dist:win:zip": "npm run build && electron-builder --win zip"
   },
   "author": "MailYou Devs",
   "description": "Desktop email client",
