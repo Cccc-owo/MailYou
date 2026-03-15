@@ -162,17 +162,35 @@ fn data_root() -> io::Result<PathBuf> {
         }
     }
 
-    if let Ok(value) = env::var("XDG_DATA_HOME") {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            return Ok(PathBuf::from(trimmed));
+    #[cfg(target_os = "windows")]
+    {
+        // %APPDATA% → C:\Users\<user>\AppData\Roaming
+        if let Ok(value) = env::var("APPDATA") {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Ok(PathBuf::from(trimmed));
+            }
         }
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "APPDATA environment variable not set",
+        ));
     }
 
-    let home = env::var("HOME")
-        .map(PathBuf::from)
-        .map_err(|error| io::Error::new(io::ErrorKind::NotFound, error.to_string()))?;
-    Ok(home.join(".local").join("share"))
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(value) = env::var("XDG_DATA_HOME") {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Ok(PathBuf::from(trimmed));
+            }
+        }
+
+        let home = env::var("HOME")
+            .map(PathBuf::from)
+            .map_err(|error| io::Error::new(io::ErrorKind::NotFound, error.to_string()))?;
+        Ok(home.join(".local").join("share"))
+    }
 }
 
 pub fn save_raw_email(message_id: &str, raw: &[u8]) -> io::Result<()> {
