@@ -250,6 +250,9 @@
     "mergeDialogTitle": "合并重复联系人",
     "mergeKeep": "保留",
     "mergeRemove": "移除",
-    "mergeConfirm": "合并选中项"
+    "mergeConfirm": "合并选中项",
+    "addEmail": "添加邮箱",
+    "addPhone": "添加电话",
+    "emailRequired": "至少需要一个邮箱"
   }
 }

@@ -939,7 +939,7 @@ pub fn search_contacts(query: &str) -> Result<Vec<Contact>, BackendError> {
     let results: Vec<Contact> = state
         .contacts
         .iter()
-        .filter(|c| c.name.to_lowercase().contains(&q) || c.email.to_lowercase().contains(&q))
+        .filter(|c| c.name.to_lowercase().contains(&q) || c.emails.iter().any(|e| e.to_lowercase().contains(&q)))
         .take(20)
         .cloned()
         .collect();

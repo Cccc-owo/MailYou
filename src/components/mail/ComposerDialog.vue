@@ -126,7 +126,7 @@ import RichTextEditor from '@/components/mail/RichTextEditor.vue'
 
 const { t } = useI18n()
 const fileInput = ref<HTMLInputElement | null>(null)
-const suggestions = ref<(Contact & { displayLabel: string })[]>([])
+const suggestions = ref<(Contact & { email: string; displayLabel: string })[]>([])
 const isSearching = ref(false)
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -154,7 +154,7 @@ const parseRecipients = (value: string): string[] => {
 }
 
 // Serialize combobox array back to comma string
-const serializeRecipients = (items: (string | Contact)[]): string => {
+const serializeRecipients = (items: (string | (Contact & { email: string }))[]): string => {
   return items
     .map((item) => {
       if (typeof item === 'string') return item
@@ -163,11 +163,11 @@ const serializeRecipients = (items: (string | Contact)[]): string => {
     .join(', ')
 }
 
-const updateField = (field: 'to' | 'cc' | 'bcc', items: (string | Contact)[]) => {
+const updateField = (field: 'to' | 'cc' | 'bcc', items: (string | (Contact & { email: string }))[]) => {
   emit('update:draft', { ...props.draft, [field]: serializeRecipients(items) })
 }
 
-const chipLabel = (item: string | Contact) => {
+const chipLabel = (item: string | (Contact & { email: string })) => {
   if (typeof item === 'string') return item
   return item.name || item.email
 }
@@ -182,7 +182,9 @@ const onSearch = (query: string) => {
     isSearching.value = true
     try {
       const results = await mailRepository.searchContacts(query)
-      suggestions.value = results.map((c) => ({ ...c, displayLabel: `${c.name} <${c.email}>` }))
+      suggestions.value = results.flatMap((c) =>
+        c.emails.map((email) => ({ ...c, email, displayLabel: `${c.name} <${email}>` })),
+      )
     } catch {
       suggestions.value = []
     } finally {

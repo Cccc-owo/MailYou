@@ -1,8 +1,8 @@
 export interface Contact {
   id: string
   name: string
-  email: string
-  phone?: string
+  emails: string[]
+  phones: string[]
   notes?: string
   groupId?: string
   avatarPath?: string

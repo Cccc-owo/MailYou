@@ -9,7 +9,7 @@ export function parseVCard(text: string): Partial<Contact>[] {
   for (const block of blocks) {
     if (!block.trim() || !/BEGIN:VCARD/i.test(block)) continue
 
-    const contact: Partial<Contact> = {}
+    const contact: Partial<Contact> & { emails?: string[]; phones?: string[] } = {}
     const lines = unfoldVCardLines(block)
 
     for (const line of lines) {
@@ -23,10 +23,12 @@ export function parseVCard(text: string): Partial<Contact>[] {
           contact.name = value
           break
         case 'EMAIL':
-          contact.email = value
+          if (!contact.emails) contact.emails = []
+          contact.emails.push(value)
           break
         case 'TEL':
-          contact.phone = value
+          if (!contact.phones) contact.phones = []
+          contact.phones.push(value)
           break
         case 'NOTE':
           contact.notes = value
@@ -34,7 +36,7 @@ export function parseVCard(text: string): Partial<Contact>[] {
       }
     }
 
-    if (contact.name || contact.email) {
+    if (contact.name || contact.emails?.length) {
       contacts.push(contact)
     }
   }
@@ -55,9 +57,13 @@ export function generateVCard(contacts: Contact[]): string {
   return contacts
     .map((c) => {
       const lines = ['BEGIN:VCARD', 'VERSION:3.0']
-      lines.push(`FN:${escapeVCardValue(c.name || c.email)}`)
-      if (c.email) lines.push(`EMAIL:${c.email}`)
-      if (c.phone) lines.push(`TEL:${c.phone}`)
+      lines.push(`FN:${escapeVCardValue(c.name || c.emails[0] || '')}`)
+      for (const email of c.emails) {
+        lines.push(`EMAIL:${email}`)
+      }
+      for (const phone of c.phones) {
+        lines.push(`TEL:${phone}`)
+      }
       if (c.notes) lines.push(`NOTE:${escapeVCardValue(c.notes)}`)
       lines.push('END:VCARD')
       return lines.join('\r\n')
@@ -85,13 +91,19 @@ export function parseCsv(text: string): Partial<Contact>[] {
     const cols = parseCsvRow(lines[i])
     const contact: Partial<Contact> = {}
     if (nameIdx >= 0) contact.name = cols[nameIdx] ?? ''
-    if (emailIdx >= 0) contact.email = cols[emailIdx] ?? ''
-    if (phoneIdx >= 0) contact.phone = cols[phoneIdx] || undefined
+    if (emailIdx >= 0) {
+      const email = cols[emailIdx]?.trim()
+      contact.emails = email ? [email] : []
+    }
+    if (phoneIdx >= 0) {
+      const phone = cols[phoneIdx]?.trim()
+      contact.phones = phone ? [phone] : []
+    }
     if (notesIdx >= 0) contact.notes = cols[notesIdx] || undefined
     // groupIdx is parsed but groupId mapping is left to the caller
     void groupIdx
 
-    if (contact.name || contact.email) {
+    if (contact.name || contact.emails?.length) {
       contacts.push(contact)
     }
   }
@@ -160,8 +172,8 @@ export function generateCsv(contacts: Contact[]): string {
     rows.push(
       [
         escapeCsvField(c.name || ''),
-        escapeCsvField(c.email || ''),
-        escapeCsvField(c.phone || ''),
+        escapeCsvField(c.emails[0] || ''),
+        escapeCsvField(c.phones[0] || ''),
         escapeCsvField(c.notes || ''),
       ].join(','),
     )

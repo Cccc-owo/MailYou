@@ -12,20 +12,20 @@
         <div class="contact-detail__avatar-wrap mr-4" @click="triggerAvatarPicker">
           <v-avatar color="primary" size="56">
             <v-img v-if="avatarSrc" :src="avatarSrc" cover />
-            <span v-else class="text-h6">{{ initials(contact.name || contact.email) }}</span>
+            <span v-else class="text-h6">{{ initials(contact.name || contact.emails[0] || '') }}</span>
           </v-avatar>
           <div class="contact-detail__avatar-overlay">
             <v-icon size="20" icon="mdi-camera" color="white" />
           </div>
         </div>
         <div>
-          <div class="text-h6">{{ contact.name || contact.email }}</div>
-          <div class="text-body-2 text-medium-emphasis">{{ contact.email }}</div>
+          <div class="text-h6">{{ contact.name || contact.emails[0] || '' }}</div>
+          <div v-for="(email, i) in contact.emails" :key="i" class="text-body-2 text-medium-emphasis">{{ email }}</div>
         </div>
       </div>
 
       <v-list lines="two" density="compact">
-        <v-list-item v-if="contact.phone" prepend-icon="mdi-phone-outline" :title="t('contacts.phone')" :subtitle="contact.phone" />
+        <v-list-item v-for="(phone, i) in contact.phones" :key="'ph'+i" prepend-icon="mdi-phone-outline" :title="t('contacts.phone')" :subtitle="phone" />
         <v-list-item v-if="contact.notes" prepend-icon="mdi-note-text-outline" :title="t('contacts.notes')" :subtitle="contact.notes" />
         <v-list-item v-if="groupName" prepend-icon="mdi-label-outline" :title="t('contacts.group')" :subtitle="groupName" />
       </v-list>
@@ -43,8 +43,44 @@
       <div class="text-h6 mb-4">{{ isCreating ? t('contacts.addContact') : t('contacts.editContact') }}</div>
       <div class="d-flex flex-column ga-3">
         <v-text-field v-model="form.name" :label="t('contacts.name')" autofocus />
-        <v-text-field v-model="form.email" :label="t('contacts.email')" :rules="emailRules" />
-        <v-text-field v-model="form.phone" :label="t('contacts.phone')" />
+
+        <div v-for="(_, i) in form.emails" :key="i" class="d-flex align-center ga-2">
+          <v-text-field
+            v-model="form.emails[i]"
+            :label="t('contacts.email') + (form.emails.length > 1 ? ` ${i + 1}` : '')"
+            :rules="emailRules"
+            density="compact"
+          />
+          <v-btn
+            v-if="form.emails.length > 1"
+            icon="mdi-close"
+            size="small"
+            variant="text"
+            @click="form.emails.splice(i, 1)"
+          />
+        </div>
+        <v-btn variant="text" size="small" prepend-icon="mdi-plus" class="align-self-start" @click="form.emails.push('')">
+          {{ t('contacts.addEmail') }}
+        </v-btn>
+
+        <div v-for="(_, i) in form.phones" :key="'ph'+i" class="d-flex align-center ga-2">
+          <v-text-field
+            v-model="form.phones[i]"
+            :label="t('contacts.phone') + (form.phones.length > 1 ? ` ${i + 1}` : '')"
+            density="compact"
+          />
+          <v-btn
+            v-if="form.phones.length > 1"
+            icon="mdi-close"
+            size="small"
+            variant="text"
+            @click="form.phones.splice(i, 1)"
+          />
+        </div>
+        <v-btn variant="text" size="small" prepend-icon="mdi-plus" class="align-self-start" @click="form.phones.push('')">
+          {{ t('contacts.addPhone') }}
+        </v-btn>
+
         <v-textarea v-model="form.notes" :label="t('contacts.notes')" rows="3" />
         <v-select
           v-model="form.groupId"
@@ -100,14 +136,17 @@ const isCreating = computed({
   set: (v) => emit('update:isCreating', v),
 })
 
-const form = ref({ name: '', email: '', phone: '', notes: '', groupId: null as string | null })
+const form = ref({ name: '', emails: [''] as string[], phones: [''] as string[], notes: '', groupId: null as string | null })
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const emailRules = [
   (v: string) => !!v.trim() || t('contacts.invalidEmail'),
   (v: string) => emailRegex.test(v) || t('contacts.invalidEmail'),
 ]
-const isEmailValid = computed(() => emailRules.every((rule) => rule(form.value.email) === true))
+const isEmailValid = computed(() =>
+  form.value.emails.length > 0 &&
+  form.value.emails.every((e) => emailRules.every((rule) => rule(e) === true)),
+)
 
 const avatarSrc = computed(() => contactsStore.avatarUrl(props.contact))
 
@@ -155,8 +194,8 @@ const startEdit = () => {
   if (!props.contact) return
   form.value = {
     name: props.contact.name,
-    email: props.contact.email,
-    phone: props.contact.phone ?? '',
+    emails: props.contact.emails.length ? [...props.contact.emails] : [''],
+    phones: props.contact.phones.length ? [...props.contact.phones] : [''],
     notes: props.contact.notes ?? '',
     groupId: props.contact.groupId ?? null,
   }
@@ -164,11 +203,13 @@ const startEdit = () => {
 }
 
 const saveEdit = () => {
+  const emails = form.value.emails.filter((e) => e.trim())
+  const phones = form.value.phones.filter((p) => p.trim())
   if (props.isCreating) {
     emit('create', {
       name: form.value.name,
-      email: form.value.email,
-      phone: form.value.phone || undefined,
+      emails,
+      phones,
       notes: form.value.notes || undefined,
       groupId: form.value.groupId ?? undefined,
     })
@@ -176,8 +217,8 @@ const saveEdit = () => {
     emit('save', {
       ...props.contact,
       name: form.value.name,
-      email: form.value.email,
-      phone: form.value.phone || undefined,
+      emails,
+      phones,
       notes: form.value.notes || undefined,
       groupId: form.value.groupId ?? undefined,
     })
@@ -196,7 +237,7 @@ watch(
   () => props.isCreating,
   (creating) => {
     if (creating) {
-      form.value = { name: '', email: '', phone: '', notes: '', groupId: props.defaultGroupId ?? null }
+      form.value = { name: '', emails: [''], phones: [''], notes: '', groupId: props.defaultGroupId ?? null }
     }
   },
 )

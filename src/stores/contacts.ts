@@ -47,8 +47,8 @@ export const useContactsStore = defineStore('contacts', () => {
     const full: Contact = {
       id: '',
       name: contact.name ?? '',
-      email: contact.email ?? '',
-      phone: contact.phone,
+      emails: contact.emails?.length ? contact.emails : [],
+      phones: contact.phones?.length ? contact.phones : [],
       notes: contact.notes,
       groupId: contact.groupId,
       sourceAccountId: contact.sourceAccountId,

@@ -34,11 +34,11 @@
         <template #prepend>
           <v-avatar color="primary" size="36">
             <v-img v-if="contactsStore.avatarUrl(contact)" :src="contactsStore.avatarUrl(contact)!" cover />
-            <span v-else class="text-body-2">{{ initials(contact.name || contact.email) }}</span>
+            <span v-else class="text-body-2">{{ initials(contact.name || contact.emails[0] || '') }}</span>
           </v-avatar>
         </template>
-        <v-list-item-title>{{ contact.name || contact.email }}</v-list-item-title>
-        <v-list-item-subtitle>{{ contact.email }}</v-list-item-subtitle>
+        <v-list-item-title>{{ contact.name || contact.emails[0] || '' }}</v-list-item-title>
+        <v-list-item-subtitle>{{ contact.emails.join(', ') }}</v-list-item-subtitle>
       </v-list-item>
 
       <div v-if="contacts.length === 0" class="pa-6 text-center text-medium-emphasis">

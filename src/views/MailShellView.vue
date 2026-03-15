@@ -732,7 +732,7 @@ const handleContextMove = async (messageId: string, folderId: string) => {
 
 // --- Sidebar context menu handlers ---
 const handleSaveContact = async (data: { name: string; email: string }) => {
-  await contactsStore.createContact({ name: data.name, email: data.email })
+  await contactsStore.createContact({ name: data.name, emails: [data.email] })
 }
 
 const handleComposeTo = (data: { name: string; email: string }) => {

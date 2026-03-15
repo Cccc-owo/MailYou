@@ -124,7 +124,7 @@ const displayContacts = computed(() => {
   const base = contactsStore.filteredContacts
   if (!searchQuery.value.trim()) return base
   const q = searchQuery.value.toLowerCase()
-  return base.filter((c) => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q))
+  return base.filter((c) => c.name.toLowerCase().includes(q) || c.emails.some((e) => e.toLowerCase().includes(q)))
 })
 
 const handleSearch = (val: string) => {
@@ -178,7 +178,7 @@ const composeToContact = (contact: Contact) => {
   const accountId = accountsStore.currentAccountId
   if (!accountId) return
   composerStore.openNew(accountId)
-  composerStore.draft.to = `${contact.name} <${contact.email}>`
+  composerStore.draft.to = `${contact.name} <${contact.emails[0] || ''}>`
 }
 
 // Import / Export / Merge

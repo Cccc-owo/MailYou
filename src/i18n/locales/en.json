@@ -250,6 +250,9 @@
     "mergeDialogTitle": "Merge duplicate contacts",
     "mergeKeep": "Keep",
     "mergeRemove": "Remove",
-    "mergeConfirm": "Merge selected"
+    "mergeConfirm": "Merge selected",
+    "addEmail": "Add email",
+    "addPhone": "Add phone",
+    "emailRequired": "At least one email is required"
   }
 }

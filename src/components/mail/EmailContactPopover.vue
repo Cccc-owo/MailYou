@@ -19,10 +19,10 @@
         <div class="text-body-2 text-medium-emphasis text-center mb-3">{{ email }}</div>
 
         <template v-if="matched">
-          <div v-if="matched.phone || matched.notes || matchedGroupName" class="popover-details mb-2">
-            <div v-if="matched.phone" class="popover-detail-row">
+          <div v-if="matched.phones.length || matched.notes || matchedGroupName" class="popover-details mb-2">
+            <div v-for="(phone, i) in matched.phones" :key="'ph'+i" class="popover-detail-row">
               <v-icon size="16" icon="mdi-phone-outline" color="medium-emphasis" />
-              <span>{{ matched.phone }}</span>
+              <span>{{ phone }}</span>
             </div>
             <div v-if="matchedGroupName" class="popover-detail-row">
               <v-icon size="16" icon="mdi-label-outline" color="medium-emphasis" />
@@ -78,7 +78,7 @@ defineEmits<{
 }>()
 
 const matched = computed(() =>
-  contactsStore.contacts.find((c) => c.email.toLowerCase() === props.email.toLowerCase()) ?? null,
+  contactsStore.contacts.find((c) => c.emails.some((e) => e.toLowerCase() === props.email.toLowerCase())) ?? null,
 )
 
 const matchedAvatarUrl = computed(() => contactsStore.avatarUrl(matched.value))

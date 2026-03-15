@@ -419,7 +419,7 @@ const senderInitials = computed(() => {
 const senderAvatarUrl = computed(() => {
   if (!props.message) return null
   const matched = contactsStore.contacts.find(
-    (c) => c.email.toLowerCase() === props.message!.fromEmail.toLowerCase(),
+    (c) => c.emails.some((e) => e.toLowerCase() === props.message!.fromEmail.toLowerCase()),
   )
   return contactsStore.avatarUrl(matched)
 })

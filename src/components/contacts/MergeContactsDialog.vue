@@ -18,23 +18,23 @@
                 class="mr-2"
                 @update:model-value="toggleGroup(gi, $event)"
               />
-              <span>{{ group[0].email }} ({{ group.length }})</span>
+              <span>{{ groupSharedEmails(group).join(', ') }} ({{ group.length }})</span>
             </v-list-subheader>
 
             <v-list-item v-for="(contact, ci) in group" :key="contact.id" class="pl-10">
               <template #prepend>
                 <v-avatar color="primary" size="32" class="mr-3">
                   <v-img v-if="contactsStore.avatarUrl(contact)" :src="contactsStore.avatarUrl(contact)!" cover />
-                  <span v-else class="text-caption">{{ initials(contact.name || contact.email) }}</span>
+                  <span v-else class="text-caption">{{ initials(contact.name || contact.emails[0] || '') }}</span>
                 </v-avatar>
               </template>
               <v-list-item-title>
-                {{ contact.name || contact.email }}
+                {{ contact.name || contact.emails[0] || '' }}
                 <v-chip v-if="ci === 0" size="x-small" color="primary" class="ml-1">{{ t('contacts.mergeKeep') }}</v-chip>
                 <v-chip v-else size="x-small" color="error" variant="outlined" class="ml-1">{{ t('contacts.mergeRemove') }}</v-chip>
               </v-list-item-title>
               <v-list-item-subtitle>
-                {{ [contact.phone, contact.notes].filter(Boolean).join(' · ') || contact.email }}
+                {{ [contact.phones.join(', '), contact.notes].filter(Boolean).join(' · ') || contact.emails.join(', ') }}
               </v-list-item-subtitle>
             </v-list-item>
 
@@ -80,23 +80,67 @@ const emit = defineEmits<{
 
 const selectedGroups = ref(new Set<number>())
 
+// Group contacts that share any email address (union-find style)
 const duplicateGroups = computed(() => {
-  const groups = new Map<string, Contact[]>()
-  for (const c of props.contacts) {
-    if (!c.email) continue
-    const key = c.email.toLowerCase()
-    const list = groups.get(key)
-    if (list) list.push(c)
-    else groups.set(key, [c])
+  const emailToContacts = new Map<string, Set<number>>()
+
+  for (let i = 0; i < props.contacts.length; i++) {
+    const c = props.contacts[i]
+    for (const email of c.emails) {
+      const key = email.toLowerCase()
+      const set = emailToContacts.get(key)
+      if (set) set.add(i)
+      else emailToContacts.set(key, new Set([i]))
+    }
   }
-  return Array.from(groups.values()).filter((g) => g.length > 1)
+
+  // Merge sets that share contacts (transitive grouping)
+  const visited = new Set<number>()
+  const groups: Contact[][] = []
+
+  for (let i = 0; i < props.contacts.length; i++) {
+    if (visited.has(i)) continue
+    const group = new Set<number>()
+    const queue = [i]
+    while (queue.length) {
+      const idx = queue.pop()!
+      if (group.has(idx)) continue
+      group.add(idx)
+      visited.add(idx)
+      for (const email of props.contacts[idx].emails) {
+        const related = emailToContacts.get(email.toLowerCase())
+        if (related) {
+          for (const r of related) {
+            if (!group.has(r)) queue.push(r)
+          }
+        }
+      }
+    }
+    if (group.size > 1) {
+      groups.push(Array.from(group).map((idx) => props.contacts[idx]))
+    }
+  }
+
+  return groups
 })
+
+const groupSharedEmails = (group: Contact[]): string[] => {
+  const counts = new Map<string, number>()
+  for (const c of group) {
+    for (const e of c.emails) {
+      const key = e.toLowerCase()
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+  }
+  return Array.from(counts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([email]) => email)
+}
 
 watch(
   () => props.modelValue,
   (open) => {
     if (open) {
-      // Select all groups by default
       selectedGroups.value = new Set(duplicateGroups.value.map((_, i) => i))
     }
   },
@@ -122,15 +166,35 @@ const confirmMerge = async () => {
       : 0
     const primary = { ...group[primaryIdx] }
 
-    // Fill empty fields from others
+    // Union all emails, deduplicate
+    const allEmails = new Set(primary.emails.map((e) => e.toLowerCase()))
+    const emailsList = [...primary.emails]
+    const allPhones = new Set(primary.phones.map((p) => p.replace(/\s/g, '')))
+    const phonesList = [...primary.phones]
+
     for (const other of group) {
       if (other.id === primary.id) continue
       if (!primary.name && other.name) primary.name = other.name
-      if (!primary.phone && other.phone) primary.phone = other.phone
       if (!primary.notes && other.notes) primary.notes = other.notes
       if (!primary.avatarPath && other.avatarPath) primary.avatarPath = other.avatarPath
       if (!primary.groupId && other.groupId) primary.groupId = other.groupId
+      for (const e of other.emails) {
+        if (!allEmails.has(e.toLowerCase())) {
+          allEmails.add(e.toLowerCase())
+          emailsList.push(e)
+        }
+      }
+      for (const p of other.phones) {
+        const normalized = p.replace(/\s/g, '')
+        if (!allPhones.has(normalized)) {
+          allPhones.add(normalized)
+          phonesList.push(p)
+        }
+      }
     }
+
+    primary.emails = emailsList
+    primary.phones = phonesList
 
     // Update primary
     await contactsStore.updateContact(primary.id, primary as Contact)
