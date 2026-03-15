@@ -1005,13 +1005,20 @@ async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(
     }
 
     let email = if draft.attachments.is_empty() {
+        let plain_text = strip_html_tags(&draft.body);
+        let alternative = MultiPart::alternative()
+            .singlepart(SinglePart::plain(plain_text))
+            .singlepart(SinglePart::html(draft.body.clone()));
         builder
             .subject(&draft.subject)
-            .body(draft.body.clone())
+            .multipart(alternative)
             .map_err(|e| BackendError::internal(format!("Failed to build email: {e}")))?
     } else {
-        let body_part = SinglePart::plain(draft.body.clone());
-        let mut multipart = MultiPart::mixed().singlepart(body_part);
+        let plain_text = strip_html_tags(&draft.body);
+        let alternative = MultiPart::alternative()
+            .singlepart(SinglePart::plain(plain_text))
+            .singlepart(SinglePart::html(draft.body.clone()));
+        let mut multipart = MultiPart::mixed().multipart(alternative);
 
         for att in &draft.attachments {
             let decoded = base64_decode(&att.data_base64).unwrap_or_default();

@@ -95,7 +95,37 @@
     "saveDraft": "Save draft",
     "send": "Send",
     "attach": "Attach",
-    "removeAttachment": "Remove attachment"
+    "removeAttachment": "Remove attachment",
+    "toolbar": {
+      "bold": "Bold",
+      "italic": "Italic",
+      "underline": "Underline",
+      "strikethrough": "Strikethrough",
+      "heading1": "Heading 1",
+      "heading2": "Heading 2",
+      "heading3": "Heading 3",
+      "bulletList": "Bullet list",
+      "orderedList": "Ordered list",
+      "blockquote": "Blockquote",
+      "link": "Link",
+      "code": "Code block",
+      "undo": "Undo",
+      "redo": "Redo",
+      "clearFormatting": "Clear formatting",
+      "textColor": "Text color",
+      "highlight": "Highlight",
+      "resetColor": "Reset",
+      "alignLeft": "Align left",
+      "alignCenter": "Align center",
+      "alignRight": "Align right",
+      "horizontalRule": "Horizontal rule"
+    },
+    "recovery": {
+      "title": "Unsaved draft found",
+      "message": "You have an unsaved draft from a previous session. Would you like to restore it or start fresh?",
+      "restore": "Restore draft",
+      "discard": "Discard"
+    }
   },
   "settings": {
     "title": "Settings",

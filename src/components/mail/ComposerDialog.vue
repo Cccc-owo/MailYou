@@ -11,11 +11,9 @@
         <v-text-field :model-value="draft.cc" :label="t('composer.cc')" @update:model-value="$emit('update:draft', { ...draft, cc: $event })" />
         <v-text-field :model-value="draft.bcc" :label="t('composer.bcc')" @update:model-value="$emit('update:draft', { ...draft, bcc: $event })" />
         <v-text-field :model-value="draft.subject" :label="t('composer.subject')" @update:model-value="$emit('update:draft', { ...draft, subject: $event })" />
-        <v-textarea
+        <RichTextEditor
           :model-value="draft.body"
-          :label="t('composer.message')"
-          rows="12"
-          variant="solo-filled"
+          :placeholder="t('composer.message')"
           @update:model-value="$emit('update:draft', { ...draft, body: $event })"
         />
 
@@ -50,6 +48,7 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { DraftMessage } from '@/types/mail'
+import RichTextEditor from '@/components/mail/RichTextEditor.vue'
 
 const { t } = useI18n()
 const fileInput = ref<HTMLInputElement | null>(null)

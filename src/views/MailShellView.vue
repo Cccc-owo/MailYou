@@ -105,6 +105,20 @@
     @update:model-value="composerStore.isOpen = $event"
   />
 
+  <!-- Draft recovery dialog -->
+  <v-dialog v-model="composerStore.showRecoveryDialog" max-width="420" persistent>
+    <v-card>
+      <v-card-title>{{ t('composer.recovery.title') }}</v-card-title>
+      <v-card-text>{{ t('composer.recovery.message') }}</v-card-text>
+      <v-card-actions>
+        <v-btn variant="text" @click="composerStore.cancelRecovery()">{{ t('common.cancel') }}</v-btn>
+        <v-spacer />
+        <v-btn variant="text" @click="composerStore.discardAndProceed()">{{ t('composer.recovery.discard') }}</v-btn>
+        <v-btn color="primary" variant="tonal" @click="composerStore.recoverDraft()">{{ t('composer.recovery.restore') }}</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
   <!-- Delete confirmation dialog -->
   <v-dialog v-model="deleteConfirmDialog" max-width="400">
     <v-card>

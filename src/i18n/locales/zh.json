@@ -95,7 +95,37 @@
     "saveDraft": "保存草稿",
     "send": "发送",
     "attach": "添加附件",
-    "removeAttachment": "移除附件"
+    "removeAttachment": "移除附件",
+    "toolbar": {
+      "bold": "粗体",
+      "italic": "斜体",
+      "underline": "下划线",
+      "strikethrough": "删除线",
+      "heading1": "标题 1",
+      "heading2": "标题 2",
+      "heading3": "标题 3",
+      "bulletList": "无序列表",
+      "orderedList": "有序列表",
+      "blockquote": "引用",
+      "link": "链接",
+      "code": "代码块",
+      "undo": "撤销",
+      "redo": "重做",
+      "clearFormatting": "清除格式",
+      "textColor": "文字颜色",
+      "highlight": "背景高亮",
+      "resetColor": "重置",
+      "alignLeft": "左对齐",
+      "alignCenter": "居中对齐",
+      "alignRight": "右对齐",
+      "horizontalRule": "分割线"
+    },
+    "recovery": {
+      "title": "发现未保存的草稿",
+      "message": "您有一封未保存的草稿，是否要恢复它？",
+      "restore": "恢复草稿",
+      "discard": "丢弃"
+    }
   },
   "settings": {
     "title": "设置",
