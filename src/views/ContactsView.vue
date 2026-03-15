@@ -63,7 +63,7 @@
     </v-card>
   </v-dialog>
 
-  <v-snackbar v-model="snackbar" location="bottom right" color="surface-variant">
+  <v-snackbar v-model="snackbar" location="bottom right" color="primary">
     {{ snackbarText }}
   </v-snackbar>
 </template>
