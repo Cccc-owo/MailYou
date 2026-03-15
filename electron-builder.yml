@@ -48,8 +48,6 @@ win:
   target:
     - target: nsis
       arch: [x64]
-    - target: portable
-      arch: [x64]
     - target: zip
       arch: [x64]
 
@@ -58,6 +56,3 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false
-
-portable:
-  artifactName: ${productName}-Portable-${version}-${arch}.exe
