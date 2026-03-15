@@ -98,6 +98,7 @@
         @compose-to="handleComposeTo"
         @view-contact="handleViewContact"
         @toggle-star="toggleStarCurrentMessage"
+        @export-pdf="exportCurrentMessagePdf"
       />
     </template>
   </MailShellLayout>
@@ -207,6 +208,7 @@ import MailReader from '@/components/mail/MailReader.vue'
 import MailSidebar from '@/components/mail/MailSidebar.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
 import { useContextMenu } from '@/composables/useContextMenu'
+import DOMPurify from 'dompurify'
 import { useAccountsStore } from '@/stores/accounts'
 import { useComposerStore } from '@/stores/composer'
 import { useMailboxesStore } from '@/stores/mailboxes'
@@ -215,7 +217,7 @@ import { useUiStore } from '@/stores/ui'
 import { useContactsStore } from '@/stores/contacts'
 import { mailRepository } from '@/services/mail'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 const accountsStore = useAccountsStore()
 const mailboxesStore = useMailboxesStore()
@@ -471,6 +473,58 @@ const toggleStarCurrentMessage = async () => {
   }
 
   await toggleStar(messagesStore.selectedMessageId)
+}
+
+const buildPrintHtml = (subject: string, from: string, to: string[], cc: string[], date: string, body: string) => {
+  const toLine = to.join(', ')
+  const ccLine = cc.length > 0 ? `<p style="margin:2px 0;color:#555"><strong>${t('reader.ccLabel')}</strong>${cc.join(', ')}</p>` : ''
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${subject}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 32px; color: #222; }
+  h1 { font-size: 1.3rem; margin: 0 0 12px; }
+  .meta { border-bottom: 1px solid #ddd; padding-bottom: 12px; margin-bottom: 16px; font-size: 0.85rem; color: #555; }
+  .meta p { margin: 2px 0; }
+  .body { line-height: 1.7; }
+  .body img { max-width: 100%; }
+</style></head><body>
+<h1>${subject}</h1>
+<div class="meta">
+  <p><strong>${t('reader.from', 'From')}: </strong>${from}</p>
+  <p><strong>${t('reader.to')}</strong>${toLine}</p>
+  ${ccLine}
+  <p style="margin:2px 0;color:#555"><strong>${t('reader.date', 'Date')}: </strong>${date}</p>
+</div>
+<div class="body">${body}</div>
+</body></html>`
+}
+
+const exportCurrentMessagePdf = () => {
+  const msg = messagesStore.selectedMessage
+  if (!msg) return
+  const date = new Intl.DateTimeFormat(locale.value, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(msg.receivedAt))
+  const sanitizedBody = DOMPurify.sanitize(msg.body, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'td', 'th',
+      'div', 'span', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code',
+      'hr', 'sub', 'sup', 'center', 'font', 'small',
+    ],
+    ALLOWED_ATTR: [
+      'href', 'src', 'alt', 'title', 'width', 'height', 'style', 'class',
+      'align', 'valign', 'border', 'cellpadding', 'cellspacing', 'bgcolor',
+      'color', 'size', 'face', 'colspan', 'rowspan',
+    ],
+    ALLOW_DATA_ATTR: false,
+  })
+  const html = buildPrintHtml(msg.subject, `${msg.from} <${msg.fromEmail}>`, msg.to, msg.cc, date, sanitizedBody)
+  window.windowControls?.exportPdf(html, msg.subject)
 }
 
 const promptDeleteCurrentMessage = () => {

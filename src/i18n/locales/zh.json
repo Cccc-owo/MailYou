@@ -86,7 +86,10 @@
     "selectMessage": "选择一封邮件",
     "noMatchingMessageHint": "当前搜索未在此文件夹中匹配到任何已缓存的邮件。",
     "noMessageSelectedHint": "此文件夹为空，或当前未选择任何邮件。",
-    "selectMessageHint": "从列表中选择一封邮件开始阅读。"
+    "selectMessageHint": "从列表中选择一封邮件开始阅读。",
+    "exportPdf": "导出为 PDF",
+    "from": "发件人",
+    "date": "日期"
   },
   "composer": {
     "compose": "撰写邮件",

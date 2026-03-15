@@ -1,4 +1,7 @@
-import { BrowserWindow, ipcMain, shell } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { writeFile, unlink } from 'fs/promises'
+import { join } from 'path'
+import { tmpdir } from 'os'
 
 let registered = false
 
@@ -48,6 +51,32 @@ export const registerWindowIpc = () => {
     if (win) {
       if (win.isMinimized()) win.restore()
       win.focus()
+    }
+  })
+
+  ipcMain.handle('window:exportPdf', async (_event, html: string, suggestedName: string) => {
+    const safeName = (suggestedName || 'email').replace(/[/\\?%*:|"<>]/g, '_')
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      defaultPath: `${safeName}.pdf`,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    })
+    if (canceled || !filePath) return false
+
+    const tmpHtmlPath = join(tmpdir(), `mailyou-export-${Date.now()}.html`)
+    await writeFile(tmpHtmlPath, html, 'utf-8')
+
+    const win = new BrowserWindow({ show: false, width: 800, height: 600 })
+    try {
+      await win.loadFile(tmpHtmlPath)
+      const pdfData = await win.webContents.printToPDF({
+        printBackground: true,
+      })
+      await writeFile(filePath, pdfData)
+      shell.showItemInFolder(filePath)
+      return true
+    } finally {
+      win.close()
+      unlink(tmpHtmlPath).catch(() => {})
     }
   })
 }

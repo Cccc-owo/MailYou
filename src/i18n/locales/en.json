@@ -86,7 +86,10 @@
     "selectMessage": "Select a message",
     "noMatchingMessageHint": "The current search did not match any cached messages in this folder.",
     "noMessageSelectedHint": "This folder is empty or no message is currently selected.",
-    "selectMessageHint": "Choose a message from the list to start reading."
+    "selectMessageHint": "Choose a message from the list to start reading.",
+    "exportPdf": "Export as PDF",
+    "from": "From",
+    "date": "Date"
   },
   "composer": {
     "compose": "Compose",

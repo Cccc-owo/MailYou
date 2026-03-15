@@ -9,6 +9,11 @@
         <v-btn variant="text" size="small" prepend-icon="mdi-delete-outline" color="error" @click="$emit('delete')">{{ t('common.delete') }}</v-btn>
       </div>
       <div class="mail-reader__toolbar-secondary">
+        <v-tooltip :text="t('reader.exportPdf')" location="bottom">
+          <template #activator="{ props: tip }">
+            <v-btn v-bind="tip" variant="text" size="small" icon="mdi-file-pdf-box" @click="$emit('export-pdf')" />
+          </template>
+        </v-tooltip>
         <v-menu>
           <template #activator="{ props: menuProps }">
             <v-btn v-bind="menuProps" variant="text" size="small" prepend-icon="mdi-dots-horizontal-circle-outline">
@@ -380,6 +385,7 @@ defineEmits<{
   'toggle-read': []
   'toggle-star': []
   move: [folderId: string]
+  'export-pdf': []
   'save-contact': [data: { name: string; email: string }]
   'compose-to': [data: { name: string; email: string }]
   'view-contact': [contact: import('@/types/contact').Contact]

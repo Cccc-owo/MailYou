@@ -5,4 +5,5 @@ export interface WindowControlsBridge {
   isMaximized(): Promise<boolean>
   openExternal(url: string): Promise<void>
   focus(): Promise<void>
+  exportPdf(html: string, fileName: string): Promise<boolean>
 }

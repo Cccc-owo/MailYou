@@ -42,6 +42,7 @@ const windowControls: WindowControlsBridge = {
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   openExternal: (url) => ipcRenderer.invoke('window:openExternal', url),
   focus: () => ipcRenderer.invoke('window:focus'),
+  exportPdf: (html, fileName) => ipcRenderer.invoke('window:exportPdf', html, fileName),
 }
 
 contextBridge.exposeInMainWorld('mailyou', mailyou)
