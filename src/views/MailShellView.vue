@@ -86,6 +86,7 @@
         :folders="mailboxesStore.folders"
         :current-folder-id="mailboxesStore.currentFolderId"
         :current-folder-kind="mailboxesStore.currentFolder?.kind ?? null"
+        :is-pop3="accountsStore.isCurrentAccountPop3"
         @archive="archiveCurrentMessage"
         @restore="restoreCurrentMessage"
         @delete="promptDeleteCurrentMessage"

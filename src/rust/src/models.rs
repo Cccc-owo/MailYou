@@ -15,6 +15,7 @@ pub struct MailAccount {
     pub name: String,
     pub email: String,
     pub provider: String,
+    pub incoming_protocol: String,
     pub color: String,
     pub initials: String,
     pub unread_count: u32,
@@ -99,6 +100,8 @@ pub struct AccountSetupDraft {
     pub display_name: String,
     pub email: String,
     pub provider: String,
+    #[serde(default = "default_incoming_protocol")]
+    pub incoming_protocol: String,
     pub incoming_host: String,
     pub incoming_port: u16,
     pub outgoing_host: String,
@@ -108,9 +111,15 @@ pub struct AccountSetupDraft {
     pub use_tls: bool,
 }
 
+fn default_incoming_protocol() -> String {
+    "imap".into()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountConfig {
+    #[serde(default = "default_incoming_protocol")]
+    pub incoming_protocol: String,
     pub incoming_host: String,
     pub incoming_port: u16,
     pub outgoing_host: String,

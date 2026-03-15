@@ -9,15 +9,21 @@
     <v-container class="account-setup-page__content" max-width="720">
       <v-card class="pa-6">
         <div class="text-overline mb-2">{{ t('accountSetup.title') }}</div>
-        <div class="text-h4 mb-2">{{ isEditMode ? t('accountSetup.editHeading') : t('accountSetup.heading') }}</div>
-        <div class="text-body-1 text-medium-emphasis mb-6">
-          {{ t('accountSetup.description') }}
-        </div>
+        <div class="text-h4 mb-6">{{ isEditMode ? t('accountSetup.editHeading') : t('accountSetup.heading') }}</div>
 
         <v-form class="account-setup__form">
           <v-text-field v-model="draft.displayName" :label="t('accountSetup.displayName')" />
           <v-text-field v-model="draft.email" :label="t('accountSetup.emailAddress')" />
-          <v-text-field v-model="draft.provider" :label="t('accountSetup.provider')" />
+
+          <v-select
+            v-model="draft.incomingProtocol"
+            :items="protocolOptions"
+            :label="t('accountSetup.incomingProtocol')"
+            item-title="label"
+            item-value="value"
+            density="compact"
+          />
+
           <v-row>
             <v-col cols="8">
               <v-text-field v-model="draft.incomingHost" :label="t('accountSetup.incomingHost')" />
@@ -39,7 +45,6 @@
           <v-switch v-model="draft.useTls" :label="t('accountSetup.useTls')" color="primary" />
 
           <div class="d-flex justify-space-between align-center flex-wrap ga-3 mt-4">
-            <v-chip color="secondary">{{ t('accountSetup.backendNote') }}</v-chip>
             <div class="d-flex ga-3 flex-wrap">
               <v-btn
                 prepend-icon="mdi-connection"
@@ -98,6 +103,7 @@ const draft = reactive<AccountSetupDraft>({
   displayName: 'New account',
   email: '',
   provider: 'IMAP / SMTP',
+  incomingProtocol: 'imap',
   incomingHost: 'imap.example.com',
   incomingPort: 993,
   outgoingHost: 'smtp.example.com',
@@ -106,6 +112,11 @@ const draft = reactive<AccountSetupDraft>({
   password: '',
   useTls: true,
 })
+
+const protocolOptions = computed(() => [
+  { label: t('accountSetup.protocolImap'), value: 'imap' },
+  { label: t('accountSetup.protocolPop3'), value: 'pop3' },
+])
 
 // ── Provider autoconfig ──
 
@@ -133,6 +144,20 @@ watch(
     if (preset) {
       Object.assign(draft, preset)
       draft.username = email
+    }
+  },
+)
+
+watch(
+  () => draft.incomingProtocol,
+  (protocol) => {
+    if (isEditMode.value) return
+    if (protocol === 'pop3') {
+      draft.incomingHost = draft.incomingHost.replace('imap.', 'pop.')
+      draft.incomingPort = 995
+    } else if (protocol === 'imap') {
+      draft.incomingHost = draft.incomingHost.replace('pop.', 'imap.')
+      draft.incomingPort = 993
     }
   },
 )

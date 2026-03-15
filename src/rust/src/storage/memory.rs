@@ -46,8 +46,9 @@ pub fn create_account_without_test(draft: AccountSetupDraft) -> Result<MailAccou
     let account = MailAccount {
         id: account_id.clone(),
         name: base_name.to_string(),
-        email: draft.email,
-        provider: draft.provider,
+        email: draft.email.clone(),
+        provider: draft.provider.clone(),
+        incoming_protocol: draft.incoming_protocol.clone(),
         color: "#5B8DEF".into(),
         initials: if initials.is_empty() {
             "NA".into()
@@ -372,6 +373,15 @@ pub fn get_existing_bodies(account_id: &str) -> std::collections::HashMap<u32, (
     map
 }
 
+pub fn get_existing_message_ids(account_id: &str) -> std::collections::HashSet<String> {
+    let state = lock_state();
+    state.messages
+        .iter()
+        .filter(|m| m.account_id == account_id)
+        .map(|m| m.id.clone())
+        .collect()
+}
+
 pub fn get_account_state(account_id: &str) -> Option<StoredAccountState> {
     lock_state()
         .account_states
@@ -392,6 +402,7 @@ pub fn get_account_config(account_id: &str) -> Result<AccountSetupDraft, Backend
         display_name: account_state.account.name.clone(),
         email: account_state.account.email.clone(),
         provider: account_state.account.provider.clone(),
+        incoming_protocol: account_state.config.incoming_protocol.clone(),
         incoming_host: account_state.config.incoming_host.clone(),
         incoming_port: account_state.config.incoming_port,
         outgoing_host: account_state.config.outgoing_host.clone(),
@@ -427,6 +438,7 @@ pub fn update_account(account_id: &str, draft: AccountSetupDraft) -> Result<Mail
     account_state.account.name = base_name.to_string();
     account_state.account.email = draft.email.clone();
     account_state.account.provider = draft.provider.clone();
+    account_state.account.incoming_protocol = draft.incoming_protocol.clone();
     account_state.account.initials = if initials.is_empty() {
         "NA".into()
     } else {

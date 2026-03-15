@@ -5,6 +5,7 @@ export interface MailAccount {
   name: string
   email: string
   provider: string
+  incomingProtocol: string
   color: string
   initials: string
   unreadCount: number
@@ -16,6 +17,7 @@ export interface AccountSetupDraft {
   displayName: string
   email: string
   provider: string
+  incomingProtocol: string
   incomingHost: string
   incomingPort: number
   outgoingHost: string

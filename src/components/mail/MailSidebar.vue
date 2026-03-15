@@ -54,9 +54,9 @@
 
       <v-progress-linear v-if="isFoldersLoading" indeterminate color="primary" class="mb-1" />
 
-      <v-list v-if="folders.length" class="mail-sidebar__list" nav density="compact">
+      <v-list v-if="visibleFolders.length" class="mail-sidebar__list" nav density="compact">
         <v-list-item
-          v-for="folder in folders"
+          v-for="folder in visibleFolders"
           :key="folder.id"
           :active="folder.id === currentFolderId"
           @click="$emit('select-folder', folder.id)"
@@ -81,6 +81,16 @@
           </template>
         </v-list-item>
       </v-list>
+
+      <v-alert
+        v-if="currentAccount?.incomingProtocol === 'pop3' && visibleFolders.length > 0"
+        type="info"
+        variant="tonal"
+        density="compact"
+        class="ma-2 text-caption"
+      >
+        {{ t('sidebar.pop3LimitedFeatures') }}
+      </v-alert>
 
       <div v-else class="mail-sidebar__empty">
         <v-icon icon="mdi-folder-outline" size="32" class="mb-2" />
@@ -120,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MailAccount } from '@/types/account'
 import type { MailboxFolder } from '@/types/mail'
@@ -134,7 +144,7 @@ const folderCtx = useContextMenu<MailboxFolder>()
 const folderDisplayName = (folder: MailboxFolder) =>
   folder.kind !== 'custom' ? t(`folders.${folder.kind}`) : folder.name
 
-defineProps<{
+const props = defineProps<{
   accounts: MailAccount[]
   currentAccount: MailAccount | null
   currentAccountId: string | null
@@ -142,6 +152,14 @@ defineProps<{
   folders: MailboxFolder[]
   isFoldersLoading?: boolean
 }>()
+
+// Filter folders for POP3: only show inbox and starred
+const visibleFolders = computed(() => {
+  if (props.currentAccount?.incomingProtocol === 'pop3') {
+    return props.folders.filter(f => f.kind === 'inbox' || f.kind === 'starred')
+  }
+  return props.folders
+})
 
 const emit = defineEmits<{
   'select-account': [accountId: string]

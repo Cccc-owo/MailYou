@@ -18,6 +18,10 @@ export const useAccountsStore = defineStore('accounts', () => {
     accounts.value.find((account) => account.id === currentAccountId.value) ?? null,
   )
 
+  const isCurrentAccountPop3 = computed(() =>
+    currentAccount.value?.incomingProtocol === 'pop3'
+  )
+
   const loadAccounts = async () => {
     isLoading.value = true
     error.value = null
@@ -107,6 +111,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     accounts,
     currentAccount,
     currentAccountId,
+    isCurrentAccountPop3,
     isLoading,
     isTestingConnection,
     error,

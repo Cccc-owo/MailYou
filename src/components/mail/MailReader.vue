@@ -33,7 +33,7 @@
               @click="$emit('restore')"
             />
             <v-list-item
-              v-else
+              v-else-if="!isPop3"
               prepend-icon="mdi-archive-outline"
               :title="t('reader.archive')"
               @click="$emit('archive')"
@@ -384,6 +384,7 @@ const props = withDefaults(
     folders?: MailboxFolder[]
     currentFolderId?: string | null
     currentFolderKind?: string | null
+    isPop3?: boolean
   }>(),
   {
     hasMessages: false,
@@ -391,6 +392,7 @@ const props = withDefaults(
     folders: () => [],
     currentFolderId: null,
     currentFolderKind: null,
+    isPop3: false,
   },
 )
 
@@ -414,11 +416,12 @@ const isTrashOrArchive = computed(() =>
   props.currentFolderKind === 'trash' || props.currentFolderKind === 'archive',
 )
 
-const moveTargetFolders = computed(() =>
-  props.folders.filter(
+const moveTargetFolders = computed(() => {
+  if (props.isPop3) return []
+  return props.folders.filter(
     (f) => f.id !== props.currentFolderId && f.kind !== 'starred',
-  ),
-)
+  )
+})
 
 // --- Subject & sender (depend on props) ---
 

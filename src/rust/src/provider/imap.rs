@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use async_imap::Session as ImapSession;
 use async_trait::async_trait;
+use base64::{Engine as _, engine::general_purpose};
 use futures::TryStreamExt;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::TcpStream;
@@ -14,6 +15,11 @@ use crate::models::{
     MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
 };
 use crate::protocol::BackendError;
+use crate::provider::common::{
+    validate_draft, extract_body_from_mime, extract_attachments_from_mime,
+    make_preview, strip_html_tags, decode_header_value, find_mime_part_by_path,
+    get_attachment_filename, base64_encode_bytes, base64_decode,
+};
 use crate::provider::MailProvider;
 use crate::storage::memory;
 use crate::storage::persisted;
@@ -317,25 +323,10 @@ impl MailProvider for ImapSmtpProvider {
     }
 }
 
+
 // ---------------------------------------------------------------------------
-// Validation
+// IMAP helpers (async)
 // ---------------------------------------------------------------------------
-
-fn validate_draft(draft: &AccountSetupDraft) -> Result<(), BackendError> {
-    if draft.email.trim().is_empty()
-        || draft.incoming_host.trim().is_empty()
-        || draft.outgoing_host.trim().is_empty()
-        || draft.username.trim().is_empty()
-    {
-        return Err(BackendError::validation("All account fields are required"));
-    }
-
-    if draft.incoming_port == 0 || draft.outgoing_port == 0 {
-        return Err(BackendError::validation("Ports must be greater than 0"));
-    }
-
-    Ok(())
-}
 
 // ---------------------------------------------------------------------------
 // IMAP helpers (async)
@@ -740,18 +731,107 @@ async fn fetch_folder_contents(
     Ok((unread, total, messages, threads))
 }
 
-fn make_preview(body: &str) -> String {
-    let preview = strip_html_tags(body)
-        .chars()
-        .take(96)
-        .collect::<String>()
-        .replace('\n', " ")
-        .replace('\r', "");
-    if preview.is_empty() {
-        "(No preview)".into()
+fn classify_folder(name: &str) -> (MailFolderKind, &'static str) {
+    let lower = name.to_lowercase();
+    if lower == "inbox" || lower == "收件箱" {
+        (MailFolderKind::Inbox, "mdi-inbox-arrow-down")
+    } else if lower.contains("sent") || lower.contains("已发送") {
+        (MailFolderKind::Sent, "mdi-send-outline")
+    } else if lower.contains("draft") || lower.contains("草稿") {
+        (MailFolderKind::Drafts, "mdi-file-document-edit-outline")
+    } else if lower.contains("trash") || lower.contains("deleted") || lower.contains("已删除") {
+        (MailFolderKind::Trash, "mdi-delete-outline")
+    } else if lower.contains("archive") || lower.contains("all mail") || lower == "[gmail]/all mail" || lower.contains("归档") {
+        (MailFolderKind::Archive, "mdi-archive-outline")
+    } else if lower.contains("spam") || lower.contains("junk") || lower.contains("垃圾") {
+        (MailFolderKind::Trash, "mdi-alert-circle-outline")
     } else {
-        preview
+        (MailFolderKind::Custom, "mdi-folder-outline")
     }
+}
+
+fn slug(name: &str) -> String {
+    name.to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric(), "-")
+        .trim_matches('-')
+        .to_string()
+}
+
+fn decode_imap_utf7(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] != b'&' {
+            result.push(bytes[i] as char);
+            i += 1;
+            continue;
+        }
+
+        i += 1;
+        if i >= bytes.len() {
+            result.push('&');
+            break;
+        }
+
+        if bytes[i] == b'-' {
+            result.push('&');
+            i += 1;
+            continue;
+        }
+
+        let start = i;
+        while i < bytes.len() && bytes[i] != b'-' {
+            i += 1;
+        }
+
+        if i >= bytes.len() {
+            result.push('&');
+            result.push_str(&String::from_utf8_lossy(&bytes[start..]));
+            break;
+        }
+
+        let encoded = &bytes[start..i];
+        i += 1;
+
+        let decoded_utf16 = decode_modified_base64(encoded);
+        if let Ok(s) = String::from_utf16(&decoded_utf16) {
+            result.push_str(&s);
+        } else {
+            result.push('&');
+            result.push_str(&String::from_utf8_lossy(encoded));
+            result.push('-');
+        }
+    }
+
+    result
+}
+
+fn decode_modified_base64(input: &[u8]) -> Vec<u16> {
+    let mut input_str = String::from_utf8_lossy(input).to_string();
+    input_str = input_str.replace(',', "/");
+
+    // Pad to multiple of 4
+    while input_str.len() % 4 != 0 {
+        input_str.push('=');
+    }
+
+    // Standard base64 decode
+    let decoded_bytes = match general_purpose::STANDARD.decode(&input_str) {
+        Ok(bytes) => bytes,
+        Err(_) => return Vec::new(),
+    };
+
+    // Convert bytes to UTF-16 big-endian code units
+    let mut out = Vec::new();
+    for chunk in decoded_bytes.chunks(2) {
+        if chunk.len() == 2 {
+            out.push(u16::from_be_bytes([chunk[0], chunk[1]]));
+        }
+    }
+
+    out
 }
 
 fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String, Vec<String>, Vec<String>, String) {
@@ -813,165 +893,10 @@ fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String,
     (subject, from, from_email, to, cc, date)
 }
 
-fn decode_header_value(raw: &[u8]) -> String {
-    let lossy = String::from_utf8_lossy(raw).to_string();
-    decode_rfc2047(&lossy)
-}
-
-/// Decode RFC 2047 encoded-words: =?charset?encoding?text?=
-fn decode_rfc2047(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
-    let mut pos = 0;
-    let bytes = input.as_bytes();
-
-    while pos < bytes.len() {
-        // Find next =?
-        match input[pos..].find("=?") {
-            None => {
-                result.push_str(&input[pos..]);
-                break;
-            }
-            Some(offset) => {
-                result.push_str(&input[pos..pos + offset]);
-                pos += offset;
-
-                match decode_one_encoded_word(&input[pos..]) {
-                    Some((decoded, consumed)) => {
-                        result.push_str(&decoded);
-                        pos += consumed;
-
-                        // Skip whitespace between consecutive encoded-words
-                        let after = &input[pos..];
-                        let trimmed = after.trim_start_matches(|c: char| c == ' ' || c == '\t' || c == '\r' || c == '\n');
-                        if trimmed.starts_with("=?") {
-                            pos = input.len() - trimmed.len();
-                        }
-                    }
-                    None => {
-                        result.push_str("=?");
-                        pos += 2;
-                    }
-                }
-            }
-        }
-    }
-
-    result
-}
-
-/// Try to decode one encoded-word at the start of `input`.
-/// Returns (decoded_string, bytes_consumed) or None.
-fn decode_one_encoded_word(input: &str) -> Option<(String, usize)> {
-    if !input.starts_with("=?") {
-        return None;
-    }
-
-    let rest = &input[2..];
-    let q1 = rest.find('?')?;
-    let charset = &rest[..q1];
-
-    let rest = &rest[q1 + 1..];
-    let q2 = rest.find('?')?;
-    let encoding = &rest[..q2];
-
-    let rest = &rest[q2 + 1..];
-    let end = rest.find("?=")?;
-    let encoded_text = &rest[..end];
-
-    let consumed = 2 + q1 + 1 + q2 + 1 + end + 2;
-
-    let decoded_bytes = match encoding.to_uppercase().as_str() {
-        "B" => base64_decode(encoded_text)?,
-        "Q" => qp_decode_rfc2047(encoded_text),
-        _ => return None,
-    };
-
-    let decoded_str = charset_decode(&decoded_bytes, charset);
-    Some((decoded_str, consumed))
-}
-
-fn base64_decode(input: &str) -> Option<Vec<u8>> {
-    let input = input.replace(['\r', '\n', ' '], "");
-    let table: Vec<u8> = (0..256)
-        .map(|i| match i as u8 as char {
-            'A'..='Z' => (i - b'A' as usize) as u8,
-            'a'..='z' => (i - b'a' as usize + 26) as u8,
-            '0'..='9' => (i - b'0' as usize + 52) as u8,
-            '+' => 62,
-            '/' => 63,
-            _ => 0xFF,
-        })
-        .collect();
-
-    let mut out = Vec::with_capacity(input.len() * 3 / 4);
-    let bytes: Vec<u8> = input.bytes().filter(|&b| b != b'=').collect();
-
-    for chunk in bytes.chunks(4) {
-        let vals: Vec<u8> = chunk.iter().map(|&b| table[b as usize]).collect();
-        if vals.iter().any(|&v| v == 0xFF) {
-            return None;
-        }
-        if vals.len() >= 2 {
-            out.push((vals[0] << 2) | (vals[1] >> 4));
-        }
-        if vals.len() >= 3 {
-            out.push((vals[1] << 4) | (vals[2] >> 2));
-        }
-        if vals.len() >= 4 {
-            out.push((vals[2] << 6) | vals[3]);
-        }
-    }
-
-    Some(out)
-}
-
-fn qp_decode_rfc2047(input: &str) -> Vec<u8> {
-    let mut out = Vec::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'_' {
-            out.push(b' ');
-            i += 1;
-        } else if bytes[i] == b'=' && i + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(
-                &String::from_utf8_lossy(&bytes[i + 1..i + 3]),
-                16,
-            ) {
-                out.push(byte);
-                i += 3;
-            } else {
-                out.push(bytes[i]);
-                i += 1;
-            }
-        } else {
-            out.push(bytes[i]);
-            i += 1;
-        }
-    }
-    out
-}
-
-fn charset_decode(bytes: &[u8], charset: &str) -> String {
-    match charset.to_lowercase().as_str() {
-        "utf-8" | "utf8" => String::from_utf8_lossy(bytes).to_string(),
-        "iso-8859-1" | "latin1" | "latin-1" | "us-ascii" | "ascii" => {
-            bytes.iter().map(|&b| b as char).collect()
-        }
-        _ => {
-            // For other charsets (gbk, gb2312, big5, iso-2022-jp, etc.)
-            // try encoding_rs via mailparse's internal charset handling
-            // Fallback: best-effort UTF-8 lossy
-            String::from_utf8_lossy(bytes).to_string()
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // SMTP helper (async)
 // ---------------------------------------------------------------------------
 
-async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(), BackendError> {
+pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(), BackendError> {
     use lettre::message::header::ContentType;
     use lettre::message::{Attachment, Mailbox, MultiPart, SinglePart};
     use lettre::transport::smtp::authentication::Credentials;
@@ -1060,359 +985,4 @@ async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(
         .map_err(|e| BackendError::internal(format!("SMTP send failed: {e}")))?;
 
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Attachment helpers
-// ---------------------------------------------------------------------------
-
-fn extract_attachments_from_mime(raw: &[u8]) -> Vec<AttachmentMeta> {
-    let parsed = match mailparse::parse_mail(raw) {
-        Ok(mail) => mail,
-        Err(_) => return vec![],
-    };
-    let mut attachments = Vec::new();
-    let mut path = Vec::new();
-    collect_attachments(&parsed, &mut attachments, &mut path);
-    attachments
-}
-
-fn collect_attachments(
-    part: &mailparse::ParsedMail,
-    result: &mut Vec<AttachmentMeta>,
-    path: &mut Vec<usize>,
-) {
-    let mime_type = part.ctype.mimetype.to_lowercase();
-
-    if mime_type.starts_with("multipart/") {
-        for (i, sub) in part.subparts.iter().enumerate() {
-            path.push(i);
-            collect_attachments(sub, result, path);
-            path.pop();
-        }
-        return;
-    }
-
-    if is_attachment_part(part) {
-        let id = if path.is_empty() {
-            "0".into()
-        } else {
-            path.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(".")
-        };
-
-        let file_name = get_attachment_filename(part)
-            .unwrap_or_else(|| format!("attachment-{id}"));
-
-        let size_bytes = part.get_body_raw().map(|b| b.len() as u64).unwrap_or(0);
-
-        result.push(AttachmentMeta {
-            id,
-            file_name,
-            mime_type,
-            size_bytes,
-        });
-    }
-
-    for (i, sub) in part.subparts.iter().enumerate() {
-        path.push(i);
-        collect_attachments(sub, result, path);
-        path.pop();
-    }
-}
-
-fn is_attachment_part(part: &mailparse::ParsedMail) -> bool {
-    let mime_type = part.ctype.mimetype.to_lowercase();
-
-    if mime_type.starts_with("multipart/") {
-        return false;
-    }
-
-    // Explicit Content-Disposition: attachment
-    let disposition = part.get_content_disposition();
-    if matches!(disposition.disposition, mailparse::DispositionType::Attachment) {
-        return true;
-    }
-
-    // Inline images with Content-ID are embedded in HTML (not user-facing attachments)
-    let has_content_id = part.headers.iter()
-        .any(|h| h.get_key().eq_ignore_ascii_case("content-id"));
-    if has_content_id && mime_type.starts_with("image/") {
-        return false;
-    }
-
-    // text/plain and text/html without explicit attachment disposition are body parts
-    if mime_type == "text/plain" || mime_type == "text/html" {
-        return false;
-    }
-
-    // Everything else (application/*, image/* without CID, audio/*, video/*) is an attachment
-    true
-}
-
-fn get_attachment_filename(part: &mailparse::ParsedMail) -> Option<String> {
-    // Try Content-Disposition filename first
-    let disposition = part.get_content_disposition();
-    if let Some(filename) = disposition.params.get("filename") {
-        if !filename.is_empty() {
-            return Some(filename.clone());
-        }
-    }
-
-    // Fall back to Content-Type name parameter
-    if let Some(name) = part.ctype.params.get("name") {
-        if !name.is_empty() {
-            return Some(name.clone());
-        }
-    }
-
-    None
-}
-
-fn find_mime_part_by_path<'a>(
-    mail: &'a mailparse::ParsedMail<'a>,
-    path: &str,
-) -> Option<&'a mailparse::ParsedMail<'a>> {
-    if path.is_empty() {
-        return Some(mail);
-    }
-
-    let indices: Vec<usize> = path.split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect();
-
-    let mut current = mail;
-    for idx in indices {
-        if idx >= current.subparts.len() {
-            return None;
-        }
-        current = &current.subparts[idx];
-    }
-    Some(current)
-}
-
-// ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
-
-fn classify_folder(name: &str) -> (MailFolderKind, &'static str) {
-    let lower = name.to_lowercase();
-    if lower == "inbox" || lower == "收件箱" {
-        (MailFolderKind::Inbox, "mdi-inbox-arrow-down")
-    } else if lower.contains("sent") || lower.contains("已发送") {
-        (MailFolderKind::Sent, "mdi-send-outline")
-    } else if lower.contains("draft") || lower.contains("草稿") {
-        (MailFolderKind::Drafts, "mdi-file-document-edit-outline")
-    } else if lower.contains("trash") || lower.contains("deleted") || lower.contains("已删除") {
-        (MailFolderKind::Trash, "mdi-delete-outline")
-    } else if lower.contains("archive") || lower.contains("all mail") || lower == "[gmail]/all mail" || lower.contains("归档") {
-        (MailFolderKind::Archive, "mdi-archive-outline")
-    } else if lower.contains("spam") || lower.contains("junk") || lower.contains("垃圾") {
-        (MailFolderKind::Trash, "mdi-alert-circle-outline")
-    } else {
-        (MailFolderKind::Custom, "mdi-folder-outline")
-    }
-}
-
-fn slug(name: &str) -> String {
-    name.to_lowercase()
-        .replace(|c: char| !c.is_alphanumeric(), "-")
-        .trim_matches('-')
-        .to_string()
-}
-
-fn extract_body_from_mime(raw: &[u8]) -> String {
-    let parsed = match mailparse::parse_mail(raw) {
-        Ok(mail) => mail,
-        Err(_) => return String::from_utf8_lossy(raw).to_string(),
-    };
-
-    // Try to find text/html first, then text/plain
-    let mut body = if let Some(html) = find_mime_part(&parsed, "text/html") {
-        html
-    } else if let Some(plain) = find_mime_part(&parsed, "text/plain") {
-        format!("<pre style=\"white-space: pre-wrap; word-wrap: break-word;\">{}</pre>", html_escape(&plain))
-    } else {
-        parsed.get_body().unwrap_or_default()
-    };
-
-    // Resolve cid: inline image references to data: URIs
-    let cid_map = collect_cid_parts(&parsed);
-    for (cid, data_uri) in &cid_map {
-        body = body.replace(&format!("cid:{cid}"), data_uri);
-    }
-
-    body
-}
-
-fn find_mime_part(mail: &mailparse::ParsedMail, target_type: &str) -> Option<String> {
-    let content_type = mail
-        .ctype
-        .mimetype
-        .to_lowercase();
-
-    if content_type == target_type {
-        return mail.get_body().ok();
-    }
-
-    for subpart in &mail.subparts {
-        if let Some(body) = find_mime_part(subpart, target_type) {
-            return Some(body);
-        }
-    }
-
-    None
-}
-
-/// Collect all MIME parts that have a Content-ID header and image/* content type,
-/// returning (content_id, data_uri) pairs for cid: replacement.
-fn collect_cid_parts(mail: &mailparse::ParsedMail) -> Vec<(String, String)> {
-    let mut result = Vec::new();
-    collect_cid_parts_recursive(mail, &mut result);
-    result
-}
-
-fn collect_cid_parts_recursive(mail: &mailparse::ParsedMail, result: &mut Vec<(String, String)>) {
-    let content_id = mail.headers.iter()
-        .find(|h| h.get_key().eq_ignore_ascii_case("content-id"))
-        .map(|h| {
-            let val = h.get_value();
-            let trimmed = val.trim();
-            // Strip angle brackets: <content-id> -> content-id
-            if trimmed.starts_with('<') && trimmed.ends_with('>') {
-                trimmed[1..trimmed.len() - 1].to_string()
-            } else {
-                trimmed.to_string()
-            }
-        });
-
-    if let Some(cid) = content_id {
-        let mime_type = &mail.ctype.mimetype;
-        if mime_type.starts_with("image/") {
-            if let Ok(raw_body) = mail.get_body_raw() {
-                let b64 = base64_encode_bytes(&raw_body);
-                result.push((cid, format!("data:{mime_type};base64,{b64}")));
-            }
-        }
-    }
-
-    for subpart in &mail.subparts {
-        collect_cid_parts_recursive(subpart, result);
-    }
-}
-
-fn base64_encode_bytes(input: &[u8]) -> String {
-    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity((input.len() + 2) / 3 * 4);
-
-    for chunk in input.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
-        let triple = (b0 << 16) | (b1 << 8) | b2;
-
-        result.push(TABLE[((triple >> 18) & 0x3F) as usize] as char);
-        result.push(TABLE[((triple >> 12) & 0x3F) as usize] as char);
-
-        if chunk.len() > 1 {
-            result.push(TABLE[((triple >> 6) & 0x3F) as usize] as char);
-        } else {
-            result.push('=');
-        }
-
-        if chunk.len() > 2 {
-            result.push(TABLE[(triple & 0x3F) as usize] as char);
-        } else {
-            result.push('=');
-        }
-    }
-
-    result
-}
-
-fn strip_html_tags(html: &str) -> String {
-    let mut result = String::with_capacity(html.len());
-    let mut in_tag = false;
-    for ch in html.chars() {
-        if ch == '<' {
-            in_tag = true;
-        } else if ch == '>' {
-            in_tag = false;
-        } else if !in_tag {
-            result.push(ch);
-        }
-    }
-    result
-}
-
-fn html_escape(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
-/// Decode IMAP Modified UTF-7 folder names (RFC 3501 §5.1.3).
-///
-/// Rules:
-///   - ASCII printable chars (0x20–0x7E) except '&' pass through
-///   - `&-` decodes to literal `&`
-///   - `&<modified-base64>-` decodes to UTF-16BE via base64 (with `,` in place of `/`)
-fn decode_imap_utf7(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0;
-
-    while i < bytes.len() {
-        if bytes[i] != b'&' {
-            result.push(bytes[i] as char);
-            i += 1;
-            continue;
-        }
-
-        // Found '&'
-        i += 1;
-
-        if i >= bytes.len() {
-            result.push('&');
-            break;
-        }
-
-        // &- is literal &
-        if bytes[i] == b'-' {
-            result.push('&');
-            i += 1;
-            continue;
-        }
-
-        // Find the closing '-'
-        let start = i;
-        while i < bytes.len() && bytes[i] != b'-' {
-            i += 1;
-        }
-
-        let encoded = &input[start..i];
-        // Replace , with / for standard base64
-        let standard = encoded.replace(',', "/");
-
-        if let Some(decoded_bytes) = base64_decode(&standard) {
-            // Interpret as UTF-16BE
-            let u16s: Vec<u16> = decoded_bytes
-                .chunks(2)
-                .filter(|c| c.len() == 2)
-                .map(|c| u16::from_be_bytes([c[0], c[1]]))
-                .collect();
-            result.extend(char::decode_utf16(u16s.into_iter()).map(|r| r.unwrap_or('\u{FFFD}')));
-        } else {
-            // Failed to decode, output raw
-            result.push('&');
-            result.push_str(encoded);
-        }
-
-        // Skip the closing '-'
-        if i < bytes.len() && bytes[i] == b'-' {
-            i += 1;
-        }
-    }
-
-    result
 }
