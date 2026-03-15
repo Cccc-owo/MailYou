@@ -1,95 +1,139 @@
 <template>
   <div v-if="message" class="mail-reader" @contextmenu="openReaderMenu($event)">
+    <!-- Toolbar: primary actions with labels -->
     <div class="mail-reader__toolbar">
-      <div class="mail-reader__toolbar-subject text-subtitle-1">{{ message.subject }}</div>
-      <div class="mail-reader__toolbar-actions">
-        <v-tooltip :text="t('reader.reply')" location="bottom">
-          <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" icon="mdi-reply-outline" variant="text" size="small" @click="$emit('reply')" />
-          </template>
-        </v-tooltip>
-        <v-tooltip :text="t('reader.replyAll')" location="bottom">
-          <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" icon="mdi-reply-all-outline" variant="text" size="small" @click="$emit('reply-all')" />
-          </template>
-        </v-tooltip>
-        <v-tooltip :text="t('reader.forward')" location="bottom">
-          <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" icon="mdi-arrow-top-right" variant="text" size="small" @click="$emit('forward')" />
-          </template>
-        </v-tooltip>
-        <v-tooltip :text="message.isRead ? t('reader.markUnread') : t('reader.markRead')" location="bottom">
-          <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" :icon="message.isRead ? 'mdi-email-outline' : 'mdi-email-open-outline'" variant="text" size="small" @click="$emit('toggle-read')" />
-          </template>
-        </v-tooltip>
-
-        <v-menu v-if="moveTargetFolders.length > 0">
+      <div class="mail-reader__toolbar-primary">
+        <v-btn variant="text" size="small" prepend-icon="mdi-reply-outline" @click="$emit('reply')">{{ t('reader.reply') }}</v-btn>
+        <v-btn variant="text" size="small" prepend-icon="mdi-reply-all-outline" @click="$emit('reply-all')">{{ t('reader.replyAll') }}</v-btn>
+        <v-btn variant="text" size="small" prepend-icon="mdi-share-outline" @click="$emit('forward')">{{ t('reader.forward') }}</v-btn>
+        <v-btn variant="text" size="small" prepend-icon="mdi-delete-outline" color="error" @click="$emit('delete')">{{ t('common.delete') }}</v-btn>
+      </div>
+      <div class="mail-reader__toolbar-secondary">
+        <v-menu>
           <template #activator="{ props: menuProps }">
-            <v-tooltip :text="t('reader.moveTo')" location="bottom">
-              <template #activator="{ props: tip }">
-                <v-btn v-bind="{ ...tip, ...menuProps }" icon="mdi-folder-move-outline" variant="text" size="small" />
-              </template>
-            </v-tooltip>
+            <v-btn v-bind="menuProps" variant="text" size="small" prepend-icon="mdi-dots-horizontal-circle-outline">
+              {{ t('reader.more') }}
+            </v-btn>
           </template>
           <v-list density="compact">
+            <v-list-item
+              :prepend-icon="message.isRead ? 'mdi-email-outline' : 'mdi-email-open-outline'"
+              :title="message.isRead ? t('reader.markUnread') : t('reader.markRead')"
+              @click="$emit('toggle-read')"
+            />
+            <v-list-item
+              v-if="isTrashOrArchive"
+              prepend-icon="mdi-inbox-arrow-down"
+              :title="t('reader.restoreToInbox')"
+              @click="$emit('restore')"
+            />
+            <v-list-item
+              v-else
+              prepend-icon="mdi-archive-outline"
+              :title="t('reader.archive')"
+              @click="$emit('archive')"
+            />
+            <v-divider v-if="moveTargetFolders.length > 0" />
             <v-list-item
               v-for="folder in moveTargetFolders"
               :key="folder.id"
               :prepend-icon="folder.icon"
-              :title="folderDisplayName(folder)"
+              :title="t('reader.moveTo') + ' ' + folderDisplayName(folder)"
               @click="$emit('move', folder.id)"
             />
           </v-list>
         </v-menu>
-
-        <template v-if="isTrashOrArchive">
-          <v-tooltip :text="t('reader.restoreToInbox')" location="bottom">
-            <template #activator="{ props: tip }">
-              <v-btn v-bind="tip" icon="mdi-inbox-arrow-down" variant="text" size="small" @click="$emit('restore')" />
-            </template>
-          </v-tooltip>
-        </template>
-        <template v-else>
-          <v-tooltip :text="t('reader.archive')" location="bottom">
-            <template #activator="{ props: tip }">
-              <v-btn v-bind="tip" icon="mdi-archive-outline" variant="text" size="small" @click="$emit('archive')" />
-            </template>
-          </v-tooltip>
-        </template>
-
-        <v-tooltip :text="t('common.delete')" location="bottom">
-          <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" icon="mdi-delete-outline" variant="text" size="small" color="error" @click="$emit('delete')" />
-          </template>
-        </v-tooltip>
       </div>
     </div>
 
     <div class="mail-reader__scroll">
     <div class="mail-reader__message">
+      <!-- Subject + Star -->
+      <div class="mail-reader__subject-wrap">
+        <h2 ref="subjectEl" class="mail-reader__subject" :class="{ 'mail-reader__subject--collapsed': subjectCollapsed }">
+          {{ message.subject }}
+        </h2>
+        <v-btn
+          v-if="subjectOverflows"
+          :icon="subjectCollapsed ? 'mdi-chevron-down' : 'mdi-chevron-up'"
+          variant="text"
+          size="x-small"
+          density="compact"
+          class="mail-reader__subject-toggle"
+          @click="subjectCollapsed = !subjectCollapsed"
+        />
+        <v-btn
+          :icon="message.isStarred ? 'mdi-star' : 'mdi-star-outline'"
+          :color="message.isStarred ? 'warning' : undefined"
+          variant="text"
+          size="small"
+          density="compact"
+          class="ml-1 flex-shrink-0"
+          @click="$emit('toggle-star')"
+        />
+      </div>
+
+      <!-- Sender + Recipients -->
       <div class="mail-reader__meta">
-        <div>
-          <div class="d-flex align-center ga-1">
-            <div class="text-subtitle-1 font-weight-medium">{{ message.from }}</div>
-            <v-btn
-              icon="mdi-account-plus-outline"
-              variant="text"
-              size="x-small"
-              :title="t('contacts.saveToContacts')"
-              @click="$emit('save-contact', { name: message.from, email: message.fromEmail })"
-            />
+        <v-avatar color="primary" size="36" class="mail-reader__avatar flex-shrink-0">
+          <span class="text-body-2 font-weight-medium">{{ senderInitials }}</span>
+        </v-avatar>
+        <div class="mail-reader__meta-content">
+          <div class="mail-reader__meta-top">
+            <div class="mail-reader__sender-line">
+              <EmailContactPopover
+                :name="message.from"
+                :email="message.fromEmail"
+                @compose="(d) => $emit('compose-to', d)"
+                @save-contact="(d) => $emit('save-contact', d)"
+                @view-contact="(c) => $emit('view-contact', c)"
+              >
+                <span class="font-weight-medium">{{ message.from }}</span>
+              </EmailContactPopover>
+              <EmailContactPopover
+                :name="message.from"
+                :email="message.fromEmail"
+                @compose="(d) => $emit('compose-to', d)"
+                @save-contact="(d) => $emit('save-contact', d)"
+                @view-contact="(c) => $emit('view-contact', c)"
+              >
+                <span class="text-medium-emphasis">&lt;{{ message.fromEmail }}&gt;</span>
+              </EmailContactPopover>
+            </div>
+            <span class="mail-reader__date text-medium-emphasis">{{ formattedDate }}</span>
           </div>
-          <div class="text-body-2 text-medium-emphasis">{{ message.fromEmail }}</div>
-        </div>
-        <div class="text-body-2 text-medium-emphasis text-right">
-          <div>{{ formattedDate }}</div>
-          <div>{{ t('reader.to', { recipients: message.to.join(', ') }) }}</div>
-          <div v-if="message.cc.length > 0">{{ t('reader.cc', { recipients: message.cc.join(', ') }) }}</div>
+          <div class="mail-reader__recipients text-medium-emphasis">
+            <span>
+              {{ t('reader.to') }}
+              <template v-for="(addr, i) in message.to" :key="'to-'+i">
+                <span v-if="i > 0">, </span>
+                <EmailContactPopover
+                  :name="parseAddr(addr).name"
+                  :email="parseAddr(addr).email"
+                  @compose="(d) => $emit('compose-to', d)"
+                  @save-contact="(d) => $emit('save-contact', d)"
+                  @view-contact="(c) => $emit('view-contact', c)"
+                >{{ addr }}</EmailContactPopover>
+              </template>
+            </span>
+            <span v-if="message.cc.length > 0" class="ml-2">
+              {{ t('reader.ccLabel') }}
+              <template v-for="(addr, i) in message.cc" :key="'cc-'+i">
+                <span v-if="i > 0">, </span>
+                <EmailContactPopover
+                  :name="parseAddr(addr).name"
+                  :email="parseAddr(addr).email"
+                  @compose="(d) => $emit('compose-to', d)"
+                  @save-contact="(d) => $emit('save-contact', d)"
+                  @view-contact="(c) => $emit('view-contact', c)"
+                >{{ addr }}</EmailContactPopover>
+              </template>
+            </span>
+          </div>
         </div>
       </div>
 
-      <div class="mail-reader__chips d-flex flex-wrap ga-2">
+      <div v-if="message.labels.length || message.hasAttachments" class="mail-reader__chips d-flex flex-wrap ga-2">
         <v-chip v-for="label in message.labels" :key="label" size="small" color="secondary">{{ label }}</v-chip>
         <v-chip v-if="message.hasAttachments" size="small" color="primary">{{ t('reader.attachmentsCount', { count: message.attachments.length }) }}</v-chip>
       </div>
@@ -146,11 +190,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DOMPurify from 'dompurify'
 import type { AttachmentMeta, MailMessage, MailboxFolder } from '@/types/mail'
 import ContextMenu from '@/components/ContextMenu.vue'
+import EmailContactPopover from '@/components/mail/EmailContactPopover.vue'
 import { useContextMenu } from '@/composables/useContextMenu'
 import { mailRepository } from '@/services/mail'
 
@@ -160,6 +205,22 @@ const hasSelection = ref(false)
 const targetHref = ref<string | null>(null)
 const targetImgSrc = ref<string | null>(null)
 const downloadingId = ref<string | null>(null)
+
+// --- Collapsible subject ---
+const subjectEl = ref<HTMLElement | null>(null)
+const subjectCollapsed = ref(false)
+const subjectOverflows = ref(false)
+
+const checkSubjectOverflow = () => {
+  const el = subjectEl.value
+  if (!el) { subjectOverflows.value = false; return }
+  el.style.webkitLineClamp = 'unset'
+  el.style.maxHeight = 'none'
+  const full = el.scrollHeight
+  el.style.webkitLineClamp = ''
+  el.style.maxHeight = ''
+  subjectOverflows.value = full > 64
+}
 
 const downloadAttachment = async (attachment: AttachmentMeta) => {
   if (!props.message) return
@@ -317,8 +378,11 @@ defineEmits<{
   restore: []
   delete: []
   'toggle-read': []
+  'toggle-star': []
   move: [folderId: string]
   'save-contact': [data: { name: string; email: string }]
+  'compose-to': [data: { name: string; email: string }]
+  'view-contact': [contact: import('@/types/contact').Contact]
 }>()
 
 const isTrashOrArchive = computed(() =>
@@ -330,6 +394,33 @@ const moveTargetFolders = computed(() =>
     (f) => f.id !== props.currentFolderId && f.kind !== 'starred',
   ),
 )
+
+// --- Subject & sender (depend on props) ---
+
+const senderInitials = computed(() => {
+  const name = props.message?.from ?? ''
+  return name
+    .split(/[\s@]/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0].toUpperCase())
+    .join('')
+})
+
+watch(
+  () => props.message?.id,
+  () => {
+    subjectCollapsed.value = false
+    nextTick(checkSubjectOverflow)
+  },
+)
+
+let resizeObserver: ResizeObserver | null = null
+onMounted(() => {
+  resizeObserver = new ResizeObserver(() => checkSubjectOverflow())
+  if (subjectEl.value) resizeObserver.observe(subjectEl.value)
+})
+onUnmounted(() => resizeObserver?.disconnect())
 
 const formattedDate = computed(() => {
   if (!props.message) {
@@ -404,6 +495,13 @@ const formatSize = (value: number) => {
 
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
+
+const parseAddr = (addr: string): { name: string; email: string } => {
+  const match = addr.match(/^(.+?)\s*<(.+?)>$/)
+  if (match) return { name: match[1].trim(), email: match[2].trim() }
+  return { name: '', email: addr.trim() }
+}
+
 </script>
 
 <style scoped>
@@ -414,49 +512,113 @@ const formatSize = (value: number) => {
   overflow: hidden;
 }
 
+/* Toolbar */
 .mail-reader__toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
   flex-shrink: 0;
-  padding: 10px 16px;
+  padding: 4px 12px;
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  gap: 8px;
 }
 
-.mail-reader__toolbar-subject {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.mail-reader__toolbar-actions {
+.mail-reader__toolbar-primary {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
-  gap: 4px;
-  flex-shrink: 0;
+  gap: 2px;
+}
+
+.mail-reader__toolbar-secondary {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .mail-reader__scroll {
   flex: 1;
   overflow: auto;
-  padding: 16px;
+  padding: 12px 20px;
 }
 
 .mail-reader__message {
   padding: 0;
 }
 
+/* Subject */
+.mail-reader__subject-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.mail-reader__subject {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.mail-reader__subject--collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mail-reader__subject-toggle {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Meta */
 .mail-reader__meta {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 12px;
-  margin-bottom: 16px;
+  align-items: flex-start;
+  gap: 10px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+}
+
+.mail-reader__avatar {
+  margin-top: 2px;
+}
+
+.mail-reader__meta-content {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+}
+
+.mail-reader__meta-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.mail-reader__sender-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.mail-reader__date {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+
+.mail-reader__recipients {
+  margin-top: 2px;
+  line-height: 1.5;
+  font-size: 0.8125rem;
 }
 
 .mail-reader__chips {

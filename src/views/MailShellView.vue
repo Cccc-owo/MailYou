@@ -95,6 +95,9 @@
         @toggle-read="toggleReadCurrentMessage"
         @move="moveCurrentMessage"
         @save-contact="handleSaveContact"
+        @compose-to="handleComposeTo"
+        @view-contact="handleViewContact"
+        @toggle-star="toggleStarCurrentMessage"
       />
     </template>
   </MailShellLayout>
@@ -462,6 +465,14 @@ const toggleReadCurrentMessage = async () => {
   await refreshMailbox()
 }
 
+const toggleStarCurrentMessage = async () => {
+  if (!accountsStore.currentAccountId || !messagesStore.selectedMessageId) {
+    return
+  }
+
+  await toggleStar(messagesStore.selectedMessageId)
+}
+
 const promptDeleteCurrentMessage = () => {
   if (!accountsStore.currentAccountId || !messagesStore.selectedMessageId) {
     return
@@ -668,6 +679,17 @@ const handleContextMove = async (messageId: string, folderId: string) => {
 // --- Sidebar context menu handlers ---
 const handleSaveContact = async (data: { name: string; email: string }) => {
   await contactsStore.createContact({ name: data.name, email: data.email })
+}
+
+const handleComposeTo = (data: { name: string; email: string }) => {
+  if (!accountsStore.currentAccountId) return
+  composerStore.openNew(accountsStore.currentAccountId)
+  composerStore.draft.to = data.name ? `${data.name} <${data.email}>` : data.email
+}
+
+const handleViewContact = (contact: { id: string }) => {
+  router.push('/contacts')
+  // The contacts view will load and the user can find the contact
 }
 
 const handleSyncAccount = async (accountId: string) => {
