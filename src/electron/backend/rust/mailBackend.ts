@@ -32,4 +32,7 @@ export const rustMailBackend: MailBackend = {
   createContactGroup: (name) => invokeRustBackend('createContactGroup', { name }),
   updateContactGroup: (groupId, name) => invokeRustBackend('updateContactGroup', { groupId, name }),
   deleteContactGroup: (groupId) => invokeRustBackend('deleteContactGroup', { groupId }),
+  uploadContactAvatar: (contactId, dataBase64, mimeType) => invokeRustBackend('uploadContactAvatar', { contactId, dataBase64, mimeType }),
+  deleteContactAvatar: (contactId) => invokeRustBackend('deleteContactAvatar', { contactId }),
+  getStorageDir: () => invokeRustBackend('getStorageDir'),
 }

@@ -98,4 +98,9 @@ export const registerMailIpc = () => {
     mailBackend.updateContactGroup(groupId as string, name as string),
   )
   handle('mail:deleteContactGroup', (groupId) => mailBackend.deleteContactGroup(groupId as string))
+  handle('mail:uploadContactAvatar', (contactId, dataBase64, mimeType) =>
+    mailBackend.uploadContactAvatar(contactId as string, dataBase64 as string, mimeType as string),
+  )
+  handle('mail:deleteContactAvatar', (contactId) => mailBackend.deleteContactAvatar(contactId as string))
+  handle('mail:getStorageDir', () => mailBackend.getStorageDir())
 }

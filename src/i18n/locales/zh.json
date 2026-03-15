@@ -234,6 +234,9 @@
     "searchPlaceholder": "搜索联系人",
     "confirmDelete": "确定要删除此联系人吗？",
     "confirmDeleteGroup": "确定要删除此分组吗？该分组内的联系人不会被删除。",
-    "groupNamePlaceholder": "分组名称"
+    "groupNamePlaceholder": "分组名称",
+    "invalidEmail": "请输入有效的邮箱地址",
+    "changeAvatar": "更换头像",
+    "removeAvatar": "删除头像"
   }
 }

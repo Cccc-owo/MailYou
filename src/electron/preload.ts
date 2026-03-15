@@ -33,6 +33,9 @@ const mailyou: MailyouBridge = {
   createContactGroup: (name) => ipcRenderer.invoke('mail:createContactGroup', name),
   updateContactGroup: (groupId, name) => ipcRenderer.invoke('mail:updateContactGroup', groupId, name),
   deleteContactGroup: (groupId) => ipcRenderer.invoke('mail:deleteContactGroup', groupId),
+  uploadContactAvatar: (contactId, dataBase64, mimeType) => ipcRenderer.invoke('mail:uploadContactAvatar', contactId, dataBase64, mimeType),
+  deleteContactAvatar: (contactId) => ipcRenderer.invoke('mail:deleteContactAvatar', contactId),
+  getStorageDir: () => ipcRenderer.invoke('mail:getStorageDir'),
 }
 
 const windowControls: WindowControlsBridge = {

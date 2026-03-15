@@ -819,6 +819,9 @@ onMounted(async () => {
     Notification.requestPermission()
   }
 
+  contactsStore.ensureStorageDir()
+  contactsStore.loadContacts()
+
   // Skip re-initialization if already loaded (e.g. returning from settings)
   if (accountsStore.accounts.length > 0) return
 

@@ -12,6 +12,7 @@ export const useContactsStore = defineStore('contacts', () => {
   const isEditing = ref(false)
   const isCreating = ref(false)
   const error = ref<string | null>(null)
+  const storageDir = ref<string | null>(null)
 
   const selectedContact = computed(() =>
     contacts.value.find((c) => c.id === selectedContactId.value) ?? null,
@@ -117,6 +118,35 @@ export const useContactsStore = defineStore('contacts', () => {
     isEditing.value = true
   }
 
+  const ensureStorageDir = async () => {
+    if (!storageDir.value) {
+      try {
+        storageDir.value = await mailRepository.getStorageDir()
+      } catch {
+        // ignore in web mode
+      }
+    }
+  }
+
+  const avatarUrl = (contact: Contact | null | undefined): string | null => {
+    if (!contact?.avatarPath) return null
+    return `mailyou-avatar://${contact.avatarPath}`
+  }
+
+  const uploadAvatar = async (contactId: string, dataBase64: string, mimeType: string) => {
+    const updated = await mailRepository.uploadContactAvatar(contactId, dataBase64, mimeType)
+    const idx = contacts.value.findIndex((c) => c.id === contactId)
+    if (idx >= 0) contacts.value[idx] = updated
+    return updated
+  }
+
+  const deleteAvatar = async (contactId: string) => {
+    const updated = await mailRepository.deleteContactAvatar(contactId)
+    const idx = contacts.value.findIndex((c) => c.id === contactId)
+    if (idx >= 0) contacts.value[idx] = updated
+    return updated
+  }
+
   return {
     contacts,
     contactGroups,
@@ -140,5 +170,10 @@ export const useContactsStore = defineStore('contacts', () => {
     selectGroup,
     selectContact,
     startCreate,
+    storageDir,
+    ensureStorageDir,
+    avatarUrl,
+    uploadAvatar,
+    deleteAvatar,
   }
 })

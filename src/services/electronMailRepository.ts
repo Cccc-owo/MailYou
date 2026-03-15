@@ -40,4 +40,7 @@ export const electronMailRepository: MailRepository = {
   createContactGroup: (name) => getBridge().createContactGroup(name),
   updateContactGroup: (groupId, name) => getBridge().updateContactGroup(groupId, name),
   deleteContactGroup: (groupId) => getBridge().deleteContactGroup(groupId),
+  uploadContactAvatar: (contactId, dataBase64, mimeType) => getBridge().uploadContactAvatar(contactId, dataBase64, mimeType),
+  deleteContactAvatar: (contactId) => getBridge().deleteContactAvatar(contactId),
+  getStorageDir: () => getBridge().getStorageDir(),
 }

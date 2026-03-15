@@ -169,6 +169,6 @@ const composeToContact = (contact: Contact) => {
 }
 
 onMounted(async () => {
-  await Promise.all([contactsStore.loadContacts(), contactsStore.loadGroups()])
+  await Promise.all([contactsStore.loadContacts(), contactsStore.loadGroups(), contactsStore.ensureStorageDir()])
 })
 </script>

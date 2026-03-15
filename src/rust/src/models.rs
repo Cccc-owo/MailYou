@@ -191,6 +191,8 @@ pub struct Contact {
     #[serde(default)]
     pub group_id: Option<String>,
     #[serde(default)]
+    pub avatar_path: Option<String>,
+    #[serde(default)]
     pub source_account_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,

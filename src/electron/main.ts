@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, session } from 'electron'
+import { app, BrowserWindow, dialog, net, protocol, session } from 'electron'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { ensureRustBackendReady, shutdownRustBackend } from './backend/rust/process'
 import { registerMailIpc } from './ipc/mail'
 import { registerWindowIpc } from './ipc/window'
+import { mailBackend } from './backend/mailBackend'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -19,6 +20,10 @@ const configureLinuxWindowSystem = () => {
 }
 
 configureLinuxWindowSystem()
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'mailyou-avatar', privileges: { secure: true, supportFetchAPI: true } },
+])
 
 const createMainWindow = async () => {
   const window = new BrowserWindow({
@@ -54,7 +59,7 @@ app.whenReady().then(async () => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http: data: cid:; font-src 'self' data:; connect-src 'self' ws: wss: http: https:",
+          "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https: http: data: cid: mailyou-avatar:; font-src 'self' data:; connect-src 'self' ws: wss: http: https:",
         ],
       },
     })
@@ -72,6 +77,17 @@ app.whenReady().then(async () => {
 
   registerMailIpc()
   registerWindowIpc()
+
+  let storageDirCache: string | null = null
+  protocol.handle('mailyou-avatar', async (request) => {
+    if (!storageDirCache) {
+      storageDirCache = await mailBackend.getStorageDir()
+    }
+    const relativePath = decodeURIComponent(request.url.slice('mailyou-avatar://'.length))
+    const fullPath = join(storageDirCache, relativePath)
+    return net.fetch(pathToFileURL(fullPath).toString())
+  })
+
   await createMainWindow()
 
   app.on('activate', async () => {

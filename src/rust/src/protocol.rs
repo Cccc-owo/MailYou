@@ -64,6 +64,11 @@ pub enum BackendRequest {
     UpdateContactGroup { group_id: String, name: String },
     #[serde(rename_all = "camelCase")]
     DeleteContactGroup { group_id: String },
+    #[serde(rename_all = "camelCase")]
+    UploadContactAvatar { contact_id: String, data_base64: String, mime_type: String },
+    #[serde(rename_all = "camelCase")]
+    DeleteContactAvatar { contact_id: String },
+    GetStorageDir,
 }
 
 impl BackendRequest {
@@ -100,6 +105,9 @@ impl BackendRequest {
             Self::CreateContactGroup { .. } => "createContactGroup",
             Self::UpdateContactGroup { .. } => "updateContactGroup",
             Self::DeleteContactGroup { .. } => "deleteContactGroup",
+            Self::UploadContactAvatar { .. } => "uploadContactAvatar",
+            Self::DeleteContactAvatar { .. } => "deleteContactAvatar",
+            Self::GetStorageDir => "getStorageDir",
         }
     }
 }

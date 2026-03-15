@@ -146,6 +146,14 @@ fn storage_dir() -> io::Result<PathBuf> {
     Ok(base.join(APP_DIR_NAME).join(STORAGE_DIR_NAME))
 }
 
+pub fn storage_dir_path() -> io::Result<PathBuf> {
+    storage_dir()
+}
+
+pub fn avatars_dir() -> io::Result<PathBuf> {
+    Ok(storage_dir()?.join("avatars"))
+}
+
 fn data_root() -> io::Result<PathBuf> {
     if let Ok(value) = env::var("MAILYOU_DATA_DIR") {
         let trimmed = value.trim();

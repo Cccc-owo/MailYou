@@ -9,7 +9,8 @@
       <!-- Header with colored banner -->
       <div class="popover-header">
         <v-avatar size="48" class="popover-avatar" color="primary">
-          <span class="text-h6" style="color: white;">{{ avatarInitials }}</span>
+          <v-img v-if="matchedAvatarUrl" :src="matchedAvatarUrl" cover />
+          <span v-else class="text-h6" style="color: white;">{{ avatarInitials }}</span>
         </v-avatar>
       </div>
 
@@ -79,6 +80,8 @@ defineEmits<{
 const matched = computed(() =>
   contactsStore.contacts.find((c) => c.email.toLowerCase() === props.email.toLowerCase()) ?? null,
 )
+
+const matchedAvatarUrl = computed(() => contactsStore.avatarUrl(matched.value))
 
 const matchedGroupName = computed(() => {
   if (!matched.value?.groupId) return null

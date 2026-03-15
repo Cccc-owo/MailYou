@@ -81,7 +81,8 @@
       <!-- Sender + Recipients -->
       <div class="mail-reader__meta">
         <v-avatar color="primary" size="36" class="mail-reader__avatar flex-shrink-0">
-          <span class="text-body-2 font-weight-medium">{{ senderInitials }}</span>
+          <v-img v-if="senderAvatarUrl" :src="senderAvatarUrl" cover />
+          <span v-else class="text-body-2 font-weight-medium">{{ senderInitials }}</span>
         </v-avatar>
         <div class="mail-reader__meta-content">
           <div class="mail-reader__meta-top">
@@ -203,9 +204,11 @@ import ContextMenu from '@/components/ContextMenu.vue'
 import EmailContactPopover from '@/components/mail/EmailContactPopover.vue'
 import { useContextMenu } from '@/composables/useContextMenu'
 import { mailRepository } from '@/services/mail'
+import { useContactsStore } from '@/stores/contacts'
 
 const { t, locale } = useI18n()
 const ctxMenu = useContextMenu()
+const contactsStore = useContactsStore()
 const hasSelection = ref(false)
 const targetHref = ref<string | null>(null)
 const targetImgSrc = ref<string | null>(null)
@@ -411,6 +414,14 @@ const senderInitials = computed(() => {
     .slice(0, 2)
     .map((s) => s[0].toUpperCase())
     .join('')
+})
+
+const senderAvatarUrl = computed(() => {
+  if (!props.message) return null
+  const matched = contactsStore.contacts.find(
+    (c) => c.email.toLowerCase() === props.message!.fromEmail.toLowerCase(),
+  )
+  return contactsStore.avatarUrl(matched)
 })
 
 watch(

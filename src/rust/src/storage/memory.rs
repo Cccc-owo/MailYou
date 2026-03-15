@@ -917,7 +917,17 @@ pub fn update_contact(contact_id: &str, mut contact: Contact) -> Result<Contact,
 }
 
 pub fn delete_contact(contact_id: &str) -> Result<(), BackendError> {
+    use std::fs;
+
     let mut state = lock_state();
+    // Clean up avatar file if present
+    if let Some(contact) = state.contacts.iter().find(|c| c.id == contact_id) {
+        if let Some(ref avatar_path) = contact.avatar_path {
+            if let Ok(storage_dir) = persisted::storage_dir_path() {
+                let _ = fs::remove_file(storage_dir.join(avatar_path));
+            }
+        }
+    }
     state.contacts.retain(|c| c.id != contact_id);
     state.persist()?;
     Ok(())
@@ -972,6 +982,98 @@ pub fn delete_contact_group(group_id: &str) -> Result<(), BackendError> {
     }
     state.persist()?;
     Ok(())
+}
+
+pub fn upload_contact_avatar(contact_id: &str, data_base64: &str, _mime_type: &str) -> Result<Contact, BackendError> {
+    use std::fs;
+
+    let decoded = base64_decode(data_base64)
+        .map_err(|e| BackendError::validation(format!("Invalid base64: {e}")))?;
+
+    let avatars_dir = persisted::avatars_dir()
+        .map_err(|e| BackendError::internal(e.to_string()))?;
+    fs::create_dir_all(&avatars_dir)
+        .map_err(|e| BackendError::internal(e.to_string()))?;
+
+    // Remove old avatar file if it exists
+    {
+        let state = lock_state();
+        if let Some(contact) = state.contacts.iter().find(|c| c.id == contact_id) {
+            if let Some(ref old_path) = contact.avatar_path {
+                if let Ok(d) = persisted::storage_dir_path() {
+                    let _ = fs::remove_file(d.join(old_path));
+                }
+            }
+        }
+    }
+
+    let file_name = format!("{contact_id}.webp");
+    let file_path = avatars_dir.join(&file_name);
+    fs::write(&file_path, &decoded)
+        .map_err(|e| BackendError::internal(e.to_string()))?;
+
+    let relative_path = format!("avatars/{file_name}");
+
+    let mut state = lock_state();
+    let contact = state.contacts.iter_mut().find(|c| c.id == contact_id)
+        .ok_or_else(|| BackendError::not_found(format!("Contact '{contact_id}' not found")))?;
+    contact.avatar_path = Some(relative_path);
+    contact.updated_at = current_timestamp();
+    let updated = contact.clone();
+    state.persist()?;
+    Ok(updated)
+}
+
+pub fn delete_contact_avatar(contact_id: &str) -> Result<Contact, BackendError> {
+    use std::fs;
+
+    let mut state = lock_state();
+    let contact = state.contacts.iter_mut().find(|c| c.id == contact_id)
+        .ok_or_else(|| BackendError::not_found(format!("Contact '{contact_id}' not found")))?;
+
+    if let Some(ref path) = contact.avatar_path {
+        let storage_dir = persisted::storage_dir_path()
+            .map_err(|e| BackendError::internal(e.to_string()))?;
+        let full_path = storage_dir.join(path);
+        let _ = fs::remove_file(full_path);
+    }
+
+    contact.avatar_path = None;
+    contact.updated_at = current_timestamp();
+    let updated = contact.clone();
+    state.persist()?;
+    Ok(updated)
+}
+
+pub fn get_storage_dir() -> Result<String, BackendError> {
+    let dir = persisted::storage_dir_path()
+        .map_err(|e| BackendError::internal(e.to_string()))?;
+    dir.to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| BackendError::internal("Non-UTF-8 storage path"))
+}
+
+fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
+    let cleaned: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+    let mut result = Vec::with_capacity(cleaned.len() * 3 / 4);
+
+    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut buf: u32 = 0;
+    let mut bits: u32 = 0;
+
+    for ch in cleaned.bytes() {
+        if ch == b'=' { break; }
+        let val = alphabet.iter().position(|&b| b == ch)
+            .ok_or_else(|| format!("Invalid base64 char: {}", ch as char))? as u32;
+        buf = (buf << 6) | val;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            result.push((buf >> bits) as u8);
+            buf &= (1 << bits) - 1;
+        }
+    }
+    Ok(result)
 }
 
 fn uuid_short() -> String {

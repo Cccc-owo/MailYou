@@ -234,6 +234,9 @@
     "searchPlaceholder": "Search contacts",
     "confirmDelete": "Are you sure you want to delete this contact?",
     "confirmDeleteGroup": "Are you sure you want to delete this group? Contacts in this group will not be deleted.",
-    "groupNamePlaceholder": "Group name"
+    "groupNamePlaceholder": "Group name",
+    "invalidEmail": "Please enter a valid email address",
+    "changeAvatar": "Change avatar",
+    "removeAvatar": "Remove avatar"
   }
 }

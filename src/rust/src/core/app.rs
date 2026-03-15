@@ -81,5 +81,8 @@ pub async fn handle_with_provider(
         BackendRequest::CreateContactGroup { name } => serialize(memory::create_contact_group(name)?),
         BackendRequest::UpdateContactGroup { group_id, name } => serialize(memory::update_contact_group(&group_id, name)?),
         BackendRequest::DeleteContactGroup { group_id } => serialize(memory::delete_contact_group(&group_id)?),
+        BackendRequest::UploadContactAvatar { contact_id, data_base64, mime_type } => serialize(memory::upload_contact_avatar(&contact_id, &data_base64, &mime_type)?),
+        BackendRequest::DeleteContactAvatar { contact_id } => serialize(memory::delete_contact_avatar(&contact_id)?),
+        BackendRequest::GetStorageDir => serialize(memory::get_storage_dir()?),
     }
 }

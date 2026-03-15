@@ -40,4 +40,7 @@ export interface MailRepository {
   createContactGroup(name: string): Promise<ContactGroup>
   updateContactGroup(groupId: string, name: string): Promise<ContactGroup>
   deleteContactGroup(groupId: string): Promise<void>
+  uploadContactAvatar(contactId: string, dataBase64: string, mimeType: string): Promise<Contact>
+  deleteContactAvatar(contactId: string): Promise<Contact>
+  getStorageDir(): Promise<string>
 }

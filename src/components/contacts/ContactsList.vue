@@ -19,7 +19,8 @@
       >
         <template #prepend>
           <v-avatar color="primary" size="36">
-            <span class="text-body-2">{{ initials(contact.name || contact.email) }}</span>
+            <v-img v-if="contactsStore.avatarUrl(contact)" :src="contactsStore.avatarUrl(contact)!" cover />
+            <span v-else class="text-body-2">{{ initials(contact.name || contact.email) }}</span>
           </v-avatar>
         </template>
         <v-list-item-title>{{ contact.name || contact.email }}</v-list-item-title>
@@ -38,8 +39,10 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import type { Contact } from '@/types/contact'
+import { useContactsStore } from '@/stores/contacts'
 
 const { t } = useI18n()
+const contactsStore = useContactsStore()
 
 defineProps<{
   contacts: Contact[]

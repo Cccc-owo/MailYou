@@ -134,6 +134,18 @@ export interface RustBackendMethodMap {
     params: { groupId: string }
     result: void
   }
+  uploadContactAvatar: {
+    params: { contactId: string; dataBase64: string; mimeType: string }
+    result: Contact
+  }
+  deleteContactAvatar: {
+    params: { contactId: string }
+    result: Contact
+  }
+  getStorageDir: {
+    params: undefined
+    result: string
+  }
 }
 
 export type RustBackendMethod = keyof RustBackendMethodMap

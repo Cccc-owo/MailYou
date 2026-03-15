@@ -35,4 +35,7 @@ export const webMailRepository: MailRepository = {
   createContactGroup: notAvailable,
   updateContactGroup: notAvailable,
   deleteContactGroup: notAvailable,
+  uploadContactAvatar: notAvailable,
+  deleteContactAvatar: notAvailable,
+  getStorageDir: notAvailable,
 }

@@ -5,6 +5,7 @@ export interface Contact {
   phone?: string
   notes?: string
   groupId?: string
+  avatarPath?: string
   sourceAccountId?: string
   createdAt: string
   updatedAt: string
