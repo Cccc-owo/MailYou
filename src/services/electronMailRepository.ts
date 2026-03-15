@@ -31,4 +31,13 @@ export const electronMailRepository: MailRepository = {
   getAttachmentContent: (accountId, messageId, attachmentId) => getBridge().getAttachmentContent(accountId, messageId, attachmentId),
   getAccountConfig: (accountId) => getBridge().getAccountConfig(accountId),
   updateAccount: (accountId, draft) => getBridge().updateAccount(accountId, draft),
+  listContacts: (groupId) => getBridge().listContacts(groupId),
+  createContact: (contact) => getBridge().createContact(contact),
+  updateContact: (contactId, contact) => getBridge().updateContact(contactId, contact),
+  deleteContact: (contactId) => getBridge().deleteContact(contactId),
+  searchContacts: (query) => getBridge().searchContacts(query),
+  listContactGroups: () => getBridge().listContactGroups(),
+  createContactGroup: (name) => getBridge().createContactGroup(name),
+  updateContactGroup: (groupId, name) => getBridge().updateContactGroup(groupId, name),
+  deleteContactGroup: (groupId) => getBridge().deleteContactGroup(groupId),
 }

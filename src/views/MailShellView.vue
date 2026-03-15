@@ -13,6 +13,11 @@
           <v-btn v-bind="tip" icon="mdi-theme-light-dark" @click="uiStore.toggleAppearance" />
         </template>
       </v-tooltip>
+      <v-tooltip :text="t('contacts.title')" location="bottom">
+        <template #activator="{ props: tip }">
+          <v-btn v-bind="tip" icon="mdi-contacts-outline" @click="router.push('/contacts')" />
+        </template>
+      </v-tooltip>
       <v-tooltip :text="t('shell.settings')" location="bottom">
         <template #activator="{ props: tip }">
           <v-btn v-bind="tip" icon="mdi-cog-outline" @click="router.push('/settings')" />
@@ -89,6 +94,7 @@
         @reply-all="replyAllToCurrentMessage"
         @toggle-read="toggleReadCurrentMessage"
         @move="moveCurrentMessage"
+        @save-contact="handleSaveContact"
       />
     </template>
   </MailShellLayout>
@@ -203,6 +209,7 @@ import { useComposerStore } from '@/stores/composer'
 import { useMailboxesStore } from '@/stores/mailboxes'
 import { useMessagesStore } from '@/stores/messages'
 import { useUiStore } from '@/stores/ui'
+import { useContactsStore } from '@/stores/contacts'
 import { mailRepository } from '@/services/mail'
 
 const { t } = useI18n()
@@ -212,6 +219,7 @@ const mailboxesStore = useMailboxesStore()
 const messagesStore = useMessagesStore()
 const composerStore = useComposerStore()
 const uiStore = useUiStore()
+const contactsStore = useContactsStore()
 const snackbarCtx = useContextMenu()
 const snackbarHasSelection = ref(false)
 
@@ -658,6 +666,10 @@ const handleContextMove = async (messageId: string, folderId: string) => {
 }
 
 // --- Sidebar context menu handlers ---
+const handleSaveContact = async (data: { name: string; email: string }) => {
+  await contactsStore.createContact({ name: data.name, email: data.email })
+}
+
 const handleSyncAccount = async (accountId: string) => {
   messagesStore.setSyncStatus({
     accountId,

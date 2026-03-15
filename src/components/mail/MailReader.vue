@@ -70,7 +70,16 @@
     <div class="mail-reader__message">
       <div class="mail-reader__meta">
         <div>
-          <div class="text-subtitle-1 font-weight-medium">{{ message.from }}</div>
+          <div class="d-flex align-center ga-1">
+            <div class="text-subtitle-1 font-weight-medium">{{ message.from }}</div>
+            <v-btn
+              icon="mdi-account-plus-outline"
+              variant="text"
+              size="x-small"
+              :title="t('contacts.saveToContacts')"
+              @click="$emit('save-contact', { name: message.from, email: message.fromEmail })"
+            />
+          </div>
           <div class="text-body-2 text-medium-emphasis">{{ message.fromEmail }}</div>
         </div>
         <div class="text-body-2 text-medium-emphasis text-right">
@@ -309,6 +318,7 @@ defineEmits<{
   delete: []
   'toggle-read': []
   move: [folderId: string]
+  'save-contact': [data: { name: string; email: string }]
 }>()
 
 const isTrashOrArchive = computed(() =>

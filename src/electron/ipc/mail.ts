@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import type { AccountSetupDraft } from '@/types/account'
 import type { DraftMessage } from '@/types/mail'
+import type { Contact } from '@/types/contact'
 import { mailBackend } from '../backend/mailBackend'
 
 let registered = false
@@ -84,4 +85,17 @@ export const registerMailIpc = () => {
   handle('mail:updateAccount', (accountId, draft) =>
     mailBackend.updateAccount(accountId as string, draft as AccountSetupDraft),
   )
+  handle('mail:listContacts', (groupId) => mailBackend.listContacts(groupId as string | undefined))
+  handle('mail:createContact', (contact) => mailBackend.createContact(contact as Contact))
+  handle('mail:updateContact', (contactId, contact) =>
+    mailBackend.updateContact(contactId as string, contact as Contact),
+  )
+  handle('mail:deleteContact', (contactId) => mailBackend.deleteContact(contactId as string))
+  handle('mail:searchContacts', (query) => mailBackend.searchContacts(query as string))
+  handle('mail:listContactGroups', () => mailBackend.listContactGroups())
+  handle('mail:createContactGroup', (name) => mailBackend.createContactGroup(name as string))
+  handle('mail:updateContactGroup', (groupId, name) =>
+    mailBackend.updateContactGroup(groupId as string, name as string),
+  )
+  handle('mail:deleteContactGroup', (groupId) => mailBackend.deleteContactGroup(groupId as string))
 }

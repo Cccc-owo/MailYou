@@ -24,6 +24,15 @@ const mailyou: MailyouBridge = {
   getAttachmentContent: (accountId, messageId, attachmentId) => ipcRenderer.invoke('mail:getAttachmentContent', accountId, messageId, attachmentId),
   getAccountConfig: (accountId) => ipcRenderer.invoke('mail:getAccountConfig', accountId),
   updateAccount: (accountId, draft) => ipcRenderer.invoke('mail:updateAccount', accountId, draft),
+  listContacts: (groupId) => ipcRenderer.invoke('mail:listContacts', groupId),
+  createContact: (contact) => ipcRenderer.invoke('mail:createContact', contact),
+  updateContact: (contactId, contact) => ipcRenderer.invoke('mail:updateContact', contactId, contact),
+  deleteContact: (contactId) => ipcRenderer.invoke('mail:deleteContact', contactId),
+  searchContacts: (query) => ipcRenderer.invoke('mail:searchContacts', query),
+  listContactGroups: () => ipcRenderer.invoke('mail:listContactGroups'),
+  createContactGroup: (name) => ipcRenderer.invoke('mail:createContactGroup', name),
+  updateContactGroup: (groupId, name) => ipcRenderer.invoke('mail:updateContactGroup', groupId, name),
+  deleteContactGroup: (groupId) => ipcRenderer.invoke('mail:deleteContactGroup', groupId),
 }
 
 const windowControls: WindowControlsBridge = {

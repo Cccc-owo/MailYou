@@ -1,4 +1,5 @@
 import type { AccountSetupDraft, MailAccount } from '@/types/account'
+import type { Contact, ContactGroup } from '@/types/contact'
 import type {
   AttachmentContent,
   DraftMessage,
@@ -30,4 +31,13 @@ export interface MailRepository {
   getAttachmentContent(accountId: string, messageId: string, attachmentId: string): Promise<AttachmentContent>
   getAccountConfig(accountId: string): Promise<AccountSetupDraft>
   updateAccount(accountId: string, draft: AccountSetupDraft): Promise<MailAccount>
+  listContacts(groupId?: string): Promise<Contact[]>
+  createContact(contact: Contact): Promise<Contact>
+  updateContact(contactId: string, contact: Contact): Promise<Contact>
+  deleteContact(contactId: string): Promise<void>
+  searchContacts(query: string): Promise<Contact[]>
+  listContactGroups(): Promise<ContactGroup[]>
+  createContactGroup(name: string): Promise<ContactGroup>
+  updateContactGroup(groupId: string, name: string): Promise<ContactGroup>
+  deleteContactGroup(groupId: string): Promise<void>
 }

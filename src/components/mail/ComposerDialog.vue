@@ -7,9 +7,81 @@
       </v-card-title>
 
       <v-card-text class="composer-dialog__body">
-        <v-text-field :model-value="draft.to" :label="t('composer.to')" @update:model-value="$emit('update:draft', { ...draft, to: $event })" />
-        <v-text-field :model-value="draft.cc" :label="t('composer.cc')" @update:model-value="$emit('update:draft', { ...draft, cc: $event })" />
-        <v-text-field :model-value="draft.bcc" :label="t('composer.bcc')" @update:model-value="$emit('update:draft', { ...draft, bcc: $event })" />
+        <v-combobox
+          :model-value="parseRecipients(draft.to)"
+          :items="suggestions"
+          :label="t('composer.to')"
+          :loading="isSearching"
+          multiple
+          chips
+          closable-chips
+          hide-no-data
+          item-title="displayLabel"
+          item-value="email"
+          @update:search="onSearch"
+          @update:model-value="updateField('to', $event)"
+        >
+          <template #chip="{ item, props: chipProps }">
+            <v-chip v-bind="chipProps" :text="chipLabel(item)" />
+          </template>
+          <template #item="{ item, props: itemProps }">
+            <v-list-item v-bind="itemProps">
+              <v-list-item-title>{{ item.name }}</v-list-item-title>
+              <v-list-item-subtitle>{{ item.email }}</v-list-item-subtitle>
+            </v-list-item>
+          </template>
+        </v-combobox>
+
+        <v-combobox
+          :model-value="parseRecipients(draft.cc)"
+          :items="suggestions"
+          :label="t('composer.cc')"
+          :loading="isSearching"
+          multiple
+          chips
+          closable-chips
+          hide-no-data
+          item-title="displayLabel"
+          item-value="email"
+          @update:search="onSearch"
+          @update:model-value="updateField('cc', $event)"
+        >
+          <template #chip="{ item, props: chipProps }">
+            <v-chip v-bind="chipProps" :text="chipLabel(item)" />
+          </template>
+          <template #item="{ item, props: itemProps }">
+            <v-list-item v-bind="itemProps">
+              <v-list-item-title>{{ item.name }}</v-list-item-title>
+              <v-list-item-subtitle>{{ item.email }}</v-list-item-subtitle>
+            </v-list-item>
+          </template>
+        </v-combobox>
+
+        <v-combobox
+          :model-value="parseRecipients(draft.bcc)"
+          :items="suggestions"
+          :label="t('composer.bcc')"
+          :loading="isSearching"
+          multiple
+          chips
+          closable-chips
+          hide-no-data
+          item-title="displayLabel"
+          item-value="email"
+          @update:search="onSearch"
+          @update:model-value="updateField('bcc', $event)"
+        >
+          <template #chip="{ item, props: chipProps }">
+            <v-chip v-bind="chipProps" :text="chipLabel(item)" />
+          </template>
+          <template #item="{ item, props: itemProps }">
+            <v-list-item v-bind="itemProps">
+              <v-list-item-title>{{ item.name }}</v-list-item-title>
+              <v-list-item-subtitle>{{ item.email }}</v-list-item-subtitle>
+            </v-list-item>
+          </template>
+        </v-combobox>
+
         <v-text-field :model-value="draft.subject" :label="t('composer.subject')" @update:model-value="$emit('update:draft', { ...draft, subject: $event })" />
         <RichTextEditor
           :model-value="draft.body"
@@ -48,10 +120,15 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { DraftMessage } from '@/types/mail'
+import type { Contact } from '@/types/contact'
+import { mailRepository } from '@/services/mail'
 import RichTextEditor from '@/components/mail/RichTextEditor.vue'
 
 const { t } = useI18n()
 const fileInput = ref<HTMLInputElement | null>(null)
+const suggestions = ref<(Contact & { displayLabel: string })[]>([])
+const isSearching = ref(false)
+let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const props = defineProps<{
   draft: DraftMessage
@@ -67,6 +144,52 @@ const emit = defineEmits<{
   send: []
   close: []
 }>()
+
+// Parse comma-separated string into array for combobox
+const parseRecipients = (value: string): string[] => {
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+// Serialize combobox array back to comma string
+const serializeRecipients = (items: (string | Contact)[]): string => {
+  return items
+    .map((item) => {
+      if (typeof item === 'string') return item
+      return item.name ? `${item.name} <${item.email}>` : item.email
+    })
+    .join(', ')
+}
+
+const updateField = (field: 'to' | 'cc' | 'bcc', items: (string | Contact)[]) => {
+  emit('update:draft', { ...props.draft, [field]: serializeRecipients(items) })
+}
+
+const chipLabel = (item: string | Contact) => {
+  if (typeof item === 'string') return item
+  return item.name || item.email
+}
+
+const onSearch = (query: string) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  if (!query || query.length < 2) {
+    suggestions.value = []
+    return
+  }
+  searchTimer = setTimeout(async () => {
+    isSearching.value = true
+    try {
+      const results = await mailRepository.searchContacts(query)
+      suggestions.value = results.map((c) => ({ ...c, displayLabel: `${c.name} <${c.email}>` }))
+    } catch {
+      suggestions.value = []
+    } finally {
+      isSearching.value = false
+    }
+  }, 200)
+}
 
 const triggerFileInput = () => {
   fileInput.value?.click()

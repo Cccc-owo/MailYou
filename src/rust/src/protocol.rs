@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::models::{
-    AccountSetupDraft, AttachmentContent, DraftMessage, MailAccount, MailMessage, MailboxBundle,
-    MailboxFolder, SyncStatus,
+    AccountSetupDraft, AttachmentContent, Contact, ContactGroup, DraftMessage, MailAccount,
+    MailMessage, MailboxBundle, MailboxFolder, SyncStatus,
 };
 
 #[derive(Debug, Deserialize)]
@@ -47,6 +47,23 @@ pub enum BackendRequest {
     GetAccountConfig { account_id: String },
     #[serde(rename_all = "camelCase")]
     UpdateAccount { account_id: String, draft: AccountSetupDraft },
+    // -- Contacts (local-only, bypass MailProvider) --
+    #[serde(rename_all = "camelCase")]
+    ListContacts { group_id: Option<String> },
+    CreateContact(Contact),
+    #[serde(rename_all = "camelCase")]
+    UpdateContact { contact_id: String, contact: Contact },
+    #[serde(rename_all = "camelCase")]
+    DeleteContact { contact_id: String },
+    #[serde(rename_all = "camelCase")]
+    SearchContacts { query: String },
+    ListContactGroups,
+    #[serde(rename_all = "camelCase")]
+    CreateContactGroup { name: String },
+    #[serde(rename_all = "camelCase")]
+    UpdateContactGroup { group_id: String, name: String },
+    #[serde(rename_all = "camelCase")]
+    DeleteContactGroup { group_id: String },
 }
 
 impl BackendRequest {
@@ -74,6 +91,15 @@ impl BackendRequest {
             Self::GetAttachmentContent { .. } => "getAttachmentContent",
             Self::GetAccountConfig { .. } => "getAccountConfig",
             Self::UpdateAccount { .. } => "updateAccount",
+            Self::ListContacts { .. } => "listContacts",
+            Self::CreateContact(_) => "createContact",
+            Self::UpdateContact { .. } => "updateContact",
+            Self::DeleteContact { .. } => "deleteContact",
+            Self::SearchContacts { .. } => "searchContacts",
+            Self::ListContactGroups => "listContactGroups",
+            Self::CreateContactGroup { .. } => "createContactGroup",
+            Self::UpdateContactGroup { .. } => "updateContactGroup",
+            Self::DeleteContactGroup { .. } => "deleteContactGroup",
         }
     }
 }
@@ -196,3 +222,9 @@ pub type SyncAccountResult = SyncStatus;
 pub type GetMailboxBundleResult = MailboxBundle;
 #[allow(dead_code)]
 pub type GetAttachmentContentResult = AttachmentContent;
+#[allow(dead_code)]
+pub type ListContactsResult = Vec<Contact>;
+#[allow(dead_code)]
+pub type SearchContactsResult = Vec<Contact>;
+#[allow(dead_code)]
+pub type ListContactGroupsResult = Vec<ContactGroup>;

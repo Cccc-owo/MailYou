@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import MailShellView from '@/views/MailShellView.vue'
 import AccountSetupView from '@/views/AccountSetupView.vue'
 import SettingsView from '@/views/SettingsView.vue'
+import ContactsView from '@/views/ContactsView.vue'
 
 const routes = [
   {
@@ -18,6 +19,11 @@ const routes = [
     path: '/settings',
     name: 'settings',
     component: SettingsView,
+  },
+  {
+    path: '/contacts',
+    name: 'contacts',
+    component: ContactsView,
   },
 ]
 

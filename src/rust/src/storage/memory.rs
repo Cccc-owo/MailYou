@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use crate::models::{
-    AccountSetupDraft, AccountStatus, AttachmentMeta, DraftMessage, MailAccount, MailFolderKind,
-    MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
+    AccountSetupDraft, AccountStatus, AttachmentMeta, Contact, ContactGroup, DraftMessage,
+    MailAccount, MailFolderKind, MailMessage, MailThread, MailboxBundle, MailboxFolder,
+    StoredAccountState, SyncStatus,
 };
 use crate::protocol::BackendError;
 use crate::storage::{accounts, drafts, mailbox, persisted, sync};
@@ -590,6 +591,8 @@ struct MemoryState {
     threads: Vec<MailThread>,
     drafts: Vec<DraftMessage>,
     sync_statuses: HashMap<String, SyncStatus>,
+    contacts: Vec<Contact>,
+    contact_groups: Vec<ContactGroup>,
 }
 
 impl MemoryState {
@@ -679,6 +682,12 @@ impl MemoryState {
                 let statuses: Vec<SyncStatus> = self.sync_statuses.values().cloned().collect();
                 persisted::save_sync_statuses(&statuses)
             })
+            .and_then(|_| {
+                persisted::save_contacts(&persisted::PersistedContacts {
+                    contacts: self.contacts.clone(),
+                    groups: self.contact_groups.clone(),
+                })
+            })
             .map(|_| {
                 eprintln!(
                     "[store] persisted ({} accounts, {} folders, {} messages, {} drafts) in {:.1?}",
@@ -748,7 +757,17 @@ fn initial_state() -> MemoryState {
         threads: mailbox_state.threads,
         drafts,
         sync_statuses,
+        contacts: Vec::new(),
+        contact_groups: Vec::new(),
     };
+
+    // Load contacts
+    if persisted::has_contacts_file() {
+        let loaded = persisted::load_contacts();
+        eprintln!("[store] loaded {} contacts, {} groups from disk", loaded.contacts.len(), loaded.groups.len());
+        state.contacts = loaded.contacts;
+        state.contact_groups = loaded.groups;
+    }
 
     state.sync_drafts_into_mailbox();
     state.recalculate_counts();
@@ -858,4 +877,111 @@ pub fn current_timestamp() -> String {
     let y = if m <= 2 { y + 1 } else { y };
 
     format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}.000Z")
+}
+
+// ---------------------------------------------------------------------------
+// Contacts
+// ---------------------------------------------------------------------------
+
+pub fn list_contacts(group_id: Option<&str>) -> Result<Vec<Contact>, BackendError> {
+    let state = lock_state();
+    let mut out: Vec<Contact> = match group_id {
+        Some(gid) => state.contacts.iter().filter(|c| c.group_id.as_deref() == Some(gid)).cloned().collect(),
+        None => state.contacts.clone(),
+    };
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
+}
+
+pub fn create_contact(mut contact: Contact) -> Result<Contact, BackendError> {
+    let mut state = lock_state();
+    let now = current_timestamp();
+    contact.id = format!("contact-{}", &uuid_short());
+    contact.created_at = now.clone();
+    contact.updated_at = now;
+    state.contacts.push(contact.clone());
+    state.persist()?;
+    Ok(contact)
+}
+
+pub fn update_contact(contact_id: &str, mut contact: Contact) -> Result<Contact, BackendError> {
+    let mut state = lock_state();
+    let existing = state.contacts.iter_mut().find(|c| c.id == contact_id)
+        .ok_or_else(|| BackendError::not_found(format!("Contact '{contact_id}' not found")))?;
+    contact.id = existing.id.clone();
+    contact.created_at = existing.created_at.clone();
+    contact.updated_at = current_timestamp();
+    *existing = contact.clone();
+    state.persist()?;
+    Ok(contact)
+}
+
+pub fn delete_contact(contact_id: &str) -> Result<(), BackendError> {
+    let mut state = lock_state();
+    state.contacts.retain(|c| c.id != contact_id);
+    state.persist()?;
+    Ok(())
+}
+
+pub fn search_contacts(query: &str) -> Result<Vec<Contact>, BackendError> {
+    let state = lock_state();
+    let q = query.to_lowercase();
+    let results: Vec<Contact> = state
+        .contacts
+        .iter()
+        .filter(|c| c.name.to_lowercase().contains(&q) || c.email.to_lowercase().contains(&q))
+        .take(20)
+        .cloned()
+        .collect();
+    Ok(results)
+}
+
+pub fn list_contact_groups() -> Result<Vec<ContactGroup>, BackendError> {
+    Ok(lock_state().contact_groups.clone())
+}
+
+pub fn create_contact_group(name: String) -> Result<ContactGroup, BackendError> {
+    let mut state = lock_state();
+    let group = ContactGroup {
+        id: format!("cg-{}", &uuid_short()),
+        name,
+    };
+    state.contact_groups.push(group.clone());
+    state.persist()?;
+    Ok(group)
+}
+
+pub fn update_contact_group(group_id: &str, name: String) -> Result<ContactGroup, BackendError> {
+    let mut state = lock_state();
+    let group = state.contact_groups.iter_mut().find(|g| g.id == group_id)
+        .ok_or_else(|| BackendError::not_found(format!("Contact group '{group_id}' not found")))?;
+    group.name = name;
+    let updated = group.clone();
+    state.persist()?;
+    Ok(updated)
+}
+
+pub fn delete_contact_group(group_id: &str) -> Result<(), BackendError> {
+    let mut state = lock_state();
+    state.contact_groups.retain(|g| g.id != group_id);
+    // Unlink contacts from the deleted group
+    for contact in state.contacts.iter_mut() {
+        if contact.group_id.as_deref() == Some(group_id) {
+            contact.group_id = None;
+        }
+    }
+    state.persist()?;
+    Ok(())
+}
+
+fn uuid_short() -> String {
+    // Simple unique-enough ID: take first 12 chars from a hex timestamp + counter
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{ts:x}{seq:x}")
 }

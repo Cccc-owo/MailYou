@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::models::{DraftMessage, StoredAccountState, SyncStatus};
+use crate::models::{Contact, ContactGroup, DraftMessage, StoredAccountState, SyncStatus};
 
 const APP_DIR_NAME: &str = "MailYou";
 const STORAGE_DIR_NAME: &str = "mail";
@@ -13,6 +13,7 @@ const ACCOUNTS_FILE: &str = "accounts.json";
 const DRAFTS_FILE: &str = "drafts.json";
 const MAILBOX_FILE: &str = "mailbox.json";
 const SYNC_FILE: &str = "sync.json";
+const CONTACTS_FILE: &str = "contacts.json";
 
 const KEYRING_SERVICE: &str = "mailyou";
 const PASSWORD_PLACEHOLDER: &str = "<keyring>";
@@ -74,6 +75,25 @@ pub fn load_sync_statuses() -> Vec<SyncStatus> {
 
 pub fn save_sync_statuses(statuses: &[SyncStatus]) -> io::Result<()> {
     save_json(SYNC_FILE, statuses)
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersistedContacts {
+    pub contacts: Vec<Contact>,
+    pub groups: Vec<ContactGroup>,
+}
+
+pub fn load_contacts() -> PersistedContacts {
+    load_json(CONTACTS_FILE).unwrap_or_default()
+}
+
+pub fn save_contacts(data: &PersistedContacts) -> io::Result<()> {
+    save_json(CONTACTS_FILE, data)
+}
+
+pub fn has_contacts_file() -> bool {
+    has_persisted(CONTACTS_FILE)
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

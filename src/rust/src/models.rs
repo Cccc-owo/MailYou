@@ -177,3 +177,28 @@ pub struct MailboxBundle {
     pub threads: Vec<MailThread>,
     pub sync_status: SyncStatus,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Contact {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    #[serde(default)]
+    pub phone: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub group_id: Option<String>,
+    #[serde(default)]
+    pub source_account_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactGroup {
+    pub id: String,
+    pub name: String,
+}

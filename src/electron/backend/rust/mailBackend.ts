@@ -23,4 +23,13 @@ export const rustMailBackend: MailBackend = {
   getAttachmentContent: (accountId, messageId, attachmentId) => invokeRustBackend('getAttachmentContent', { accountId, messageId, attachmentId }),
   getAccountConfig: (accountId) => invokeRustBackend('getAccountConfig', { accountId }),
   updateAccount: (accountId, draft) => invokeRustBackend('updateAccount', { accountId, draft }),
+  listContacts: (groupId) => invokeRustBackend('listContacts', { groupId }),
+  createContact: (contact) => invokeRustBackend('createContact', contact),
+  updateContact: (contactId, contact) => invokeRustBackend('updateContact', { contactId, contact }),
+  deleteContact: (contactId) => invokeRustBackend('deleteContact', { contactId }),
+  searchContacts: (query) => invokeRustBackend('searchContacts', { query }),
+  listContactGroups: () => invokeRustBackend('listContactGroups'),
+  createContactGroup: (name) => invokeRustBackend('createContactGroup', { name }),
+  updateContactGroup: (groupId, name) => invokeRustBackend('updateContactGroup', { groupId, name }),
+  deleteContactGroup: (groupId) => invokeRustBackend('deleteContactGroup', { groupId }),
 }

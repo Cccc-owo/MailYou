@@ -2,6 +2,7 @@ use crate::protocol::{
     serialize, BackendRequest, HealthCheckResult, SendMessageResult,
 };
 use crate::provider::MailProvider;
+use crate::storage::memory;
 
 pub async fn handle_with_provider(
     provider: &'static dyn MailProvider,
@@ -70,5 +71,15 @@ pub async fn handle_with_provider(
         } => serialize(provider.get_attachment_content(&account_id, &message_id, &attachment_id).await?),
         BackendRequest::GetAccountConfig { account_id } => serialize(provider.get_account_config(&account_id).await?),
         BackendRequest::UpdateAccount { account_id, draft } => serialize(provider.update_account(&account_id, draft).await?),
+        // -- Contacts (local-only, bypass MailProvider) --
+        BackendRequest::ListContacts { group_id } => serialize(memory::list_contacts(group_id.as_deref())?),
+        BackendRequest::CreateContact(contact) => serialize(memory::create_contact(contact)?),
+        BackendRequest::UpdateContact { contact_id, contact } => serialize(memory::update_contact(&contact_id, contact)?),
+        BackendRequest::DeleteContact { contact_id } => serialize(memory::delete_contact(&contact_id)?),
+        BackendRequest::SearchContacts { query } => serialize(memory::search_contacts(&query)?),
+        BackendRequest::ListContactGroups => serialize(memory::list_contact_groups()?),
+        BackendRequest::CreateContactGroup { name } => serialize(memory::create_contact_group(name)?),
+        BackendRequest::UpdateContactGroup { group_id, name } => serialize(memory::update_contact_group(&group_id, name)?),
+        BackendRequest::DeleteContactGroup { group_id } => serialize(memory::delete_contact_group(&group_id)?),
     }
 }

@@ -1,4 +1,5 @@
 import type { AccountSetupDraft, MailAccount } from '@/types/account'
+import type { Contact, ContactGroup } from '@/types/contact'
 import type {
   AttachmentContent,
   DraftMessage,
@@ -96,6 +97,42 @@ export interface RustBackendMethodMap {
   updateAccount: {
     params: { accountId: string; draft: AccountSetupDraft }
     result: MailAccount
+  }
+  listContacts: {
+    params: { groupId?: string }
+    result: Contact[]
+  }
+  createContact: {
+    params: Contact
+    result: Contact
+  }
+  updateContact: {
+    params: { contactId: string; contact: Contact }
+    result: Contact
+  }
+  deleteContact: {
+    params: { contactId: string }
+    result: void
+  }
+  searchContacts: {
+    params: { query: string }
+    result: Contact[]
+  }
+  listContactGroups: {
+    params: undefined
+    result: ContactGroup[]
+  }
+  createContactGroup: {
+    params: { name: string }
+    result: ContactGroup
+  }
+  updateContactGroup: {
+    params: { groupId: string; name: string }
+    result: ContactGroup
+  }
+  deleteContactGroup: {
+    params: { groupId: string }
+    result: void
   }
 }
 
