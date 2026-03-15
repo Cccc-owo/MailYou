@@ -123,7 +123,7 @@ const avatarInitials = computed(() => {
 
 .popover-header {
   height: 48px;
-  background: linear-gradient(135deg, rgb(var(--v-theme-primary)), rgb(var(--v-theme-primary-darken-1), 1));
+  background: rgb(var(--v-theme-primary));
   border-radius: 12px 12px 0 0;
   position: relative;
 }
