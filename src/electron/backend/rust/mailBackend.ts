@@ -2,6 +2,23 @@ import type { MailBackend } from '../mailBackend'
 import { authorizeOAuth } from '../oauth'
 import { invokeRustBackend, shutdownRustBackend } from './process'
 
+const inFlightSyncs = new Map<string, Promise<Awaited<ReturnType<MailBackend['syncAccount']>>>>()
+
+const syncAccountDeduped: MailBackend['syncAccount'] = (accountId) => {
+  const existing = inFlightSyncs.get(accountId)
+  if (existing) {
+    return existing
+  }
+
+  const promise = invokeRustBackend('syncAccount', { accountId }).finally(() => {
+    if (inFlightSyncs.get(accountId) === promise) {
+      inFlightSyncs.delete(accountId)
+    }
+  })
+  inFlightSyncs.set(accountId, promise)
+  return promise
+}
+
 export const rustMailBackend: MailBackend = {
   listAccounts: () => invokeRustBackend('listAccounts'),
   createAccount: (draft) => invokeRustBackend('createAccount', draft),
@@ -20,7 +37,7 @@ export const rustMailBackend: MailBackend = {
   markAllRead: (accountId, folderId) => invokeRustBackend('markAllRead', { accountId, folderId }),
   deleteMessage: (accountId, messageId) => invokeRustBackend('deleteMessage', { accountId, messageId }),
   deleteAccount: (accountId) => invokeRustBackend('deleteAccount', { accountId }),
-  syncAccount: (accountId) => invokeRustBackend('syncAccount', { accountId }),
+  syncAccount: syncAccountDeduped,
   getMailboxBundle: (accountId) => invokeRustBackend('getMailboxBundle', { accountId }),
   getAttachmentContent: (accountId, messageId, attachmentId) => invokeRustBackend('getAttachmentContent', { accountId, messageId, attachmentId }),
   getAccountConfig: (accountId) => invokeRustBackend('getAccountConfig', { accountId }),

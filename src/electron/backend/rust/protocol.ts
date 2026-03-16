@@ -200,3 +200,17 @@ export type RustBackendResponse<M extends RustBackendMethod = RustBackendMethod>
       ok: false
       error: RustBackendError
     }
+
+export interface RustBackendMailboxChangedEvent {
+  event: 'mailboxChanged'
+  payload: {
+    accountId: string
+    source: 'idle' | 'sync'
+  }
+}
+
+export type RustBackendEvent = RustBackendMailboxChangedEvent
+
+export type RustBackendMessage<M extends RustBackendMethod = RustBackendMethod> =
+  | RustBackendResponse<M>
+  | RustBackendEvent

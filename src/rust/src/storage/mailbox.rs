@@ -389,5 +389,8 @@ fn folder(
         total_count,
         icon: icon.into(),
         imap_name: None,
+        imap_uid_validity: None,
+        imap_uid_next: None,
+        imap_highest_modseq: None,
     }
 }

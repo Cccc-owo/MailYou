@@ -8,10 +8,12 @@ mod models;
 mod oauth;
 mod protocol;
 mod provider;
+mod realtime;
 mod storage;
 
 use core::context::app_context;
-use protocol::{BackendRequestEnvelope, BackendResponse};
+use protocol::{BackendMessage, BackendRequestEnvelope, BackendResponse};
+use realtime::RealtimeController;
 
 #[tokio::main]
 async fn main() {
@@ -22,13 +24,15 @@ async fn main() {
     eprintln!("[backend] initialized provider '{}' in {:?}", provider.backend_name(), start.elapsed());
 
     let stdin = BufReader::new(tokio::io::stdin());
-    let (tx, mut rx) = mpsc::unbounded_channel::<BackendResponse>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<BackendMessage>();
+    let realtime = RealtimeController::new();
+    realtime.reconcile(tx.clone());
 
     // Dedicated writer task owns stdout — avoids Send issues with StdoutLock.
     let writer_handle = tokio::spawn(async move {
         let mut stdout = BufWriter::new(tokio::io::stdout());
-        while let Some(response) = rx.recv().await {
-            let Ok(json) = serde_json::to_vec(&response) else { continue };
+        while let Some(message) = rx.recv().await {
+            let Ok(json) = serde_json::to_vec(&message) else { continue };
             if stdout.write_all(&json).await.is_err()
                 || stdout.write_all(b"\n").await.is_err()
                 || stdout.flush().await.is_err()
@@ -57,7 +61,7 @@ async fn main() {
                     0,
                     protocol::BackendError::internal(format!("Invalid request: {error}")),
                 );
-                let _ = tx.send(response);
+                let _ = tx.send(BackendMessage::response(response));
                 continue;
             }
         };
@@ -67,6 +71,7 @@ async fn main() {
         eprintln!("[backend] req #{request_id} {method}");
 
         let tx = tx.clone();
+        let realtime = realtime.clone();
         tokio::spawn(async move {
             let start = Instant::now();
 
@@ -104,13 +109,16 @@ async fn main() {
             };
             eprintln!("[backend] req #{request_id} {method} → {status} ({elapsed:.1?})");
 
-            if tx.send(response).is_err() {
+            if tx.send(BackendMessage::response(response)).is_err() {
                 eprintln!("[backend] req #{request_id}: channel closed, response dropped");
             }
+
+            realtime.reconcile(tx.clone());
         });
     }
 
     // Drop the sender so the writer task exits when all in-flight requests finish.
+    realtime.shutdown();
     drop(tx);
     let _ = writer_handle.await;
     eprintln!("[backend] shutdown complete");

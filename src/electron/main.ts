@@ -8,7 +8,7 @@ import {
   isMailYouDevServerEnabled,
 } from '@/config/runtime'
 import { handleOAuthCallbackUrl } from './backend/oauth'
-import { ensureRustBackendReady, shutdownRustBackend } from './backend/rust/process'
+import { ensureRustBackendReady, onRustBackendEvent, shutdownRustBackend } from './backend/rust/process'
 import { registerMailIpc } from './ipc/mail'
 import { registerWindowIpc, setWindowSyncIntervalHandler } from './ipc/window'
 import { mailBackend } from './backend/mailBackend'
@@ -166,39 +166,50 @@ const sendBackgroundSyncComplete = (accountId: string) => {
   }
 }
 
+const publishUnreadChanges = (
+  accountId: string,
+  messages: Awaited<ReturnType<typeof mailBackend.getMailboxBundle>>['messages'],
+) => {
+  const unreadIds = new Set(
+    messages
+      .filter((message) => !message.isRead)
+      .map((message) => message.id),
+  )
+  const previousUnread = knownUnreadIdsByAccount.get(accountId)
+  const newUnread = messages.filter(
+    (message) => !message.isRead && previousUnread && !previousUnread.has(message.id),
+  )
+
+  knownUnreadIdsByAccount.set(accountId, unreadIds)
+  sendBackgroundSyncComplete(accountId)
+
+  if (newUnread.length === 0 || !Notification.isSupported()) {
+    return
+  }
+
+  const title = newUnread.length === 1 ? (newUnread[0].subject || 'New mail') : 'New mail'
+  const body = newUnread.length === 1
+    ? `From ${newUnread[0].from}`
+    : `${newUnread.length} new unread messages`
+
+  const notification = new Notification({ title, body, silent: false })
+  notification.on('click', () => {
+    void focusMainWindow()
+  })
+  notification.show()
+}
+
+const syncSingleAccountInBackground = async (accountId: string) => {
+  const bundle = await mailBackend.getMailboxBundle(accountId)
+  publishUnreadChanges(accountId, bundle.messages)
+}
+
 const syncAccountsInBackground = async () => {
   try {
     const accounts = await mailBackend.listAccounts()
     for (const account of accounts) {
       await mailBackend.syncAccount(account.id)
-      const bundle = await mailBackend.getMailboxBundle(account.id)
-      const unreadIds = new Set(
-        bundle.messages
-          .filter((message) => !message.isRead)
-          .map((message) => message.id),
-      )
-      const previousUnread = knownUnreadIdsByAccount.get(account.id)
-      const newUnread = bundle.messages.filter(
-        (message) => !message.isRead && previousUnread && !previousUnread.has(message.id),
-      )
-
-      knownUnreadIdsByAccount.set(account.id, unreadIds)
-      sendBackgroundSyncComplete(account.id)
-
-      if (newUnread.length === 0 || !Notification.isSupported()) {
-        continue
-      }
-
-      const title = newUnread.length === 1 ? (newUnread[0].subject || 'New mail') : 'New mail'
-      const body = newUnread.length === 1
-        ? `From ${newUnread[0].from}`
-        : `${newUnread.length} new unread messages`
-
-      const notification = new Notification({ title, body, silent: false })
-      notification.on('click', () => {
-        void focusMainWindow()
-      })
-      notification.show()
+      await syncSingleAccountInBackground(account.id)
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -276,6 +287,17 @@ app.whenReady().then(async () => {
     app.quit()
     return
   }
+
+  onRustBackendEvent((event) => {
+    if (event.event !== 'mailboxChanged') {
+      return
+    }
+
+    void syncSingleAccountInBackground(event.payload.accountId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[realtime-sync] failed for ${event.payload.accountId}: ${message}`)
+    })
+  })
 
   registerMailIpc()
   registerWindowIpc()

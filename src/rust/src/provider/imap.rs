@@ -67,6 +67,44 @@ impl AsyncWrite for ImapStream {
 }
 
 type ImapAnySession = ImapSession<ImapStream>;
+type ExistingBodies = std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>, String)>;
+
+struct MsgMeta {
+    uid: u32,
+    message_id: String,
+    thread_id: String,
+    is_read: bool,
+    is_starred: bool,
+    subject: String,
+    from: String,
+    from_email: String,
+    to: Vec<String>,
+    cc: Vec<String>,
+    date: String,
+}
+
+struct FolderSyncResult {
+    unread: u32,
+    total: u32,
+    uid_validity: Option<u32>,
+    uid_next: Option<u32>,
+    highest_modseq: Option<u64>,
+    vanished_uids: Vec<u32>,
+    messages: Vec<MailMessage>,
+    threads: Vec<MailThread>,
+    fetched_all_messages: bool,
+}
+
+pub(crate) enum IdleMailboxChange {
+    Timeout,
+    Changed,
+    Vanished(Vec<u32>),
+}
+
+struct MailboxSelectResult {
+    mailbox: async_imap::types::Mailbox,
+    vanished_uids: Vec<u32>,
+}
 
 struct XOAuth2Authenticator {
     payload: String,
@@ -539,6 +577,96 @@ async fn imap_connect(state: &StoredAccountState) -> Result<ImapAnySession, Back
     Ok(session)
 }
 
+pub(crate) async fn wait_for_mailbox_change(
+    state: &StoredAccountState,
+    mailbox_name: &str,
+    idle_timeout: Duration,
+) -> Result<IdleMailboxChange, BackendError> {
+    let mut session = imap_connect(state).await?;
+    let account_id = &state.account.id;
+    let folder = memory::list_folders(account_id)
+        .ok()
+        .and_then(|folders| folders.into_iter().find(|folder| folder.imap_name.as_deref() == Some(mailbox_name)));
+    let folder_id = folder.as_ref().map(|folder| folder.id.as_str()).unwrap_or(mailbox_name);
+    let _ = select_mailbox_for_incremental_sync(&mut session, account_id, folder_id, mailbox_name, folder.as_ref()).await?;
+
+    let mut idle = session.idle();
+    idle.init()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP IDLE init failed: {error}")))?;
+
+    let (wait, _interrupt) = idle.wait_with_timeout(idle_timeout);
+    let response = wait
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP IDLE wait failed: {error}")))?;
+
+    let mut session = idle
+        .done()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP IDLE done failed: {error}")))?;
+    let _ = session.logout().await;
+
+    match response {
+        async_imap::extensions::idle::IdleResponse::Timeout => Ok(IdleMailboxChange::Timeout),
+        async_imap::extensions::idle::IdleResponse::ManualInterrupt => Ok(IdleMailboxChange::Changed),
+        async_imap::extensions::idle::IdleResponse::NewData(data) => match data.parsed() {
+            imap_proto::Response::Vanished { uids, .. } => {
+                let flattened = uids
+                    .iter()
+                    .flat_map(|range| range.clone())
+                    .collect::<Vec<_>>();
+                Ok(IdleMailboxChange::Vanished(flattened))
+            }
+            _ => Ok(IdleMailboxChange::Changed),
+        },
+    }
+}
+
+pub(crate) async fn sync_mailbox_incremental(account_id: &str, mailbox_name: &str) -> Result<SyncStatus, BackendError> {
+    let account_state = memory::get_account_state(account_id)
+        .ok_or_else(|| BackendError::not_found("Account not found"))?;
+    let folder = resolve_or_create_folder(account_id, mailbox_name);
+    let existing_bodies = memory::get_existing_bodies_for_folder(account_id, &folder.id);
+    let known_max_uid = memory::get_max_imap_uid_for_folder(account_id, &folder.id);
+
+    let mut session = imap_connect(&account_state).await?;
+    let sync_result = fetch_folder_contents_incremental(
+        &mut session,
+        account_id,
+        &folder.id,
+        mailbox_name,
+        &existing_bodies,
+        known_max_uid,
+        50,
+    )
+    .await?;
+    let _ = session.logout().await;
+
+    if !sync_result.vanished_uids.is_empty() {
+        memory::remove_messages_by_imap_uids(account_id, &folder.id, &sync_result.vanished_uids)?;
+    }
+
+    let synced_folder = MailboxFolder {
+        unread_count: sync_result.unread,
+        total_count: sync_result.total,
+        imap_uid_validity: sync_result.uid_validity,
+        imap_uid_next: sync_result.uid_next,
+        imap_highest_modseq: sync_result.highest_modseq,
+        ..folder
+    };
+
+    memory::merge_remote_folder(
+        account_id,
+        synced_folder,
+        sync_result.messages,
+        sync_result.threads,
+        sync_result.fetched_all_messages,
+    )?;
+
+    let timestamp = memory::current_timestamp();
+    memory::finish_sync(account_id, &timestamp)
+}
+
 async fn imap_authenticate_client<T>(
     client: async_imap::Client<T>,
     draft: &AccountSetupDraft,
@@ -708,6 +836,9 @@ async fn imap_fetch_mailbox(
         total_count: 0,
         icon: "mdi-star-outline".into(),
         imap_name: None,
+        imap_uid_validity: None,
+        imap_uid_next: None,
+        imap_highest_modseq: None,
     });
 
     for remote_folder in &remote_folders {
@@ -733,6 +864,9 @@ async fn imap_fetch_mailbox(
             total_count: total,
             icon: icon.into(),
             imap_name: Some(raw_name.to_string()),
+            imap_uid_validity: None,
+            imap_uid_next: None,
+            imap_highest_modseq: None,
         });
 
         all_messages.extend(messages);
@@ -743,9 +877,6 @@ async fn imap_fetch_mailbox(
     Ok((folders, all_messages, all_threads))
 }
 
-/// Cached body + preview + attachments for a message, keyed by IMAP UID.
-type ExistingBodies = std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>, String)>;
-
 async fn fetch_folder_contents(
     session: &mut ImapAnySession,
     account_id: &str,
@@ -753,15 +884,58 @@ async fn fetch_folder_contents(
     mailbox_name: &str,
     existing_bodies: &ExistingBodies,
 ) -> Result<(u32, u32, Vec<MailMessage>, Vec<MailThread>), BackendError> {
-    let mailbox = session
-        .select(mailbox_name)
-        .await
-        .map_err(|e| BackendError::internal(format!("IMAP SELECT '{mailbox_name}' failed: {e}")))?;
+    let result = fetch_folder_contents_incremental(
+        session,
+        account_id,
+        folder_id,
+        mailbox_name,
+        existing_bodies,
+        None,
+        50,
+    )
+    .await?;
+
+    Ok((result.unread, result.total, result.messages, result.threads))
+}
+
+async fn fetch_folder_contents_incremental(
+    session: &mut ImapAnySession,
+    account_id: &str,
+    folder_id: &str,
+    mailbox_name: &str,
+    existing_bodies: &ExistingBodies,
+    known_max_uid: Option<u32>,
+    recent_limit: u32,
+) -> Result<FolderSyncResult, BackendError> {
+    let previous_folder = memory::list_folders(account_id)
+        .ok()
+        .and_then(|folders| folders.into_iter().find(|folder| folder.id == folder_id));
+    let previous_uid_validity = previous_folder.as_ref().and_then(|folder| folder.imap_uid_validity);
+    let previous_highest_modseq = previous_folder.as_ref().and_then(|folder| folder.imap_highest_modseq);
+    let select_result = select_mailbox_for_incremental_sync(session, account_id, folder_id, mailbox_name, previous_folder.as_ref()).await?;
+    let mailbox = select_result.mailbox;
 
     let total = mailbox.exists;
+    let uid_validity = mailbox.uid_validity;
+    let uid_next = mailbox.uid_next;
+    let highest_modseq = mailbox.highest_modseq;
+    let uid_validity_changed =
+        previous_uid_validity.is_some() && uid_validity.is_some() && previous_uid_validity != uid_validity;
+    let use_changedsince =
+        !uid_validity_changed && previous_highest_modseq.is_some() && highest_modseq.is_some();
 
     if total == 0 {
-        return Ok((0, total, Vec::new(), Vec::new()));
+        return Ok(FolderSyncResult {
+            unread: 0,
+            total,
+            uid_validity,
+            uid_next,
+            highest_modseq,
+            vanished_uids: select_result.vanished_uids,
+            messages: Vec::new(),
+            threads: Vec::new(),
+            fetched_all_messages: true,
+        });
     }
 
     // SEARCH UNSEEN to get the actual unread count (SELECT's UNSEEN is just
@@ -772,32 +946,40 @@ async fn fetch_folder_contents(
         .map(|ids| ids.len() as u32)
         .unwrap_or(0);
 
-    // Fetch the most recent 50 messages (or all if fewer)
-    let start = if total > 50 { total - 49 } else { 1 };
+    // Always refresh the recent window for flags/read state, and fetch any UID newer
+    // than the local max so realtime sync does not rescan the whole mailbox.
+    let start = if total > recent_limit { total - (recent_limit - 1) } else { 1 };
     let range = format!("{start}:{total}");
 
-    // --- Phase 1: lightweight fetch (envelope + flags, no body) ---
-    let fetches: Vec<_> = session
-        .fetch(&range, "(UID FLAGS ENVELOPE RFC822.SIZE)")
+    let recent_query = if let Some(modseq) = previous_highest_modseq.filter(|_| use_changedsince) {
+        format!("(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ) (CHANGEDSINCE {modseq})")
+    } else {
+        "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ)".into()
+    };
+    let recent_fetches: Vec<_> = session
+        .fetch(&range, &recent_query)
         .await
         .map_err(|e| BackendError::internal(format!("IMAP FETCH headers failed: {e}")))?
         .try_collect()
         .await
         .map_err(|e| BackendError::internal(format!("IMAP FETCH headers failed: {e}")))?;
 
-    // Collect parsed metadata and identify which UIDs need a body download.
-    struct MsgMeta {
-        uid: u32,
-        message_id: String,
-        thread_id: String,
-        is_read: bool,
-        is_starred: bool,
-        subject: String,
-        from: String,
-        from_email: String,
-        to: Vec<String>,
-        cc: Vec<String>,
-        date: String,
+    let mut fetches = recent_fetches;
+    if let Some(max_uid) = known_max_uid {
+        let next_uid = max_uid.saturating_add(1);
+        let uid_range = format!("{next_uid}:*");
+        if let Ok(stream) = session.uid_fetch(&uid_range, "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ)").await {
+            if let Ok(new_fetches) = stream.try_collect::<Vec<_>>().await {
+                let mut seen_uids: std::collections::HashSet<u32> =
+                    fetches.iter().map(|fetch| fetch.uid.unwrap_or(fetch.message)).collect();
+                for fetch in new_fetches {
+                    let uid = fetch.uid.unwrap_or(fetch.message);
+                    if seen_uids.insert(uid) {
+                        fetches.push(fetch);
+                    }
+                }
+            }
+        }
     }
 
     let mut metas: Vec<MsgMeta> = Vec::with_capacity(fetches.len());
@@ -944,7 +1126,17 @@ async fn fetch_folder_contents(
         });
     }
 
-    Ok((unread, total, messages, threads))
+    Ok(FolderSyncResult {
+        unread,
+        total,
+        uid_validity,
+        uid_next,
+        highest_modseq,
+        vanished_uids: select_result.vanished_uids,
+        messages,
+        threads,
+        fetched_all_messages: uid_validity_changed || (!use_changedsince && total <= recent_limit),
+    })
 }
 
 fn classify_folder(name: &str) -> (MailFolderKind, &'static str) {
@@ -970,6 +1162,286 @@ fn classify_folder(name: &str) -> (MailFolderKind, &'static str) {
     } else {
         (MailFolderKind::Custom, "mdi-folder-outline")
     }
+}
+
+async fn select_mailbox_for_incremental_sync(
+    session: &mut ImapAnySession,
+    account_id: &str,
+    folder_id: &str,
+    mailbox_name: &str,
+    previous_folder: Option<&MailboxFolder>,
+) -> Result<MailboxSelectResult, BackendError> {
+    let capabilities = session
+        .capabilities()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP CAPABILITY failed: {error}")))?;
+    let has_qresync = capabilities.has_str("QRESYNC");
+    let has_condstore = has_qresync || capabilities.has_str("CONDSTORE");
+    eprintln!(
+        "[imap] mailbox sync capabilities account={} mailbox={} qresync={} condstore={}",
+        account_id,
+        mailbox_name,
+        has_qresync,
+        has_condstore
+    );
+
+    if has_qresync {
+        match session.run_command_and_check_ok("ENABLE QRESYNC").await {
+            Ok(()) => {
+                eprintln!(
+                    "[imap] enabled QRESYNC account={} mailbox={}",
+                    account_id,
+                    mailbox_name
+                );
+            }
+            Err(error) => {
+                eprintln!(
+                    "[imap] ENABLE QRESYNC failed account={} mailbox={}: {}",
+                    account_id,
+                    mailbox_name,
+                    error
+                );
+            }
+        }
+    }
+
+    if has_qresync {
+        if let Some(folder) = previous_folder {
+            if let (Some(uid_validity), Some(highest_modseq)) =
+                (folder.imap_uid_validity, folder.imap_highest_modseq)
+            {
+                let known_uids = memory::get_imap_uids_for_folder(account_id, folder_id);
+                if !known_uids.is_empty() {
+                    eprintln!(
+                        "[imap] attempting QRESYNC SELECT account={} mailbox={} uidValidity={} modseq={} knownUids={}",
+                        account_id,
+                        mailbox_name,
+                        uid_validity,
+                        highest_modseq,
+                        known_uids.len()
+                    );
+                    match qresync_select_mailbox(session, mailbox_name, uid_validity, highest_modseq, &known_uids).await {
+                        Ok(result) => {
+                            eprintln!(
+                                "[imap] QRESYNC SELECT ok account={} mailbox={} vanished={}",
+                                account_id,
+                                mailbox_name,
+                                result.vanished_uids.len()
+                            );
+                            return Ok(result);
+                        }
+                        Err(error) => {
+                            eprintln!(
+                                "[imap] QRESYNC SELECT failed, falling back account={} mailbox={}: {}",
+                                account_id,
+                                mailbox_name,
+                                error.message
+                            );
+                        }
+                    }
+                } else {
+                    eprintln!(
+                        "[imap] skipping QRESYNC SELECT account={} mailbox={} reason=no-known-uids",
+                        account_id,
+                        mailbox_name
+                    );
+                }
+            } else {
+                eprintln!(
+                    "[imap] skipping QRESYNC SELECT account={} mailbox={} reason=missing-baseline uidValidity={:?} modseq={:?}",
+                    account_id,
+                    mailbox_name,
+                    folder.imap_uid_validity,
+                    folder.imap_highest_modseq
+                );
+            }
+        } else {
+            eprintln!(
+                "[imap] skipping QRESYNC SELECT account={} mailbox={} reason=no-local-folder-state",
+                account_id,
+                mailbox_name
+            );
+        }
+    }
+
+    if has_condstore {
+        eprintln!(
+            "[imap] falling back to CONDSTORE SELECT account={} mailbox={}",
+            account_id,
+            mailbox_name
+        );
+        let mailbox = session
+            .select_condstore(mailbox_name)
+            .await
+            .map_err(|error| BackendError::internal(format!("IMAP SELECT CONDSTORE '{mailbox_name}' failed: {error}")))?;
+        return Ok(MailboxSelectResult { mailbox, vanished_uids: Vec::new() });
+    }
+
+    eprintln!(
+        "[imap] falling back to plain SELECT account={} mailbox={}",
+        account_id,
+        mailbox_name
+    );
+    let mailbox = session
+        .select(mailbox_name)
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP SELECT '{mailbox_name}' failed: {error}")))?;
+    Ok(MailboxSelectResult { mailbox, vanished_uids: Vec::new() })
+}
+
+fn resolve_or_create_folder(account_id: &str, mailbox_name: &str) -> MailboxFolder {
+    if let Ok(folders) = memory::list_folders(account_id) {
+        if let Some(folder) = folders
+            .into_iter()
+            .find(|folder| folder.imap_name.as_deref() == Some(mailbox_name))
+        {
+            return folder;
+        }
+    }
+
+    let display_name = decode_imap_utf7(mailbox_name);
+    let (kind, icon) = classify_folder(&display_name);
+    MailboxFolder {
+        id: format!("{}-{}", slug(mailbox_name), account_id),
+        account_id: account_id.into(),
+        name: display_name,
+        kind,
+        unread_count: 0,
+        total_count: 0,
+        icon: icon.into(),
+        imap_name: Some(mailbox_name.into()),
+        imap_uid_validity: None,
+        imap_uid_next: None,
+        imap_highest_modseq: None,
+    }
+}
+
+async fn qresync_select_mailbox(
+    session: &mut ImapAnySession,
+    mailbox_name: &str,
+    uid_validity: u32,
+    highest_modseq: u64,
+    known_uids: &[u32],
+) -> Result<MailboxSelectResult, BackendError> {
+    let known_uid_set = compress_uid_set(known_uids);
+    let command = format!(
+        "SELECT {} (QRESYNC ({} {} {}))",
+        quote_imap_string(mailbox_name),
+        uid_validity,
+        highest_modseq,
+        known_uid_set,
+    );
+    let request_id = session
+        .run_command(&command)
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP QRESYNC SELECT failed to send: {error}")))?;
+
+    let mut mailbox = async_imap::types::Mailbox::default();
+    let mut vanished_uids = Vec::new();
+
+    loop {
+        let response = session
+            .read_response()
+            .await
+            .map_err(|error| BackendError::internal(format!("IMAP QRESYNC SELECT read failed: {error}")))?;
+        let Some(response) = response else {
+            return Err(BackendError::internal("IMAP QRESYNC SELECT connection lost"));
+        };
+
+        match response.parsed() {
+            imap_proto::Response::Done {
+                tag,
+                status,
+                code,
+                information,
+                ..
+            } if tag == &request_id => {
+                match status {
+                    imap_proto::Status::Ok => break,
+                    imap_proto::Status::Bad | imap_proto::Status::No => {
+                        return Err(BackendError::internal(format!(
+                            "IMAP QRESYNC SELECT rejected: code={code:?} info={information:?}"
+                        )));
+                    }
+                    other => {
+                        return Err(BackendError::internal(format!(
+                            "IMAP QRESYNC SELECT unexpected status: {other:?}"
+                        )));
+                    }
+                }
+            }
+            imap_proto::Response::Data { status, code, .. } => {
+                if let imap_proto::Status::Ok = status {
+                    apply_mailbox_code(&mut mailbox, code.as_ref());
+                }
+            }
+            imap_proto::Response::MailboxData(data) => match data {
+                imap_proto::MailboxDatum::Exists(exists) => mailbox.exists = *exists,
+                imap_proto::MailboxDatum::Recent(recent) => mailbox.recent = *recent,
+                imap_proto::MailboxDatum::Flags(flags) => {
+                    mailbox.flags.extend(flags.iter().map(|flag| (*flag).to_string()).map(async_imap::types::Flag::from));
+                }
+                _ => {}
+            },
+            imap_proto::Response::Vanished { uids, .. } => {
+                vanished_uids.extend(uids.iter().flat_map(|range| range.clone()));
+            }
+            _ => {}
+        }
+    }
+
+    Ok(MailboxSelectResult { mailbox, vanished_uids })
+}
+
+fn apply_mailbox_code(mailbox: &mut async_imap::types::Mailbox, code: Option<&imap_proto::ResponseCode<'_>>) {
+    match code {
+        Some(imap_proto::ResponseCode::UidValidity(uid)) => mailbox.uid_validity = Some(*uid),
+        Some(imap_proto::ResponseCode::UidNext(uid_next)) => mailbox.uid_next = Some(*uid_next),
+        Some(imap_proto::ResponseCode::HighestModSeq(modseq)) => mailbox.highest_modseq = Some(*modseq),
+        Some(imap_proto::ResponseCode::Unseen(unseen)) => mailbox.unseen = Some(*unseen),
+        Some(imap_proto::ResponseCode::PermanentFlags(flags)) => {
+            mailbox
+                .permanent_flags
+                .extend(flags.iter().map(|flag| (*flag).to_string()).map(async_imap::types::Flag::from));
+        }
+        _ => {}
+    }
+}
+
+fn compress_uid_set(uids: &[u32]) -> String {
+    let mut parts = Vec::new();
+    let mut iter = uids.iter().copied();
+    let Some(mut start) = iter.next() else {
+        return "1".into();
+    };
+    let mut end = start;
+
+    for uid in iter {
+        if uid == end.saturating_add(1) {
+            end = uid;
+            continue;
+        }
+
+        parts.push(if start == end {
+            start.to_string()
+        } else {
+            format!("{start}:{end}")
+        });
+        start = uid;
+        end = uid;
+    }
+
+    parts.push(if start == end {
+        start.to_string()
+    } else {
+        format!("{start}:{end}")
+    });
+
+    parts.join(",")
+}
+
+fn quote_imap_string(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn slug(name: &str) -> String {

@@ -17,6 +17,9 @@ export interface MailboxFolder {
   totalCount: number
   icon: string
   imapName?: string
+  imapUidValidity?: number
+  imapUidNext?: number
+  imapHighestModseq?: number
 }
 
 export interface AttachmentMeta {

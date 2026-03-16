@@ -870,8 +870,6 @@ onMounted(async () => {
 
   if (accountsStore.currentAccountId) {
     await loadMailbox(accountsStore.currentAccountId)
-
-    await syncCurrentAccount()
   }
 })
 

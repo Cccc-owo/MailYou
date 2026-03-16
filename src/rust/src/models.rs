@@ -68,6 +68,12 @@ pub struct MailboxFolder {
     pub icon: String,
     #[serde(default)]
     pub imap_name: Option<String>,
+    #[serde(default)]
+    pub imap_uid_validity: Option<u32>,
+    #[serde(default)]
+    pub imap_uid_next: Option<u32>,
+    #[serde(default)]
+    pub imap_highest_modseq: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

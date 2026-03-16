@@ -327,6 +327,9 @@ async fn pop3_fetch_mailbox(
         total_count: messages.len() as u32,
         icon: "mdi-inbox".into(),
         imap_name: None,
+        imap_uid_validity: None,
+        imap_uid_next: None,
+        imap_highest_modseq: None,
     };
 
     let starred_folder = MailboxFolder {
@@ -338,6 +341,9 @@ async fn pop3_fetch_mailbox(
         total_count: 0,
         icon: "mdi-star-outline".into(),
         imap_name: None,
+        imap_uid_validity: None,
+        imap_uid_next: None,
+        imap_highest_modseq: None,
     };
 
     Ok((vec![inbox_folder, starred_folder], messages, threads))

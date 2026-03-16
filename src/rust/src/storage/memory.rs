@@ -473,6 +473,95 @@ pub fn get_existing_bodies(account_id: &str) -> std::collections::HashMap<u32, (
     map
 }
 
+pub fn get_existing_bodies_for_folder(
+    account_id: &str,
+    folder_id: &str,
+) -> std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>, String)> {
+    let state = lock_state();
+    let mut map = std::collections::HashMap::new();
+    for msg in state
+        .messages
+        .iter()
+        .filter(|m| m.account_id == account_id && m.folder_id == folder_id)
+    {
+        if let Some(uid) = msg.imap_uid {
+            if !msg.body.is_empty() {
+                map.insert(
+                    uid,
+                    (
+                        msg.body.clone(),
+                        msg.preview.clone(),
+                        msg.attachments.clone(),
+                        msg.received_at.clone(),
+                    ),
+                );
+            }
+        }
+    }
+    map
+}
+
+pub fn get_max_imap_uid_for_folder(account_id: &str, folder_id: &str) -> Option<u32> {
+    let state = lock_state();
+    state.messages
+        .iter()
+        .filter(|m| m.account_id == account_id && m.folder_id == folder_id)
+        .filter_map(|m| m.imap_uid)
+        .max()
+}
+
+pub fn get_imap_uids_for_folder(account_id: &str, folder_id: &str) -> Vec<u32> {
+    let state = lock_state();
+    let mut uids: Vec<u32> = state
+        .messages
+        .iter()
+        .filter(|m| m.account_id == account_id && m.folder_id == folder_id)
+        .filter_map(|m| m.imap_uid)
+        .collect();
+    uids.sort_unstable();
+    uids.dedup();
+    uids
+}
+
+pub fn remove_messages_by_imap_uids(
+    account_id: &str,
+    folder_id: &str,
+    uids: &[u32],
+) -> Result<(), BackendError> {
+    if uids.is_empty() {
+        return Ok(());
+    }
+
+    let uid_set: std::collections::HashSet<u32> = uids.iter().copied().collect();
+    let mut state = lock_state();
+    let removed_ids: std::collections::HashSet<String> = state
+        .messages
+        .iter()
+        .filter(|message| message.account_id == account_id && message.folder_id == folder_id)
+        .filter_map(|message| {
+            message
+                .imap_uid
+                .filter(|uid| uid_set.contains(uid))
+                .map(|_| message.id.clone())
+        })
+        .collect();
+
+    if removed_ids.is_empty() {
+        return Ok(());
+    }
+
+    state.messages.retain(|message| !removed_ids.contains(&message.id));
+    state.threads.retain(|thread| {
+        if thread.account_id != account_id {
+            return true;
+        }
+
+        !thread.message_ids.iter().any(|message_id| removed_ids.contains(message_id))
+    });
+    state.recalculate_counts();
+    state.persist()
+}
+
 pub fn get_existing_message_ids(account_id: &str) -> std::collections::HashSet<String> {
     let state = lock_state();
     state.messages
@@ -695,6 +784,85 @@ pub fn merge_remote_mailbox(
 
     // Threads: replace (threads are derived from messages, no local edits)
     state.threads.retain(|t| t.account_id != account_id);
+    state.threads.extend(remote_threads);
+
+    state.recalculate_counts();
+    state.persist()
+}
+
+pub fn merge_remote_folder(
+    account_id: &str,
+    folder: MailboxFolder,
+    remote_messages: Vec<MailMessage>,
+    remote_threads: Vec<MailThread>,
+    prune_missing: bool,
+) -> Result<(), BackendError> {
+    let mut state = lock_state();
+    let folder_id = folder.id.clone();
+
+    if let Some(existing_folder) = state
+        .folders
+        .iter_mut()
+        .find(|existing| existing.account_id == account_id && existing.id == folder_id)
+    {
+        *existing_folder = folder;
+    } else {
+        state.folders.push(folder);
+    }
+
+    let local_by_id: std::collections::HashMap<String, &MailMessage> = state
+        .messages
+        .iter()
+        .filter(|message| message.account_id == account_id)
+        .map(|message| (message.id.clone(), message))
+        .collect();
+    let remote_ids: std::collections::HashSet<String> =
+        remote_messages.iter().map(|message| message.id.clone()).collect();
+
+    let mut merged_remote = Vec::with_capacity(remote_messages.len());
+    for mut remote in remote_messages {
+        if let Some(local) = local_by_id.get(&remote.id) {
+            remote.is_read = local.is_read;
+            remote.is_starred = local.is_starred;
+            remote.folder_id = local.folder_id.clone();
+            remote.previous_folder_id = local.previous_folder_id.clone();
+        }
+        merged_remote.push(remote);
+    }
+
+    state.messages.retain(|message| {
+        if message.account_id != account_id {
+            return true;
+        }
+
+        if !remote_ids.contains(&message.id) {
+            return true;
+        }
+
+        if message.folder_id != folder_id {
+            return true;
+        }
+
+        false
+    });
+
+    if prune_missing {
+        state.messages.retain(|message| {
+            if message.account_id != account_id || message.folder_id != folder_id {
+                return true;
+            }
+
+            remote_ids.contains(&message.id)
+        });
+    }
+
+    state.messages.extend(merged_remote);
+
+    let remote_thread_ids: std::collections::HashSet<String> =
+        remote_threads.iter().map(|thread| thread.id.clone()).collect();
+    state.threads.retain(|thread| {
+        !(thread.account_id == account_id && remote_thread_ids.contains(&thread.id))
+    });
     state.threads.extend(remote_threads);
 
     state.recalculate_counts();

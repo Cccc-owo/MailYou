@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface, type Interface } from 'node:readline'
-import type { RustBackendMethod, RustBackendMethodMap, RustBackendResponse } from './protocol'
+import type { RustBackendEvent, RustBackendMessage, RustBackendMethod, RustBackendMethodMap, RustBackendResponse } from './protocol'
 import { getRustSidecarLaunchSpec } from './paths'
 
 const formatExitReason = (details: string, code: number | null, signal: NodeJS.Signals | null) =>
@@ -21,6 +21,7 @@ class RustBackendClient {
   private lastStartError: Error | null = null
   private isShuttingDown = false
   private expectedExit = false
+  private eventListeners = new Set<(event: RustBackendEvent) => void>()
 
   async invoke<M extends RustBackendMethod>(
     method: M,
@@ -110,6 +111,13 @@ class RustBackendClient {
 
     this.rejectPending(new Error('Rust mail backend was shut down'))
     this.isShuttingDown = false
+  }
+
+  onEvent(listener: (event: RustBackendEvent) => void) {
+    this.eventListeners.add(listener)
+    return () => {
+      this.eventListeners.delete(listener)
+    }
   }
 
   private async ensureStarted() {
@@ -218,15 +226,23 @@ class RustBackendClient {
       return
     }
 
-    let response: RustBackendResponse
+    let message: RustBackendMessage
 
     try {
-      response = JSON.parse(line) as RustBackendResponse
+      message = JSON.parse(line) as RustBackendMessage
     } catch {
       console.warn(`[rpc] ignoring non-JSON line from backend: ${line.slice(0, 200)}`)
       return
     }
 
+    if ('event' in message) {
+      for (const listener of this.eventListeners) {
+        listener(message)
+      }
+      return
+    }
+
+    const response = message as RustBackendResponse
     const pending = this.pending.get(response.id)
     if (!pending) {
       return
@@ -261,3 +277,6 @@ export const invokeRustBackend = <M extends RustBackendMethod>(
 export const ensureRustBackendReady = () => invokeRustBackend('healthCheck')
 
 export const shutdownRustBackend = () => rustBackendClient.shutdown()
+
+export const onRustBackendEvent = (listener: (event: RustBackendEvent) => void) =>
+  rustBackendClient.onEvent(listener)

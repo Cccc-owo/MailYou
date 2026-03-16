@@ -102,7 +102,6 @@ watch(
   (minutes) => {
     void window.windowControls?.setBackgroundSyncInterval(minutes)
   },
-  { immediate: true },
 )
 </script>
 

@@ -207,6 +207,42 @@ impl BackendResponse {
     }
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MailboxChangedEvent {
+    pub account_id: String,
+    pub source: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BackendEvent {
+    pub event: &'static str,
+    pub payload: Value,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum BackendMessage {
+    Response(BackendResponse),
+    Event(BackendEvent),
+}
+
+impl BackendMessage {
+    pub fn response(response: BackendResponse) -> Self {
+        Self::Response(response)
+    }
+
+    pub fn mailbox_changed(account_id: impl Into<String>, source: &'static str) -> Result<Self, BackendError> {
+        Ok(Self::Event(BackendEvent {
+            event: "mailboxChanged",
+            payload: serialize(MailboxChangedEvent {
+                account_id: account_id.into(),
+                source,
+            })?,
+        }))
+    }
+}
+
 pub fn serialize<T: Serialize>(value: T) -> Result<Value, BackendError> {
     serde_json::to_value(value).map_err(|error| BackendError::internal(error.to_string()))
 }
