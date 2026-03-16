@@ -60,6 +60,7 @@ npm run build
 构建 Linux 包：
 
 ```bash
+npm run pack:linux:dir
 npm run dist:appimage
 npm run dist:deb
 npm run dist:rpm
@@ -130,3 +131,5 @@ docs/          项目文档
 - OAuth 代理默认可直接使用，桌面应用内置了公开的 desktop token。
 - 打包者可以通过环境变量覆盖代理地址或代理 token。
 - Linux 开发模式下默认不会注册 `mailyou://` 协议，除非显式开启。
+- 对 Arch 打包，优先使用 `npm run pack:linux:dir` 生成的 unpacked 目录。
+- 仓库根目录提供了一份 `mailyou-git` 参考 `PKGBUILD`。

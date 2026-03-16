@@ -1,0 +1,22 @@
+pkgbase = mailyou-git
+	pkgdesc = Desktop-first mail client built with Vue, Electron, and Rust
+	pkgver = 0.0.0.r0.gunknown
+	pkgrel = 1
+	url = https://github.com/Cccc-owo/MailYou
+	arch = x86_64
+	license = MIT
+	makedepends = git
+	makedepends = nodejs
+	makedepends = npm
+	makedepends = rust
+	depends = gtk3
+	depends = nss
+	depends = libsecret
+	depends = libxss
+	depends = libxtst
+	depends = xdg-utils
+	depends = at-spi2-core
+	source = git+https://github.com/Cccc-owo/MailYou.git
+	sha256sums = SKIP
+
+pkgname = mailyou-git

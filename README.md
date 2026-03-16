@@ -60,6 +60,7 @@ npm run dist
 Build Linux packages:
 
 ```bash
+npm run pack:linux:dir
 npm run dist:appimage
 npm run dist:deb
 npm run dist:rpm
@@ -130,3 +131,5 @@ docs/          Project documentation
 - OAuth proxy access works out of the box with the built-in public desktop token.
 - Packagers can override the proxy URL or proxy token with environment variables.
 - Linux dev runs do not register the `mailyou://` protocol handler by default unless explicitly enabled.
+- For Arch packaging, prefer the unpacked directory build from `npm run pack:linux:dir`.
+- The repository root contains a reference `PKGBUILD` for `mailyou-git`.
