@@ -2,8 +2,10 @@ use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::sync::mpsc;
 
+mod config;
 mod core;
 mod models;
+mod oauth;
 mod protocol;
 mod provider;
 mod storage;

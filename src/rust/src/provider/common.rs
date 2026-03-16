@@ -6,6 +6,30 @@ use crate::protocol::BackendError;
 // ---------------------------------------------------------------------------
 
 pub fn validate_draft(draft: &AccountSetupDraft) -> Result<(), BackendError> {
+    if matches!(draft.auth_mode, crate::models::AccountAuthMode::Oauth) {
+        if draft.incoming_protocol != "imap" {
+            return Err(BackendError::validation("OAuth accounts currently require IMAP"));
+        }
+
+        if draft.email.trim().is_empty()
+            || draft.username.trim().is_empty()
+            || draft.incoming_host.trim().is_empty()
+            || draft.outgoing_host.trim().is_empty()
+        {
+            return Err(BackendError::validation("All OAuth account fields are required"));
+        }
+
+        if draft.oauth_provider.is_none() || draft.oauth_source.is_none() {
+            return Err(BackendError::validation("OAuth provider and source are required"));
+        }
+
+        if draft.access_token.trim().is_empty() && draft.refresh_token.trim().is_empty() {
+            return Err(BackendError::validation("Authorize the OAuth account before testing or saving"));
+        }
+
+        return Ok(());
+    }
+
     if draft.email.trim().is_empty()
         || draft.incoming_host.trim().is_empty()
         || draft.outgoing_host.trim().is_empty()

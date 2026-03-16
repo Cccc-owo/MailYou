@@ -16,17 +16,25 @@ const SYNC_FILE: &str = "sync.json";
 const CONTACTS_FILE: &str = "contacts.json";
 
 const KEYRING_SERVICE: &str = "mailyou";
-const PASSWORD_PLACEHOLDER: &str = "<keyring>";
+const SECRET_PLACEHOLDER: &str = "<keyring>";
 
 pub fn load_accounts() -> Vec<StoredAccountState> {
     let mut accounts: Vec<StoredAccountState> = load_json(ACCOUNTS_FILE).unwrap_or_default();
 
     for account_state in accounts.iter_mut() {
-        if account_state.config.password == PASSWORD_PLACEHOLDER
+        if account_state.config.password == SECRET_PLACEHOLDER
             || account_state.config.password.is_empty()
         {
-            if let Some(password) = keyring_get(&account_state.account.id) {
+            if let Some(password) = keyring_get(&account_state.account.id, "password") {
                 account_state.config.password = password;
+            }
+        }
+
+        if account_state.config.refresh_token == SECRET_PLACEHOLDER
+            || account_state.config.refresh_token.is_empty()
+        {
+            if let Some(refresh_token) = keyring_get(&account_state.account.id, "refreshToken") {
+                account_state.config.refresh_token = refresh_token;
             }
         }
     }
@@ -42,11 +50,18 @@ pub fn save_accounts(accounts: &[StoredAccountState]) -> io::Result<()> {
         let account_id = &account_state.account.id;
         let password = &account_state.config.password;
 
-        if !password.is_empty() && password != PASSWORD_PLACEHOLDER {
-            if keyring_set(account_id, password) {
-                account_state.config.password = PASSWORD_PLACEHOLDER.into();
+        if !password.is_empty() && password != SECRET_PLACEHOLDER {
+            if keyring_set(account_id, "password", password) {
+                account_state.config.password = SECRET_PLACEHOLDER.into();
             }
             // If keyring fails, password stays in JSON as fallback
+        }
+
+        let refresh_token = &account_state.config.refresh_token;
+        if !refresh_token.is_empty() && refresh_token != SECRET_PLACEHOLDER {
+            if keyring_set(account_id, "refreshToken", refresh_token) {
+                account_state.config.refresh_token = SECRET_PLACEHOLDER.into();
+            }
         }
     }
 
@@ -209,15 +224,15 @@ fn sanitize_id(id: &str) -> String {
     id.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_")
 }
 
-fn keyring_get(account_id: &str) -> Option<String> {
-    keyring::Entry::new(KEYRING_SERVICE, account_id)
+fn keyring_get(account_id: &str, secret_kind: &str) -> Option<String> {
+    keyring::Entry::new(KEYRING_SERVICE, &format!("{account_id}:{secret_kind}"))
         .ok()
         .and_then(|entry| entry.get_password().ok())
 }
 
-fn keyring_set(account_id: &str, password: &str) -> bool {
-    keyring::Entry::new(KEYRING_SERVICE, account_id)
+fn keyring_set(account_id: &str, secret_kind: &str, secret_value: &str) -> bool {
+    keyring::Entry::new(KEYRING_SERVICE, &format!("{account_id}:{secret_kind}"))
         .ok()
-        .and_then(|entry| entry.set_password(password).ok())
+        .and_then(|entry| entry.set_password(secret_value).ok())
         .is_some()
 }

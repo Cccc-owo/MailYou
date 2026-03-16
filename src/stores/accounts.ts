@@ -1,6 +1,11 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { AccountSetupDraft, MailAccount } from '@/types/account'
+import type {
+  AccountSetupDraft,
+  MailAccount,
+  OAuthAuthorizationRequest,
+  OAuthProviderAvailability,
+} from '@/types/account'
 import type { SyncStatus } from '@/types/mail'
 import { mailRepository } from '@/services/mail'
 
@@ -11,6 +16,7 @@ export const useAccountsStore = defineStore('accounts', () => {
   const currentAccountId = ref<string | null>(localStorage.getItem(STORAGE_KEY))
   const isLoading = ref(false)
   const isTestingConnection = ref(false)
+  const oauthProviders = ref<OAuthProviderAvailability[]>([])
   const error = ref<string | null>(null)
   const connectionStatus = ref<SyncStatus | null>(null)
 
@@ -107,6 +113,15 @@ export const useAccountsStore = defineStore('accounts', () => {
     return updated
   }
 
+  const loadOAuthProviders = async () => {
+    oauthProviders.value = await mailRepository.listOAuthProviders()
+    return oauthProviders.value
+  }
+
+  const authorizeOAuth = async (request: OAuthAuthorizationRequest) => {
+    return await mailRepository.authorizeOAuth(request)
+  }
+
   return {
     accounts,
     currentAccount,
@@ -114,6 +129,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     isCurrentAccountPop3,
     isLoading,
     isTestingConnection,
+    oauthProviders,
     error,
     connectionStatus,
     loadAccounts,
@@ -121,6 +137,8 @@ export const useAccountsStore = defineStore('accounts', () => {
     deleteAccount,
     getAccountConfig,
     updateAccount,
+    loadOAuthProviders,
+    authorizeOAuth,
     selectAccount,
     testAccountConnection,
   }

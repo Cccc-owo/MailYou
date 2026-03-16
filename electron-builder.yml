@@ -20,6 +20,7 @@ linux:
   category: Network;Email;Office
   mimeTypes:
     - x-scheme-handler/mailto
+    - x-scheme-handler/mailyou
   target:
     - target: AppImage
       arch: [x64]
@@ -56,3 +57,8 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false
+
+protocols:
+  - name: MailYou OAuth Callback
+    schemes:
+      - mailyou

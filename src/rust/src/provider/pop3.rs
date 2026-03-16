@@ -6,7 +6,7 @@ use tokio::net::TcpStream;
 use tokio_native_tls::TlsStream;
 
 use crate::models::{
-    AccountSetupDraft, AttachmentContent, DraftMessage, MailAccount, MailFolderKind,
+    AccountAuthMode, AccountSetupDraft, AttachmentContent, DraftMessage, MailAccount, MailFolderKind,
     MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
 };
 use crate::protocol::BackendError;
@@ -186,6 +186,10 @@ impl MailProvider for Pop3SmtpProvider {
 // ---------------------------------------------------------------------------
 
 async fn pop3_login_test(draft: &AccountSetupDraft) -> Result<(), BackendError> {
+    if matches!(draft.auth_mode, AccountAuthMode::Oauth) {
+        return Err(BackendError::validation("POP3 does not support OAuth accounts in MailYou"));
+    }
+
     let host = draft.incoming_host.trim();
     let port = draft.incoming_port;
 
@@ -211,6 +215,10 @@ async fn pop3_login_test(draft: &AccountSetupDraft) -> Result<(), BackendError> 
 async fn pop3_fetch_mailbox(
     state: &StoredAccountState,
 ) -> Result<(Vec<MailboxFolder>, Vec<MailMessage>, Vec<MailThread>), BackendError> {
+    if matches!(state.config.auth_mode, AccountAuthMode::Oauth) {
+        return Err(BackendError::validation("POP3 does not support OAuth accounts in MailYou"));
+    }
+
     let account_id = &state.account.id;
     let mut client = Pop3Client::connect_from_state(state).await?;
 

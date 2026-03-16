@@ -1,5 +1,5 @@
 use crate::models::{
-    AccountConfig, AccountSetupDraft, AccountStatus, MailAccount, StoredAccountState,
+    AccountAuthMode, AccountConfig, AccountSetupDraft, AccountStatus, MailAccount, StoredAccountState,
 };
 
 pub fn seeded_account_states() -> Vec<StoredAccountState> {
@@ -11,6 +11,9 @@ pub fn seeded_account_states() -> Vec<StoredAccountState> {
                 email: "hello@mailyou.dev".into(),
                 provider: "Fastmail".into(),
                 incoming_protocol: "imap".into(),
+                auth_mode: AccountAuthMode::Password,
+                oauth_provider: None,
+                oauth_source: None,
                 color: "#6D5DFB".into(),
                 initials: "MY".into(),
                 unread_count: 6,
@@ -18,6 +21,7 @@ pub fn seeded_account_states() -> Vec<StoredAccountState> {
                 last_synced_at: "2026-03-12T09:41:00.000Z".into(),
             },
             config: AccountConfig {
+                auth_mode: AccountAuthMode::Password,
                 incoming_protocol: "imap".into(),
                 incoming_host: "imap.fastmail.com".into(),
                 incoming_port: 993,
@@ -26,6 +30,11 @@ pub fn seeded_account_states() -> Vec<StoredAccountState> {
                 username: "hello@mailyou.dev".into(),
                 password: "demo-password".into(),
                 use_tls: true,
+                oauth_provider: None,
+                oauth_source: None,
+                access_token: String::new(),
+                refresh_token: String::new(),
+                token_expires_at: String::new(),
             },
         },
         StoredAccountState {
@@ -35,6 +44,9 @@ pub fn seeded_account_states() -> Vec<StoredAccountState> {
                 email: "iscccc@example.com".into(),
                 provider: "Gmail".into(),
                 incoming_protocol: "imap".into(),
+                auth_mode: AccountAuthMode::Password,
+                oauth_provider: None,
+                oauth_source: None,
                 color: "#0F9D58".into(),
                 initials: "IP".into(),
                 unread_count: 3,
@@ -42,6 +54,7 @@ pub fn seeded_account_states() -> Vec<StoredAccountState> {
                 last_synced_at: "2026-03-12T09:27:00.000Z".into(),
             },
             config: AccountConfig {
+                auth_mode: AccountAuthMode::Password,
                 incoming_protocol: "imap".into(),
                 incoming_host: "imap.gmail.com".into(),
                 incoming_port: 993,
@@ -50,6 +63,11 @@ pub fn seeded_account_states() -> Vec<StoredAccountState> {
                 username: "iscccc@example.com".into(),
                 password: "demo-password".into(),
                 use_tls: true,
+                oauth_provider: None,
+                oauth_source: None,
+                access_token: String::new(),
+                refresh_token: String::new(),
+                token_expires_at: String::new(),
             },
         },
     ]
@@ -57,6 +75,7 @@ pub fn seeded_account_states() -> Vec<StoredAccountState> {
 
 pub fn config_from_draft(draft: &AccountSetupDraft) -> AccountConfig {
     AccountConfig {
+        auth_mode: draft.auth_mode.clone(),
         incoming_protocol: draft.incoming_protocol.clone(),
         incoming_host: draft.incoming_host.clone(),
         incoming_port: draft.incoming_port,
@@ -65,5 +84,10 @@ pub fn config_from_draft(draft: &AccountSetupDraft) -> AccountConfig {
         username: draft.username.clone(),
         password: draft.password.clone(),
         use_tls: draft.use_tls,
+        oauth_provider: draft.oauth_provider.clone(),
+        oauth_source: draft.oauth_source.clone(),
+        access_token: draft.access_token.clone(),
+        refresh_token: draft.refresh_token.clone(),
+        token_expires_at: draft.token_expires_at.clone(),
     }
 }

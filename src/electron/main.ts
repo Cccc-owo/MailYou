@@ -1,19 +1,29 @@
 import { app, BrowserWindow, dialog, net, protocol, session } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import {
+  getMailYouDevServerUrl,
+  getMailYouOzonePlatformHint,
+  isMailYouDevProtocolClientEnabled,
+  isMailYouDevServerEnabled,
+} from '@/config/runtime'
+import { handleOAuthCallbackUrl } from './backend/oauth'
 import { ensureRustBackendReady, shutdownRustBackend } from './backend/rust/process'
 import { registerMailIpc } from './ipc/mail'
 import { registerWindowIpc } from './ipc/window'
 import { mailBackend } from './backend/mailBackend'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+let mainWindow: BrowserWindow | null = null
+let pendingOAuthCallbackUrl: string | null = null
+const isDev = isMailYouDevServerEnabled()
 
 const configureLinuxWindowSystem = () => {
   if (process.platform !== 'linux') {
     return
   }
 
-  const ozoneHint = process.env.MAILYOU_OZONE_PLATFORM_HINT?.trim() ?? 'auto'
+  const ozoneHint = getMailYouOzonePlatformHint()
 
   app.commandLine.appendSwitch('enable-features', 'UseOzonePlatform')
   app.commandLine.appendSwitch('ozone-platform-hint', ozoneHint)
@@ -24,6 +34,71 @@ configureLinuxWindowSystem()
 protocol.registerSchemesAsPrivileged([
   { scheme: 'mailyou-avatar', privileges: { secure: true, supportFetchAPI: true } },
 ])
+
+const registerAppProtocolClient = () => {
+  // Linux dev runs do not have a desktop file, so protocol registration via xdg-mime fails noisily.
+  // Packaged builds still register normally, and dev can be opted in explicitly if needed.
+  if (
+    process.platform === 'linux' &&
+    isDev &&
+    !isMailYouDevProtocolClientEnabled()
+  ) {
+    return
+  }
+
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('mailyou', process.execPath, [process.argv[1]])
+    return
+  }
+
+  app.setAsDefaultProtocolClient('mailyou')
+}
+
+const dispatchOAuthCallback = (rawUrl: string) => {
+  if (!rawUrl.startsWith('mailyou://oauth/callback')) {
+    return false
+  }
+
+  const handled = handleOAuthCallbackUrl(rawUrl)
+  if (!handled) {
+    pendingOAuthCallbackUrl = rawUrl
+  }
+
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+    mainWindow.focus()
+  }
+
+  return true
+}
+
+const consumePendingOAuthCallback = () => {
+  if (!pendingOAuthCallbackUrl) {
+    return
+  }
+
+  const rawUrl = pendingOAuthCallbackUrl
+  pendingOAuthCallbackUrl = null
+  dispatchOAuthCallback(rawUrl)
+}
+
+const tryExtractProtocolUrl = (argv: string[]) =>
+  argv.find((value) => value.startsWith('mailyou://')) ?? null
+
+const initialProtocolUrl = tryExtractProtocolUrl(process.argv)
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const protocolUrl = tryExtractProtocolUrl(argv)
+    if (protocolUrl) {
+      dispatchOAuthCallback(protocolUrl)
+    }
+  })
+}
 
 const createMainWindow = async () => {
   const window = new BrowserWindow({
@@ -42,17 +117,29 @@ const createMainWindow = async () => {
     },
   })
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    await window.loadURL(process.env.VITE_DEV_SERVER_URL)
+  const devServerUrl = getMailYouDevServerUrl()
+  if (devServerUrl) {
+    await window.loadURL(devServerUrl)
     window.webContents.openDevTools({ mode: 'detach' })
+    mainWindow = window
+    consumePendingOAuthCallback()
     return window
   }
 
   await window.loadFile(join(__dirname, '../index.html'))
+  mainWindow = window
+  consumePendingOAuthCallback()
   return window
 }
 
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  dispatchOAuthCallback(url)
+})
+
 app.whenReady().then(async () => {
+  registerAppProtocolClient()
+
   // Allow loading external images (http/https) and inline data URIs in email bodies.
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -89,6 +176,9 @@ app.whenReady().then(async () => {
   })
 
   await createMainWindow()
+  if (initialProtocolUrl) {
+    dispatchOAuthCallback(initialProtocolUrl)
+  }
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -102,6 +192,7 @@ app.on('before-quit', async () => {
 })
 
 app.on('window-all-closed', () => {
+  mainWindow = null
   if (process.platform !== 'darwin') {
     app.quit()
   }

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isMailYouDevServerEnabled } from '@/config/runtime'
 
 const currentDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = process.cwd()
@@ -17,7 +18,7 @@ export interface RustSidecarLaunchSpec {
 }
 
 export const getRustSidecarLaunchSpec = (): RustSidecarLaunchSpec => {
-  if (process.env.VITE_DEV_SERVER_URL) {
+  if (isMailYouDevServerEnabled()) {
     return {
       command: 'cargo',
       args: ['run', '--quiet', '--manifest-path', manifestPath],

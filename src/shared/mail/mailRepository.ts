@@ -1,4 +1,10 @@
-import type { AccountSetupDraft, MailAccount } from '@/types/account'
+import type {
+  AccountSetupDraft,
+  MailAccount,
+  OAuthAuthorizationRequest,
+  OAuthAuthorizationResult,
+  OAuthProviderAvailability,
+} from '@/types/account'
 import type { Contact, ContactGroup } from '@/types/contact'
 import type {
   AttachmentContent,
@@ -31,6 +37,8 @@ export interface MailRepository {
   getAttachmentContent(accountId: string, messageId: string, attachmentId: string): Promise<AttachmentContent>
   getAccountConfig(accountId: string): Promise<AccountSetupDraft>
   updateAccount(accountId: string, draft: AccountSetupDraft): Promise<MailAccount>
+  listOAuthProviders(): Promise<OAuthProviderAvailability[]>
+  authorizeOAuth(request: OAuthAuthorizationRequest): Promise<OAuthAuthorizationResult>
   listContacts(groupId?: string): Promise<Contact[]>
   createContact(contact: Contact): Promise<Contact>
   updateContact(contactId: string, contact: Contact): Promise<Contact>

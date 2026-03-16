@@ -1,4 +1,4 @@
-import type { AccountSetupDraft, MailAccount } from '@/types/account'
+import type { AccountSetupDraft, MailAccount, OAuthProviderAvailability } from '@/types/account'
 import type { Contact, ContactGroup } from '@/types/contact'
 import type {
   AttachmentContent,
@@ -97,6 +97,10 @@ export interface RustBackendMethodMap {
   updateAccount: {
     params: { accountId: string; draft: AccountSetupDraft }
     result: MailAccount
+  }
+  listOAuthProviders: {
+    params: undefined
+    result: OAuthProviderAvailability[]
   }
   listContacts: {
     params: { groupId?: string }

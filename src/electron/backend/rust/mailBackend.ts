@@ -1,4 +1,5 @@
 import type { MailBackend } from '../mailBackend'
+import { authorizeOAuth } from '../oauth'
 import { invokeRustBackend } from './process'
 
 export const rustMailBackend: MailBackend = {
@@ -23,6 +24,8 @@ export const rustMailBackend: MailBackend = {
   getAttachmentContent: (accountId, messageId, attachmentId) => invokeRustBackend('getAttachmentContent', { accountId, messageId, attachmentId }),
   getAccountConfig: (accountId) => invokeRustBackend('getAccountConfig', { accountId }),
   updateAccount: (accountId, draft) => invokeRustBackend('updateAccount', { accountId, draft }),
+  listOAuthProviders: () => invokeRustBackend('listOAuthProviders'),
+  authorizeOAuth,
   listContacts: (groupId) => invokeRustBackend('listContacts', { groupId }),
   createContact: (contact) => invokeRustBackend('createContact', contact),
   updateContact: (contactId, contact) => invokeRustBackend('updateContact', { contactId, contact }),

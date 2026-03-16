@@ -1,6 +1,7 @@
 use crate::protocol::{
     serialize, BackendRequest, HealthCheckResult, SendMessageResult,
 };
+use crate::oauth::list_oauth_providers;
 use crate::provider::imap::IMAP_SMTP_PROVIDER;
 use crate::provider::pop3::POP3_SMTP_PROVIDER;
 use crate::provider::MailProvider;
@@ -150,6 +151,7 @@ pub async fn handle_with_provider(
             let provider = provider_for_account(&account_id);
             serialize(provider.update_account(&account_id, draft).await?)
         }
+        BackendRequest::ListOAuthProviders => serialize(list_oauth_providers()),
         // -- Contacts (local-only, bypass MailProvider) --
         BackendRequest::ListContacts { group_id } => serialize(memory::list_contacts(group_id.as_deref())?),
         BackendRequest::CreateContact(contact) => serialize(memory::create_contact(contact)?),

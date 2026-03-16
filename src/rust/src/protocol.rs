@@ -4,6 +4,7 @@ use serde_json::Value;
 use crate::models::{
     AccountSetupDraft, AttachmentContent, Contact, ContactGroup, DraftMessage, MailAccount,
     MailMessage, MailboxBundle, MailboxFolder, SyncStatus,
+    OAuthProviderAvailability,
 };
 
 #[derive(Debug, Deserialize)]
@@ -47,6 +48,7 @@ pub enum BackendRequest {
     GetAccountConfig { account_id: String },
     #[serde(rename_all = "camelCase")]
     UpdateAccount { account_id: String, draft: AccountSetupDraft },
+    ListOAuthProviders,
     // -- Contacts (local-only, bypass MailProvider) --
     #[serde(rename_all = "camelCase")]
     ListContacts { group_id: Option<String> },
@@ -96,6 +98,7 @@ impl BackendRequest {
             Self::GetAttachmentContent { .. } => "getAttachmentContent",
             Self::GetAccountConfig { .. } => "getAccountConfig",
             Self::UpdateAccount { .. } => "updateAccount",
+            Self::ListOAuthProviders => "listOAuthProviders",
             Self::ListContacts { .. } => "listContacts",
             Self::CreateContact(_) => "createContact",
             Self::UpdateContact { .. } => "updateContact",
@@ -230,6 +233,8 @@ pub type SyncAccountResult = SyncStatus;
 pub type GetMailboxBundleResult = MailboxBundle;
 #[allow(dead_code)]
 pub type GetAttachmentContentResult = AttachmentContent;
+#[allow(dead_code)]
+pub type ListOAuthProvidersResult = Vec<OAuthProviderAvailability>;
 #[allow(dead_code)]
 pub type ListContactsResult = Vec<Contact>;
 #[allow(dead_code)]

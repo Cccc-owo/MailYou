@@ -49,6 +49,9 @@ pub fn create_account_without_test(draft: AccountSetupDraft) -> Result<MailAccou
         email: draft.email.clone(),
         provider: draft.provider.clone(),
         incoming_protocol: draft.incoming_protocol.clone(),
+        auth_mode: draft.auth_mode.clone(),
+        oauth_provider: draft.oauth_provider.clone(),
+        oauth_source: draft.oauth_source.clone(),
         color: "#5B8DEF".into(),
         initials: if initials.is_empty() {
             "NA".into()
@@ -402,6 +405,7 @@ pub fn get_account_config(account_id: &str) -> Result<AccountSetupDraft, Backend
         display_name: account_state.account.name.clone(),
         email: account_state.account.email.clone(),
         provider: account_state.account.provider.clone(),
+        auth_mode: account_state.config.auth_mode.clone(),
         incoming_protocol: account_state.config.incoming_protocol.clone(),
         incoming_host: account_state.config.incoming_host.clone(),
         incoming_port: account_state.config.incoming_port,
@@ -410,6 +414,11 @@ pub fn get_account_config(account_id: &str) -> Result<AccountSetupDraft, Backend
         username: account_state.config.username.clone(),
         password: account_state.config.password.clone(),
         use_tls: account_state.config.use_tls,
+        oauth_provider: account_state.config.oauth_provider.clone(),
+        oauth_source: account_state.config.oauth_source.clone(),
+        access_token: account_state.config.access_token.clone(),
+        refresh_token: account_state.config.refresh_token.clone(),
+        token_expires_at: account_state.config.token_expires_at.clone(),
     })
 }
 
@@ -439,6 +448,9 @@ pub fn update_account(account_id: &str, draft: AccountSetupDraft) -> Result<Mail
     account_state.account.email = draft.email.clone();
     account_state.account.provider = draft.provider.clone();
     account_state.account.incoming_protocol = draft.incoming_protocol.clone();
+    account_state.account.auth_mode = draft.auth_mode.clone();
+    account_state.account.oauth_provider = draft.oauth_provider.clone();
+    account_state.account.oauth_source = draft.oauth_source.clone();
     account_state.account.initials = if initials.is_empty() {
         "NA".into()
     } else {
@@ -449,6 +461,25 @@ pub fn update_account(account_id: &str, draft: AccountSetupDraft) -> Result<Mail
     let updated = account_state.account.clone();
     state.persist()?;
     Ok(updated)
+}
+
+pub fn update_account_oauth_tokens(
+    account_id: &str,
+    access_token: &str,
+    refresh_token: &str,
+    expires_at: &str,
+) -> Result<(), BackendError> {
+    let mut state = lock_state();
+    let account_state = state
+        .account_states
+        .iter_mut()
+        .find(|s| s.account.id == account_id)
+        .ok_or_else(|| BackendError::not_found("Account not found"))?;
+
+    account_state.config.access_token = access_token.to_string();
+    account_state.config.refresh_token = refresh_token.to_string();
+    account_state.config.token_expires_at = expires_at.to_string();
+    state.persist()
 }
 
 pub fn record_sent_message(draft: DraftMessage) -> Result<String, BackendError> {

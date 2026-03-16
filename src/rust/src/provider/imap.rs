@@ -2,7 +2,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use async_imap::Session as ImapSession;
+use async_imap::{Authenticator, Session as ImapSession};
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose};
 use futures::TryStreamExt;
@@ -11,9 +11,10 @@ use tokio::net::TcpStream;
 use tokio_native_tls::TlsStream;
 
 use crate::models::{
-    AccountSetupDraft, AttachmentContent, AttachmentMeta, DraftMessage, MailAccount, MailFolderKind,
-    MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
+    AccountAuthMode, AccountConfig, AccountSetupDraft, AttachmentContent, AttachmentMeta, DraftMessage, MailAccount,
+    MailFolderKind, MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
 };
+use crate::oauth::{ensure_account_access_token, ensure_config_access_token, xoauth2_payload};
 use crate::protocol::BackendError;
 use crate::provider::common::{
     validate_draft, extract_body_from_mime, extract_attachments_from_mime,
@@ -66,6 +67,18 @@ impl AsyncWrite for ImapStream {
 }
 
 type ImapAnySession = ImapSession<ImapStream>;
+
+struct XOAuth2Authenticator {
+    payload: String,
+}
+
+impl Authenticator for XOAuth2Authenticator {
+    type Response = String;
+
+    fn process(&mut self, _challenge: &[u8]) -> Self::Response {
+        self.payload.clone()
+    }
+}
 
 pub struct ImapSmtpProvider;
 
@@ -362,18 +375,12 @@ async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), BackendError> 
             .map_err(|e| BackendError::validation(e.message))?;
         let client = async_imap::Client::new(tls_stream);
         eprintln!("[imap] logging in as {}...", draft.username.trim());
-        let mut session = client
-            .login(draft.username.trim(), draft.password.trim())
-            .await
-            .map_err(|e| BackendError::validation(format!("IMAP login failed: {}", e.0)))?;
+        let mut session = imap_authenticate_client(client, draft).await?;
         let _ = session.logout().await;
     } else {
         let client = async_imap::Client::new(tcp);
         eprintln!("[imap] logging in as {}...", draft.username.trim());
-        let mut session = client
-            .login(draft.username.trim(), draft.password.trim())
-            .await
-            .map_err(|e| BackendError::validation(format!("IMAP login failed: {}", e.0)))?;
+        let mut session = imap_authenticate_client(client, draft).await?;
         let _ = session.logout().await;
     }
 
@@ -396,13 +403,72 @@ async fn imap_connect(state: &StoredAccountState) -> Result<ImapAnySession, Back
     };
 
     let client = async_imap::Client::new(stream);
-    let session = client
-        .login(state.config.username.trim(), state.config.password.trim())
-        .await
-        .map_err(|e| BackendError::internal(format!("IMAP login failed: {}", e.0)))?;
+    let session = match state.config.auth_mode {
+        AccountAuthMode::Password => client
+            .login(state.config.username.trim(), state.config.password.trim())
+            .await
+            .map_err(|e| BackendError::internal(format!("IMAP login failed: {}", e.0)))?,
+        AccountAuthMode::Oauth => {
+            let token = ensure_account_access_token(state)
+                .await?
+                .ok_or_else(|| BackendError::validation("OAuth token is missing"))?;
+            client
+                .authenticate(
+                    "XOAUTH2",
+                    XOAuth2Authenticator {
+                        payload: xoauth2_payload(&state.config.username, &token.access_token),
+                    },
+                )
+                .await
+                .map_err(|(e, _)| BackendError::internal(format!("IMAP OAuth login failed: {e}")))?
+        }
+    };
 
     eprintln!("[imap] connected to {host}:{port} ({:.1?})", start.elapsed());
     Ok(session)
+}
+
+async fn imap_authenticate_client<T>(
+    client: async_imap::Client<T>,
+    draft: &AccountSetupDraft,
+) -> Result<async_imap::Session<T>, BackendError>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
+{
+    match draft.auth_mode {
+        AccountAuthMode::Password => client
+            .login(draft.username.trim(), draft.password.trim())
+            .await
+            .map_err(|e| BackendError::validation(format!("IMAP login failed: {}", e.0))),
+        AccountAuthMode::Oauth => {
+            let config = AccountConfig {
+                auth_mode: draft.auth_mode.clone(),
+                incoming_protocol: draft.incoming_protocol.clone(),
+                incoming_host: draft.incoming_host.clone(),
+                incoming_port: draft.incoming_port,
+                outgoing_host: draft.outgoing_host.clone(),
+                outgoing_port: draft.outgoing_port,
+                username: draft.username.clone(),
+                password: draft.password.clone(),
+                use_tls: draft.use_tls,
+                oauth_provider: draft.oauth_provider.clone(),
+                oauth_source: draft.oauth_source.clone(),
+                access_token: draft.access_token.clone(),
+                refresh_token: draft.refresh_token.clone(),
+                token_expires_at: draft.token_expires_at.clone(),
+            };
+            let token = ensure_config_access_token(&config).await?;
+            client
+                .authenticate(
+                    "XOAUTH2",
+                    XOAuth2Authenticator {
+                        payload: xoauth2_payload(&draft.username, &token.access_token),
+                    },
+                )
+                .await
+                .map_err(|(e, _)| BackendError::validation(format!("IMAP OAuth login failed: {e}")))
+        }
+    }
 }
 
 async fn imap_connect_by_account(account_id: &str) -> Result<ImapAnySession, BackendError> {
@@ -985,7 +1051,7 @@ fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String,
 pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(), BackendError> {
     use lettre::message::header::ContentType;
     use lettre::message::{Attachment, Mailbox, MultiPart, SinglePart};
-    use lettre::transport::smtp::authentication::Credentials;
+    use lettre::transport::smtp::authentication::{Credentials, Mechanism};
     use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
     let from: Mailbox = format!("{} <{}>", state.account.name, state.account.email)
@@ -1047,22 +1113,35 @@ pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Resu
 
     let host = state.config.outgoing_host.trim();
     let port = state.config.outgoing_port;
-    let creds = Credentials::new(
-        state.config.username.clone(),
-        state.config.password.clone(),
-    );
+    let (creds, mechanisms) = match state.config.auth_mode {
+        AccountAuthMode::Password => (
+            Credentials::new(state.config.username.clone(), state.config.password.clone()),
+            None,
+        ),
+        AccountAuthMode::Oauth => {
+            let token = ensure_account_access_token(state)
+                .await?
+                .ok_or_else(|| BackendError::validation("OAuth token is missing"))?;
+            (
+                Credentials::new(state.config.username.clone(), token.access_token),
+                Some(vec![Mechanism::Xoauth2]),
+            )
+        }
+    };
 
-    let transport = if state.config.use_tls {
+    let transport_builder = if state.config.use_tls {
         AsyncSmtpTransport::<Tokio1Executor>::relay(host)
             .map_err(|e| BackendError::internal(format!("SMTP relay error: {e}")))?
             .port(port)
-            .credentials(creds)
-            .build()
     } else {
         AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host)
             .port(port)
-            .credentials(creds)
-            .build()
+    };
+    let transport_builder = transport_builder.credentials(creds);
+    let transport = if let Some(mechanisms) = mechanisms {
+        transport_builder.authentication(mechanisms).build()
+    } else {
+        transport_builder.build()
     };
 
     transport
