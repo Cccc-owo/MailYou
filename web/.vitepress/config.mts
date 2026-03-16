@@ -7,7 +7,6 @@ export default defineConfig({
   base: '/',
   title: 'MailYou',
   description: 'A desktop-first mail client built with Vue, Electron, and Rust.',
-  cleanUrls: true,
   lastUpdated: true,
   head: [
     ['link', { rel: 'icon', href: '/logo.svg', type: 'image/svg+xml' }],
