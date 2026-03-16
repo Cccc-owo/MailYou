@@ -98,6 +98,13 @@ MailYou 支持两种 OAuth 路径：
 - [OAuth 默认配置](src/config/oauth.ts)
 - [运行时默认配置](src/config/runtime.ts)
 
+## 法律
+
+- [Privacy Policy](docs/legal/privacy-policy.md)
+- [Terms of Service](docs/legal/terms-of-service.md)
+- [隐私政策](docs/legal/privacy-policy.zh-CN.md)
+- [服务条款](docs/legal/terms-of-service.zh-CN.md)
+
 ## 服务商预设
 
 当前内置预设覆盖：
@@ -123,4 +130,3 @@ docs/          项目文档
 - OAuth 代理默认可直接使用，桌面应用内置了公开的 desktop token。
 - 打包者可以通过环境变量覆盖代理地址或代理 token。
 - Linux 开发模式下默认不会注册 `mailyou://` 协议，除非显式开启。
-

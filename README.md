@@ -98,6 +98,13 @@ Current shared config entry points:
 - [OAuth defaults](src/config/oauth.ts)
 - [Runtime defaults](src/config/runtime.ts)
 
+## Legal
+
+- [Privacy Policy](docs/legal/privacy-policy.md)
+- [Terms of Service](docs/legal/terms-of-service.md)
+- [Privacy Policy (zh-CN)](docs/legal/privacy-policy.zh-CN.md)
+- [Terms of Service (zh-CN)](docs/legal/terms-of-service.zh-CN.md)
+
 ## Provider Presets
 
 Built-in presets currently cover:
