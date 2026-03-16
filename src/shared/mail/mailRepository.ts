@@ -14,6 +14,7 @@ import type {
   MailboxFolder,
   SyncStatus,
 } from '@/types/mail'
+import type { StorageSecurityStatus } from '@/types/security'
 
 export interface MailRepository {
   listAccounts(): Promise<MailAccount[]>
@@ -50,5 +51,11 @@ export interface MailRepository {
   deleteContactGroup(groupId: string): Promise<void>
   uploadContactAvatar(contactId: string, dataBase64: string, mimeType: string): Promise<Contact>
   deleteContactAvatar(contactId: string): Promise<Contact>
+  getContactAvatar(contactId: string): Promise<AttachmentContent | null>
+  getSecurityStatus(): Promise<StorageSecurityStatus>
+  unlockStorage(password: string): Promise<StorageSecurityStatus>
+  setMasterPassword(currentPassword: string | null, newPassword: string): Promise<StorageSecurityStatus>
+  clearMasterPassword(currentPassword: string): Promise<StorageSecurityStatus>
+  lockCurrentSession(): Promise<StorageSecurityStatus>
   getStorageDir(): Promise<string>
 }

@@ -70,6 +70,15 @@ pub enum BackendRequest {
     UploadContactAvatar { contact_id: String, data_base64: String, mime_type: String },
     #[serde(rename_all = "camelCase")]
     DeleteContactAvatar { contact_id: String },
+    #[serde(rename_all = "camelCase")]
+    GetContactAvatar { contact_id: String },
+    GetSecurityStatus,
+    #[serde(rename_all = "camelCase")]
+    UnlockStorage { password: String },
+    #[serde(rename_all = "camelCase")]
+    SetMasterPassword { current_password: Option<String>, new_password: String },
+    #[serde(rename_all = "camelCase")]
+    ClearMasterPassword { current_password: String },
     GetStorageDir,
 }
 
@@ -110,6 +119,11 @@ impl BackendRequest {
             Self::DeleteContactGroup { .. } => "deleteContactGroup",
             Self::UploadContactAvatar { .. } => "uploadContactAvatar",
             Self::DeleteContactAvatar { .. } => "deleteContactAvatar",
+            Self::GetContactAvatar { .. } => "getContactAvatar",
+            Self::GetSecurityStatus => "getSecurityStatus",
+            Self::UnlockStorage { .. } => "unlockStorage",
+            Self::SetMasterPassword { .. } => "setMasterPassword",
+            Self::ClearMasterPassword { .. } => "clearMasterPassword",
             Self::GetStorageDir => "getStorageDir",
         }
     }
@@ -207,6 +221,16 @@ pub struct HealthCheckResult {
 pub struct SendMessageResult {
     pub ok: bool,
     pub queued_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageSecurityStatus {
+    pub has_master_password: bool,
+    pub is_unlocked: bool,
+    pub mode: &'static str,
+    pub keyring_available: bool,
+    pub keyring_error: Option<String>,
 }
 
 #[allow(dead_code)]

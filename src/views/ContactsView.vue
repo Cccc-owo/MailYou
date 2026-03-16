@@ -224,6 +224,6 @@ const handleMerged = (count: number) => {
 }
 
 onMounted(async () => {
-  await Promise.all([contactsStore.loadContacts(), contactsStore.loadGroups(), contactsStore.ensureStorageDir()])
+  await Promise.all([contactsStore.loadContacts(), contactsStore.loadGroups()])
 })
 </script>

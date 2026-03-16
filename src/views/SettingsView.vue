@@ -143,6 +143,85 @@
               @update:model-value="setImageLoadPolicy"
             />
           </div>
+
+          <v-divider class="settings-page__divider" />
+
+          <div class="settings-page__item settings-page__item--vertical">
+            <div class="settings-page__item-row">
+              <v-icon icon="mdi-lock-outline" class="settings-page__item-icon" />
+              <div class="settings-page__item-body">
+                <div class="settings-page__item-label">{{ t('security.title') }}</div>
+                <div class="text-body-2 text-medium-emphasis">
+                  {{ securitySummary }}
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-page__security-form">
+              <v-alert
+                v-if="!securityStore.status?.hasMasterPassword && securityStore.status && !securityStore.status.keyringAvailable"
+                type="warning"
+                variant="tonal"
+              >
+                {{ securityStore.status.keyringError || t('security.keyringUnavailableGeneric') }}
+              </v-alert>
+              <v-text-field
+                v-if="securityStore.status?.hasMasterPassword"
+                v-model="currentPassword"
+                :label="t('security.currentPassword')"
+                type="password"
+                autocomplete="current-password"
+              />
+              <v-text-field
+                v-model="newPassword"
+                :label="securityStore.status?.hasMasterPassword ? t('security.newPassword') : t('security.masterPassword')"
+                type="password"
+                autocomplete="new-password"
+              />
+              <v-text-field
+                v-model="confirmPassword"
+                :label="t('security.confirmPassword')"
+                type="password"
+                autocomplete="new-password"
+              />
+
+              <v-alert v-if="securityError" type="error" variant="tonal">
+                {{ securityError }}
+              </v-alert>
+              <v-alert v-else type="info" variant="tonal">
+                {{ t('security.optionalHint') }}
+              </v-alert>
+
+              <div class="d-flex ga-3 flex-wrap">
+                <v-btn
+                  color="primary"
+                  :loading="securityStore.isBusy"
+                  :disabled="!canSubmitPassword"
+                  @click="saveMasterPassword"
+                >
+                  {{ securityStore.status?.hasMasterPassword ? t('security.updateAction') : t('security.enableAction') }}
+                </v-btn>
+                <v-btn
+                  v-if="securityStore.status?.hasMasterPassword && securityStore.status?.isUnlocked"
+                  variant="tonal"
+                  :loading="securityStore.isBusy"
+                  @click="lockCurrentSession"
+                >
+                  {{ t('security.lockNowAction') }}
+                </v-btn>
+                <v-btn
+                  v-if="securityStore.status?.hasMasterPassword"
+                  variant="text"
+                  color="error"
+                  :loading="securityStore.isBusy"
+                  :disabled="!currentPassword"
+                  @click="removeMasterPassword"
+                >
+                  {{ t('security.disableAction') }}
+                </v-btn>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -150,15 +229,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import AppTitleBar from '@/components/AppTitleBar.vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useUiStore, type AppearanceMode, type LocaleMode, type ImageLoadPolicy } from '@/stores/ui'
+import { useSecurityStore } from '@/stores/security'
 
 const { t } = useI18n()
 const router = useRouter()
 const uiStore = useUiStore()
+const securityStore = useSecurityStore()
+const currentPassword = ref('')
+const newPassword = ref('')
+const confirmPassword = ref('')
+const securityError = ref<string | null>(null)
 
 const seedOptions = computed(() => [
   { label: t('settings.violet'), value: '#6750A4' },
@@ -195,6 +280,62 @@ const setLocale = (value: LocaleMode | null) => { if (value) uiStore.setLocale(v
 const setSyncInterval = (value: number | null) => { if (value) uiStore.setSyncIntervalMinutes(value) }
 const setFetchLimit = (value: number | null) => { if (value) uiStore.setFetchLimit(value) }
 const setImageLoadPolicy = (value: ImageLoadPolicy | null) => { if (value) uiStore.setImageLoadPolicy(value) }
+
+const securitySummary = computed(() =>
+  !securityStore.status?.hasMasterPassword && securityStore.status && !securityStore.status.keyringAvailable
+    ? t('security.keyringUnavailableSummary')
+    : securityStore.status?.hasMasterPassword
+    ? t('security.enabledSummary')
+    : t('security.disabledSummary'),
+)
+
+const canSubmitPassword = computed(() =>
+  newPassword.value.length >= 8 && newPassword.value === confirmPassword.value,
+)
+
+const resetSecurityForm = () => {
+  currentPassword.value = ''
+  newPassword.value = ''
+  confirmPassword.value = ''
+}
+
+const saveMasterPassword = async () => {
+  securityError.value = null
+  if (!canSubmitPassword.value) {
+    securityError.value = t('security.passwordMismatch')
+    return
+  }
+
+  try {
+    await securityStore.setMasterPassword(
+      securityStore.status?.hasMasterPassword ? currentPassword.value : null,
+      newPassword.value,
+    )
+    resetSecurityForm()
+  } catch (err) {
+    securityError.value = err instanceof Error ? err.message : t('security.updateFailed')
+  }
+}
+
+const removeMasterPassword = async () => {
+  securityError.value = null
+  try {
+    await securityStore.clearMasterPassword(currentPassword.value)
+    resetSecurityForm()
+  } catch (err) {
+    securityError.value = err instanceof Error ? err.message : t('security.disableFailed')
+  }
+}
+
+const lockCurrentSession = async () => {
+  securityError.value = null
+  try {
+    await securityStore.lockCurrentSession()
+    window.location.reload()
+  } catch (err) {
+    securityError.value = err instanceof Error ? err.message : t('security.lockFailed')
+  }
+}
 </script>
 
 <style scoped>
@@ -257,6 +398,13 @@ const setImageLoadPolicy = (value: ImageLoadPolicy | null) => { if (value) uiSto
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.settings-page__security-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
 }
 
 .settings-page__item-icon {

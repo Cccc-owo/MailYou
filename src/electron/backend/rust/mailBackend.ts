@@ -1,6 +1,6 @@
 import type { MailBackend } from '../mailBackend'
 import { authorizeOAuth } from '../oauth'
-import { invokeRustBackend } from './process'
+import { invokeRustBackend, shutdownRustBackend } from './process'
 
 export const rustMailBackend: MailBackend = {
   listAccounts: () => invokeRustBackend('listAccounts'),
@@ -37,5 +37,14 @@ export const rustMailBackend: MailBackend = {
   deleteContactGroup: (groupId) => invokeRustBackend('deleteContactGroup', { groupId }),
   uploadContactAvatar: (contactId, dataBase64, mimeType) => invokeRustBackend('uploadContactAvatar', { contactId, dataBase64, mimeType }),
   deleteContactAvatar: (contactId) => invokeRustBackend('deleteContactAvatar', { contactId }),
+  getContactAvatar: (contactId) => invokeRustBackend('getContactAvatar', { contactId }),
+  getSecurityStatus: () => invokeRustBackend('getSecurityStatus'),
+  unlockStorage: (password) => invokeRustBackend('unlockStorage', { password }),
+  setMasterPassword: (currentPassword, newPassword) => invokeRustBackend('setMasterPassword', { currentPassword, newPassword }),
+  clearMasterPassword: (currentPassword) => invokeRustBackend('clearMasterPassword', { currentPassword }),
+  lockCurrentSession: async () => {
+    await shutdownRustBackend()
+    return invokeRustBackend('getSecurityStatus')
+  },
   getStorageDir: () => invokeRustBackend('getStorageDir'),
 }

@@ -20,6 +20,7 @@ class RustBackendClient {
   private startPromise: Promise<void> | null = null
   private lastStartError: Error | null = null
   private isShuttingDown = false
+  private expectedExit = false
 
   async invoke<M extends RustBackendMethod>(
     method: M,
@@ -88,6 +89,7 @@ class RustBackendClient {
   async shutdown() {
     this.isShuttingDown = true
     this.lastStartError = null
+    this.expectedExit = true
 
     if (this.stdoutReader) {
       this.stdoutReader.close()
@@ -161,8 +163,16 @@ class RustBackendClient {
     })
 
     const handleProcessExit = (code: number | null, signal: NodeJS.Signals | null) => {
-      const error = new Error(formatExitReason(recentStderr.trim(), code, signal))
       this.process = null
+      const wasExpected = this.expectedExit
+      this.expectedExit = false
+
+      if (wasExpected || this.isShuttingDown) {
+        this.lastStartError = null
+        return
+      }
+
+      const error = new Error(formatExitReason(recentStderr.trim(), code, signal))
       this.lastStartError = error
       this.rejectPending(error)
     }

@@ -44,5 +44,11 @@ export const electronMailRepository: MailRepository = {
   deleteContactGroup: (groupId) => getBridge().deleteContactGroup(groupId),
   uploadContactAvatar: (contactId, dataBase64, mimeType) => getBridge().uploadContactAvatar(contactId, dataBase64, mimeType),
   deleteContactAvatar: (contactId) => getBridge().deleteContactAvatar(contactId),
+  getContactAvatar: (contactId) => getBridge().getContactAvatar(contactId),
+  getSecurityStatus: () => getBridge().getSecurityStatus(),
+  unlockStorage: (password) => getBridge().unlockStorage(password),
+  setMasterPassword: (currentPassword, newPassword) => getBridge().setMasterPassword(currentPassword, newPassword),
+  clearMasterPassword: (currentPassword) => getBridge().clearMasterPassword(currentPassword),
+  lockCurrentSession: () => getBridge().lockCurrentSession(),
   getStorageDir: () => getBridge().getStorageDir(),
 }

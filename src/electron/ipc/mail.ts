@@ -104,5 +104,15 @@ export const registerMailIpc = () => {
     mailBackend.uploadContactAvatar(contactId as string, dataBase64 as string, mimeType as string),
   )
   handle('mail:deleteContactAvatar', (contactId) => mailBackend.deleteContactAvatar(contactId as string))
+  handle('mail:getContactAvatar', (contactId) => mailBackend.getContactAvatar(contactId as string))
+  handle('mail:getSecurityStatus', () => mailBackend.getSecurityStatus())
+  handle('mail:unlockStorage', (password) => mailBackend.unlockStorage(password as string))
+  handle('mail:setMasterPassword', (currentPassword, newPassword) =>
+    mailBackend.setMasterPassword((currentPassword as string | null) ?? null, newPassword as string),
+  )
+  handle('mail:clearMasterPassword', (currentPassword) =>
+    mailBackend.clearMasterPassword(currentPassword as string),
+  )
+  handle('mail:lockCurrentSession', () => mailBackend.lockCurrentSession())
   handle('mail:getStorageDir', () => mailBackend.getStorageDir())
 }

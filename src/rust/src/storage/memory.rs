@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use crate::models::{
-    AccountSetupDraft, AccountStatus, AttachmentMeta, Contact, ContactGroup, DraftMessage,
+    AccountSetupDraft, AccountStatus, AttachmentContent, AttachmentMeta, Contact, ContactGroup, DraftMessage,
     MailAccount, MailFolderKind, MailMessage, MailThread, MailboxBundle, MailboxFolder,
     StoredAccountState, SyncStatus,
 };
-use crate::protocol::BackendError;
+use crate::protocol::{BackendError, StorageSecurityStatus};
 use crate::storage::{accounts, drafts, mailbox, persisted, sync};
 
 /// Lock the global state, recovering from a poisoned Mutex if necessary.
@@ -960,16 +960,9 @@ pub fn update_contact(contact_id: &str, mut contact: Contact) -> Result<Contact,
 }
 
 pub fn delete_contact(contact_id: &str) -> Result<(), BackendError> {
-    use std::fs;
-
     let mut state = lock_state();
-    // Clean up avatar file if present
-    if let Some(contact) = state.contacts.iter().find(|c| c.id == contact_id) {
-        if let Some(ref avatar_path) = contact.avatar_path {
-            if let Ok(storage_dir) = persisted::storage_dir_path() {
-                let _ = fs::remove_file(storage_dir.join(avatar_path));
-            }
-        }
+    if state.contacts.iter().any(|c| c.id == contact_id) {
+        let _ = persisted::delete_avatar(contact_id);
     }
     state.contacts.retain(|c| c.id != contact_id);
     state.persist()?;
@@ -1027,40 +1020,16 @@ pub fn delete_contact_group(group_id: &str) -> Result<(), BackendError> {
     Ok(())
 }
 
-pub fn upload_contact_avatar(contact_id: &str, data_base64: &str, _mime_type: &str) -> Result<Contact, BackendError> {
-    use std::fs;
-
+pub fn upload_contact_avatar(contact_id: &str, data_base64: &str, mime_type: &str) -> Result<Contact, BackendError> {
     let decoded = base64_decode(data_base64)
         .map_err(|e| BackendError::validation(format!("Invalid base64: {e}")))?;
-
-    let avatars_dir = persisted::avatars_dir()
+    persisted::save_avatar(contact_id, mime_type, &decoded)
         .map_err(|e| BackendError::internal(e.to_string()))?;
-    fs::create_dir_all(&avatars_dir)
-        .map_err(|e| BackendError::internal(e.to_string()))?;
-
-    // Remove old avatar file if it exists
-    {
-        let state = lock_state();
-        if let Some(contact) = state.contacts.iter().find(|c| c.id == contact_id) {
-            if let Some(ref old_path) = contact.avatar_path {
-                if let Ok(d) = persisted::storage_dir_path() {
-                    let _ = fs::remove_file(d.join(old_path));
-                }
-            }
-        }
-    }
-
-    let file_name = format!("{contact_id}.webp");
-    let file_path = avatars_dir.join(&file_name);
-    fs::write(&file_path, &decoded)
-        .map_err(|e| BackendError::internal(e.to_string()))?;
-
-    let relative_path = format!("avatars/{file_name}");
 
     let mut state = lock_state();
     let contact = state.contacts.iter_mut().find(|c| c.id == contact_id)
         .ok_or_else(|| BackendError::not_found(format!("Contact '{contact_id}' not found")))?;
-    contact.avatar_path = Some(relative_path);
+    contact.avatar_path = Some(contact_id.to_string());
     contact.updated_at = current_timestamp();
     let updated = contact.clone();
     state.persist()?;
@@ -1068,24 +1037,58 @@ pub fn upload_contact_avatar(contact_id: &str, data_base64: &str, _mime_type: &s
 }
 
 pub fn delete_contact_avatar(contact_id: &str) -> Result<Contact, BackendError> {
-    use std::fs;
-
     let mut state = lock_state();
     let contact = state.contacts.iter_mut().find(|c| c.id == contact_id)
         .ok_or_else(|| BackendError::not_found(format!("Contact '{contact_id}' not found")))?;
-
-    if let Some(ref path) = contact.avatar_path {
-        let storage_dir = persisted::storage_dir_path()
-            .map_err(|e| BackendError::internal(e.to_string()))?;
-        let full_path = storage_dir.join(path);
-        let _ = fs::remove_file(full_path);
-    }
+    persisted::delete_avatar(contact_id)
+        .map_err(|e| BackendError::internal(e.to_string()))?;
 
     contact.avatar_path = None;
     contact.updated_at = current_timestamp();
     let updated = contact.clone();
     state.persist()?;
     Ok(updated)
+}
+
+pub fn get_contact_avatar(contact_id: &str) -> Result<Option<AttachmentContent>, BackendError> {
+    let Some((mime_type, payload)) = persisted::load_avatar(contact_id)
+        .map_err(|e| BackendError::internal(e.to_string()))?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(AttachmentContent {
+        file_name: format!("{contact_id}.webp"),
+        mime_type,
+        data_base64: base64_encode(&payload),
+    }))
+}
+
+pub fn get_security_status() -> Result<StorageSecurityStatus, BackendError> {
+    persisted::get_security_status().map_err(|e| BackendError::internal(e.to_string()))
+}
+
+pub fn unlock_storage(password: &str) -> Result<StorageSecurityStatus, BackendError> {
+    persisted::unlock_storage(password).map_err(|e| BackendError::validation(e.to_string()))
+}
+
+pub fn set_master_password(
+    current_password: Option<&str>,
+    new_password: &str,
+) -> Result<StorageSecurityStatus, BackendError> {
+    if new_password.trim().len() < 8 {
+        return Err(BackendError::validation(
+            "Master password must be at least 8 characters long",
+        ));
+    }
+
+    persisted::set_master_password(current_password, new_password)
+        .map_err(|e| BackendError::validation(e.to_string()))
+}
+
+pub fn clear_master_password(current_password: &str) -> Result<StorageSecurityStatus, BackendError> {
+    persisted::clear_master_password(current_password)
+        .map_err(|e| BackendError::validation(e.to_string()))
 }
 
 pub fn get_storage_dir() -> Result<String, BackendError> {
@@ -1117,6 +1120,33 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
         }
     }
     Ok(result)
+}
+
+fn base64_encode(input: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::with_capacity(input.len().div_ceil(3) * 4);
+
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        let n = ((b0 as u32) << 16) | ((b1 as u32) << 8) | b2 as u32;
+
+        output.push(ALPHABET[((n >> 18) & 0x3f) as usize] as char);
+        output.push(ALPHABET[((n >> 12) & 0x3f) as usize] as char);
+        output.push(if chunk.len() > 1 {
+            ALPHABET[((n >> 6) & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+        output.push(if chunk.len() > 2 {
+            ALPHABET[(n & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+
+    output
 }
 
 fn uuid_short() -> String {

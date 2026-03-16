@@ -164,6 +164,15 @@ pub async fn handle_with_provider(
         BackendRequest::DeleteContactGroup { group_id } => serialize(memory::delete_contact_group(&group_id)?),
         BackendRequest::UploadContactAvatar { contact_id, data_base64, mime_type } => serialize(memory::upload_contact_avatar(&contact_id, &data_base64, &mime_type)?),
         BackendRequest::DeleteContactAvatar { contact_id } => serialize(memory::delete_contact_avatar(&contact_id)?),
+        BackendRequest::GetContactAvatar { contact_id } => serialize(memory::get_contact_avatar(&contact_id)?),
+        BackendRequest::GetSecurityStatus => serialize(memory::get_security_status()?),
+        BackendRequest::UnlockStorage { password } => serialize(memory::unlock_storage(&password)?),
+        BackendRequest::SetMasterPassword { current_password, new_password } => {
+            serialize(memory::set_master_password(current_password.as_deref(), &new_password)?)
+        }
+        BackendRequest::ClearMasterPassword { current_password } => {
+            serialize(memory::clear_master_password(&current_password)?)
+        }
         BackendRequest::GetStorageDir => serialize(memory::get_storage_dir()?),
     }
 }

@@ -37,6 +37,12 @@ const mailyou: MailyouBridge = {
   deleteContactGroup: (groupId) => ipcRenderer.invoke('mail:deleteContactGroup', groupId),
   uploadContactAvatar: (contactId, dataBase64, mimeType) => ipcRenderer.invoke('mail:uploadContactAvatar', contactId, dataBase64, mimeType),
   deleteContactAvatar: (contactId) => ipcRenderer.invoke('mail:deleteContactAvatar', contactId),
+  getContactAvatar: (contactId) => ipcRenderer.invoke('mail:getContactAvatar', contactId),
+  getSecurityStatus: () => ipcRenderer.invoke('mail:getSecurityStatus'),
+  unlockStorage: (password) => ipcRenderer.invoke('mail:unlockStorage', password),
+  setMasterPassword: (currentPassword, newPassword) => ipcRenderer.invoke('mail:setMasterPassword', currentPassword, newPassword),
+  clearMasterPassword: (currentPassword) => ipcRenderer.invoke('mail:clearMasterPassword', currentPassword),
+  lockCurrentSession: () => ipcRenderer.invoke('mail:lockCurrentSession'),
   getStorageDir: () => ipcRenderer.invoke('mail:getStorageDir'),
 }
 

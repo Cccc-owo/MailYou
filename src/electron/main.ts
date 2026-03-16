@@ -1,6 +1,6 @@
-import { app, BrowserWindow, dialog, net, protocol, session } from 'electron'
+import { app, BrowserWindow, dialog, protocol, session } from 'electron'
 import { dirname, join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import {
   getMailYouDevServerUrl,
   getMailYouOzonePlatformHint,
@@ -165,14 +165,21 @@ app.whenReady().then(async () => {
   registerMailIpc()
   registerWindowIpc()
 
-  let storageDirCache: string | null = null
   protocol.handle('mailyou-avatar', async (request) => {
-    if (!storageDirCache) {
-      storageDirCache = await mailBackend.getStorageDir()
+    const contactId = decodeURIComponent(request.url.slice('mailyou-avatar://'.length))
+    const avatar = await mailBackend.getContactAvatar(contactId)
+    if (!avatar) {
+      return new Response('Not Found', { status: 404 })
     }
-    const relativePath = decodeURIComponent(request.url.slice('mailyou-avatar://'.length))
-    const fullPath = join(storageDirCache, relativePath)
-    return net.fetch(pathToFileURL(fullPath).toString())
+
+    const bytes = Buffer.from(avatar.dataBase64, 'base64')
+    return new Response(bytes, {
+      status: 200,
+      headers: {
+        'content-type': avatar.mimeType || 'application/octet-stream',
+        'cache-control': 'no-store',
+      },
+    })
   })
 
   await createMainWindow()

@@ -39,5 +39,11 @@ export const webMailRepository: MailRepository = {
   deleteContactGroup: notAvailable,
   uploadContactAvatar: notAvailable,
   deleteContactAvatar: notAvailable,
+  getContactAvatar: notAvailable,
+  getSecurityStatus: notAvailable,
+  unlockStorage: notAvailable,
+  setMasterPassword: notAvailable,
+  clearMasterPassword: notAvailable,
+  lockCurrentSession: notAvailable,
   getStorageDir: notAvailable,
 }

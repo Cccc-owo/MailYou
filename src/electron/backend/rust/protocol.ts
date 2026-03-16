@@ -8,6 +8,7 @@ import type {
   MailboxFolder,
   SyncStatus,
 } from '@/types/mail'
+import type { StorageSecurityStatus } from '@/types/security'
 
 export interface RustBackendMethodMap {
   healthCheck: {
@@ -145,6 +146,26 @@ export interface RustBackendMethodMap {
   deleteContactAvatar: {
     params: { contactId: string }
     result: Contact
+  }
+  getContactAvatar: {
+    params: { contactId: string }
+    result: AttachmentContent | null
+  }
+  getSecurityStatus: {
+    params: undefined
+    result: StorageSecurityStatus
+  }
+  unlockStorage: {
+    params: { password: string }
+    result: StorageSecurityStatus
+  }
+  setMasterPassword: {
+    params: { currentPassword: string | null; newPassword: string }
+    result: StorageSecurityStatus
+  }
+  clearMasterPassword: {
+    params: { currentPassword: string }
+    result: StorageSecurityStatus
   }
   getStorageDir: {
     params: undefined
