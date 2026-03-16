@@ -303,6 +303,7 @@ async fn pop3_fetch_mailbox(
             attachments,
             labels: vec![],
             imap_uid: None,
+            previous_folder_id: None,
         });
 
         threads.push(MailThread {

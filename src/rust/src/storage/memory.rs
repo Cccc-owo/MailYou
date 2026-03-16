@@ -264,6 +264,7 @@ pub fn delete_message(account_id: &str, message_id: &str) -> Result<(), BackendE
     };
 
     message.folder_id = trash_folder_id;
+    message.previous_folder_id = None;
     message.is_read = true;
     state.recalculate_counts();
     state.persist()?;
@@ -305,6 +306,7 @@ pub fn archive_message(account_id: &str, message_id: &str) -> Result<Option<Mail
     };
 
     message.folder_id = archive_folder_id;
+    message.previous_folder_id = None;
     let updated = message.clone();
     state.recalculate_counts();
     state.persist()?;
@@ -320,6 +322,28 @@ pub fn restore_message(account_id: &str, message_id: &str) -> Result<Option<Mail
         .map(|folder| folder.id.clone())
         .ok_or_else(|| BackendError::internal("Inbox folder is missing"))?;
 
+    let restore_folder_id = {
+        let previous_folder_id = state
+            .messages
+            .iter()
+            .find(|message| message.account_id == account_id && message.id == message_id)
+            .and_then(|message| message.previous_folder_id.clone());
+
+        if let Some(folder_id) = previous_folder_id {
+            if state
+                .folders
+                .iter()
+                .any(|folder| folder.account_id == account_id && folder.id == folder_id)
+            {
+                folder_id
+            } else {
+                inbox_folder_id.clone()
+            }
+        } else {
+            inbox_folder_id.clone()
+        }
+    };
+
     let Some(message) = state
         .messages
         .iter_mut()
@@ -328,7 +352,8 @@ pub fn restore_message(account_id: &str, message_id: &str) -> Result<Option<Mail
         return Ok(None);
     };
 
-    message.folder_id = inbox_folder_id;
+    message.folder_id = restore_folder_id;
+    message.previous_folder_id = None;
     let updated = message.clone();
     state.recalculate_counts();
     state.persist()?;
@@ -338,14 +363,15 @@ pub fn restore_message(account_id: &str, message_id: &str) -> Result<Option<Mail
 pub fn move_message(account_id: &str, message_id: &str, folder_id: &str) -> Result<Option<MailMessage>, BackendError> {
     let mut state = lock_state();
 
-    let folder_exists = state
+    let target_folder = state
         .folders
         .iter()
-        .any(|folder| folder.account_id == account_id && folder.id == folder_id);
+        .find(|folder| folder.account_id == account_id && folder.id == folder_id)
+        .cloned();
 
-    if !folder_exists {
+    let Some(target_folder) = target_folder else {
         return Err(BackendError::not_found("Target folder not found"));
-    }
+    };
 
     let Some(message) = state
         .messages
@@ -354,6 +380,16 @@ pub fn move_message(account_id: &str, message_id: &str, folder_id: &str) -> Resu
     else {
         return Ok(None);
     };
+
+    let current_folder_id = message.folder_id.clone();
+    let moving_to_junk = matches!(target_folder.kind, MailFolderKind::Junk);
+    let moving_out_of_junk = message.previous_folder_id.is_some() && !moving_to_junk;
+
+    if moving_to_junk {
+        message.previous_folder_id = Some(current_folder_id);
+    } else if moving_out_of_junk {
+        message.previous_folder_id = None;
+    }
 
     message.folder_id = folder_id.to_string();
     let updated = message.clone();
@@ -588,6 +624,7 @@ pub fn record_sent_message(draft: DraftMessage) -> Result<String, BackendError> 
             size_bytes: a.data_base64.len() as u64 * 3 / 4, // approximate decoded size
         }).collect(),
         labels: vec!["Sent".into()],
+        previous_folder_id: None,
         imap_uid: None,
     };
 
@@ -639,6 +676,7 @@ pub fn merge_remote_mailbox(
             remote.is_read = local.is_read;
             remote.is_starred = local.is_starred;
             remote.folder_id = local.folder_id.clone();
+            remote.previous_folder_id = local.previous_folder_id.clone();
         }
 
         merged_messages.push(remote);
@@ -930,6 +968,7 @@ fn sync_draft_mailbox_message(state: &mut MemoryState, draft: &DraftMessage) {
             has_attachments: false,
             attachments: vec![],
             labels: vec!["Draft".into()],
+            previous_folder_id: None,
             imap_uid: None,
         },
     );

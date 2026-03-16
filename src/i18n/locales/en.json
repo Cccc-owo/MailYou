@@ -4,6 +4,7 @@
     "sent": "Sent",
     "drafts": "Drafts",
     "trash": "Trash",
+    "junk": "Junk",
     "starred": "Starred",
     "archive": "Archive"
   },
@@ -69,6 +70,8 @@
     "forward": "Forward",
     "markUnread": "Mark unread",
     "markRead": "Mark read",
+    "markSpam": "Mark as junk",
+    "notSpam": "Not junk",
     "moveTo": "Move to",
     "more": "More",
     "restoreToInbox": "Restore to Inbox",

@@ -163,11 +163,12 @@
         @click="$emit('context-toggle-read', ctxMenu.target.value!.id)"
       />
       <v-divider />
-      <template v-if="currentFolderKind === 'trash' || currentFolderKind === 'archive'">
-        <v-list-item prepend-icon="mdi-inbox-arrow-down" :title="t('reader.restoreToInbox')" @click="$emit('context-restore', ctxMenu.target.value!.id)" />
+      <template v-if="currentFolderKind === 'trash' || currentFolderKind === 'archive' || currentFolderKind === 'junk'">
+        <v-list-item prepend-icon="mdi-inbox-arrow-down" :title="currentFolderKind === 'junk' ? t('reader.notSpam') : t('reader.restoreToInbox')" @click="$emit('context-restore', ctxMenu.target.value!.id)" />
       </template>
       <template v-else>
         <v-list-item prepend-icon="mdi-archive-outline" :title="t('reader.archive')" @click="$emit('context-archive', ctxMenu.target.value!.id)" />
+        <v-list-item v-if="!props.isPop3" prepend-icon="mdi-alert-circle-outline" :title="t('reader.markSpam')" @click="$emit('context-mark-spam', ctxMenu.target.value!.id)" />
       </template>
       <v-menu v-if="moveTargetFolders.length > 0" location="end">
         <template #activator="{ props: subMenuProps }">
@@ -209,6 +210,7 @@ const props = defineProps<{
   threads: MailThreadSummary[]
   selectedMessageId: string | null
   selectedThreadId?: string | null
+  isPop3?: boolean
   selectedIds: Set<string>
   title: string
   folders?: MailboxFolder[]
@@ -233,6 +235,7 @@ const emit = defineEmits<{
   'context-forward': [messageId: string]
   'context-toggle-read': [messageId: string]
   'context-archive': [messageId: string]
+  'context-mark-spam': [messageId: string]
   'context-restore': [messageId: string]
   'context-delete': [messageId: string]
   'context-move': [messageId: string, folderId: string]

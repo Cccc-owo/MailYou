@@ -50,6 +50,7 @@ pub enum MailFolderKind {
     Sent,
     Drafts,
     Trash,
+    Junk,
     Starred,
     Archive,
     Custom,
@@ -101,6 +102,8 @@ pub struct MailMessage {
     pub labels: Vec<String>,
     #[serde(default)]
     pub imap_uid: Option<u32>,
+    #[serde(default)]
+    pub previous_folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -52,6 +52,7 @@
         :threads="messagesStore.threadSummaries"
         :selected-message-id="messagesStore.selectedMessageId"
         :selected-thread-id="messagesStore.selectedMessage?.threadId ?? null"
+        :is-pop3="accountsStore.isCurrentAccountPop3"
         :selected-ids="messagesStore.selectedIds"
         :title="currentFolderDisplayName"
         :folders="mailboxesStore.folders"
@@ -73,6 +74,7 @@
         @context-forward="handleContextForward"
         @context-toggle-read="handleContextToggleRead"
         @context-archive="handleContextArchive"
+        @context-mark-spam="handleContextMarkSpam"
         @context-restore="handleContextRestore"
         @context-delete="handleContextDelete"
         @context-move="handleContextMove"
@@ -90,6 +92,7 @@
         :current-folder-kind="mailboxesStore.currentFolder?.kind ?? null"
         :is-pop3="accountsStore.isCurrentAccountPop3"
         @archive="archiveCurrentMessage"
+        @mark-spam="markCurrentMessageSpam"
         @restore="restoreCurrentMessage"
         @delete="promptDeleteCurrentMessage"
         @forward="forwardCurrentMessage"
@@ -594,6 +597,11 @@ const restoreCurrentMessage = async () => {
     return
   }
 
+  if (mailboxesStore.currentFolder?.kind === 'junk') {
+    await restoreMessageFromJunk(messagesStore.selectedMessageId)
+    return
+  }
+
   await messagesStore.restoreMessage(accountsStore.currentAccountId, messagesStore.selectedMessageId)
   await refreshMailbox()
 }
@@ -722,10 +730,50 @@ const handleContextArchive = async (messageId: string) => {
   })
 }
 
+const getFolderIdByKind = (kind: 'inbox' | 'junk') =>
+  mailboxesStore.folders.find((folder) => folder.kind === kind)?.id ?? null
+
+const markMessageSpam = async (messageId: string) => {
+  if (!accountsStore.currentAccountId) return
+  const junkFolderId = getFolderIdByKind('junk')
+  const originalFolderId = findMessage(messageId)?.folderId ?? mailboxesStore.currentFolderId
+  if (!junkFolderId || !originalFolderId || originalFolderId === junkFolderId) return
+
+  const accountId = accountsStore.currentAccountId
+  await messagesStore.moveMessage(accountId, messageId, junkFolderId)
+  await refreshMailbox()
+  performUndoable(t('shell.messageMoved'), async () => {
+    await messagesStore.moveMessage(accountId, messageId, originalFolderId)
+    await refreshMailbox()
+  })
+}
+
+const restoreMessageFromJunk = async (messageId: string) => {
+  if (!accountsStore.currentAccountId) return
+  const inboxFolderId = getFolderIdByKind('inbox')
+  if (!inboxFolderId) return
+
+  await messagesStore.moveMessage(accountsStore.currentAccountId, messageId, inboxFolderId)
+  await refreshMailbox()
+}
+
+const markCurrentMessageSpam = async () => {
+  if (!messagesStore.selectedMessageId) return
+  await markMessageSpam(messagesStore.selectedMessageId)
+}
+
 const handleContextRestore = async (messageId: string) => {
   if (!accountsStore.currentAccountId) return
+  if (mailboxesStore.currentFolder?.kind === 'junk') {
+    await restoreMessageFromJunk(messageId)
+    return
+  }
   await messagesStore.restoreMessage(accountsStore.currentAccountId, messageId)
   await refreshMailbox()
+}
+
+const handleContextMarkSpam = async (messageId: string) => {
+  await markMessageSpam(messageId)
 }
 
 const handleContextDelete = async (messageId: string) => {

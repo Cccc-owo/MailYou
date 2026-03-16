@@ -27,9 +27,9 @@
               @click="$emit('toggle-read')"
             />
             <v-list-item
-              v-if="isTrashOrArchive"
+              v-if="isTrashArchiveOrJunk"
               prepend-icon="mdi-inbox-arrow-down"
-              :title="t('reader.restoreToInbox')"
+              :title="currentFolderKind === 'junk' ? t('reader.notSpam') : t('reader.restoreToInbox')"
               @click="$emit('restore')"
             />
             <v-list-item
@@ -37,6 +37,12 @@
               prepend-icon="mdi-archive-outline"
               :title="t('reader.archive')"
               @click="$emit('archive')"
+            />
+            <v-list-item
+              v-if="!isTrashArchiveOrJunk && !isPop3"
+              prepend-icon="mdi-alert-circle-outline"
+              :title="t('reader.markSpam')"
+              @click="$emit('mark-spam')"
             />
             <v-divider v-if="moveTargetFolders.length > 0" />
             <v-list-item
@@ -431,6 +437,7 @@ defineEmits<{
   'reply-all': []
   forward: []
   archive: []
+  'mark-spam': []
   restore: []
   delete: []
   'toggle-read': []
@@ -443,8 +450,8 @@ defineEmits<{
   'select-thread-message': [messageId: string]
 }>()
 
-const isTrashOrArchive = computed(() =>
-  props.currentFolderKind === 'trash' || props.currentFolderKind === 'archive',
+const isTrashArchiveOrJunk = computed(() =>
+  props.currentFolderKind === 'trash' || props.currentFolderKind === 'archive' || props.currentFolderKind === 'junk',
 )
 
 const moveTargetFolders = computed(() => {

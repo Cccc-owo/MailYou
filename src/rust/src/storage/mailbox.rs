@@ -58,6 +58,15 @@ pub fn default_folders_for_account(account_id: &str) -> Vec<MailboxFolder> {
             0,
             "mdi-delete-outline",
         ),
+        folder(
+            &format!("junk-{account_id}"),
+            account_id,
+            "Junk",
+            MailFolderKind::Junk,
+            0,
+            0,
+            "mdi-alert-circle-outline",
+        ),
     ]
 }
 
@@ -118,6 +127,15 @@ pub fn seeded_folders() -> Vec<MailboxFolder> {
             "mdi-delete-outline",
         ),
         folder(
+            "junk-work",
+            "acc-work",
+            "Junk",
+            MailFolderKind::Junk,
+            0,
+            0,
+            "mdi-alert-circle-outline",
+        ),
+        folder(
             "inbox-personal",
             "acc-personal",
             "Inbox",
@@ -170,6 +188,15 @@ pub fn seeded_folders() -> Vec<MailboxFolder> {
             0,
             0,
             "mdi-delete-outline",
+        ),
+        folder(
+            "junk-personal",
+            "acc-personal",
+            "Junk",
+            MailFolderKind::Junk,
+            0,
+            0,
+            "mdi-alert-circle-outline",
         ),
     ]
 }
@@ -241,6 +268,7 @@ pub fn seeded_messages() -> Vec<MailMessage> {
             attachments: vec![],
             labels: vec!["MVP".into()],
             imap_uid: None,
+            previous_folder_id: None,
         },
         MailMessage {
             id: "msg-2".into(),
@@ -262,6 +290,7 @@ pub fn seeded_messages() -> Vec<MailMessage> {
             attachments: vec![],
             labels: vec!["Theme".into()],
             imap_uid: None,
+            previous_folder_id: None,
         },
         MailMessage {
             id: "msg-3".into(),
@@ -288,6 +317,7 @@ pub fn seeded_messages() -> Vec<MailMessage> {
             }],
             labels: vec!["Protocol".into()],
             imap_uid: None,
+            previous_folder_id: None,
         },
         MailMessage {
             id: "msg-4".into(),
@@ -309,6 +339,7 @@ pub fn seeded_messages() -> Vec<MailMessage> {
             attachments: vec![],
             labels: vec![],
             imap_uid: None,
+            previous_folder_id: None,
         },
         MailMessage {
             id: "msg-5".into(),
@@ -335,6 +366,7 @@ pub fn seeded_messages() -> Vec<MailMessage> {
             }],
             labels: vec!["Travel".into()],
             imap_uid: None,
+            previous_folder_id: None,
         },
     ]
 }

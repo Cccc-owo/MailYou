@@ -4,6 +4,7 @@
     "sent": "已发送",
     "drafts": "草稿箱",
     "trash": "回收站",
+    "junk": "垃圾邮件",
     "starred": "已加星标",
     "archive": "归档"
   },
@@ -69,6 +70,8 @@
     "forward": "转发",
     "markUnread": "标为未读",
     "markRead": "标为已读",
+    "markSpam": "标记为垃圾邮件",
+    "notSpam": "不是垃圾邮件",
     "moveTo": "移动到",
     "more": "更多",
     "restoreToInbox": "恢复到收件箱",

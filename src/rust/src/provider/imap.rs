@@ -931,6 +931,7 @@ async fn fetch_folder_contents(
             attachments,
             labels: vec![],
             imap_uid: Some(meta.uid),
+            previous_folder_id: None,
         });
 
         threads.push(MailThread {
@@ -958,8 +959,14 @@ fn classify_folder(name: &str) -> (MailFolderKind, &'static str) {
         (MailFolderKind::Trash, "mdi-delete-outline")
     } else if lower.contains("archive") || lower.contains("all mail") || lower == "[gmail]/all mail" || lower.contains("归档") {
         (MailFolderKind::Archive, "mdi-archive-outline")
-    } else if lower.contains("spam") || lower.contains("junk") || lower.contains("垃圾") {
-        (MailFolderKind::Trash, "mdi-alert-circle-outline")
+    } else if lower.contains("spam")
+        || lower.contains("junk")
+        || lower.contains("bulk")
+        || lower.contains("unsolicited")
+        || lower.contains("垃圾")
+        || lower.contains("拦截")
+    {
+        (MailFolderKind::Junk, "mdi-alert-circle-outline")
     } else {
         (MailFolderKind::Custom, "mdi-folder-outline")
     }

@@ -3,6 +3,7 @@ export type MailFolderKind =
   | 'sent'
   | 'drafts'
   | 'trash'
+  | 'junk'
   | 'starred'
   | 'archive'
   | 'custom'
@@ -45,6 +46,7 @@ export interface MailMessage {
   attachments: AttachmentMeta[]
   labels: string[]
   imapUid?: number
+  previousFolderId?: string
 }
 
 export interface MailThread {
