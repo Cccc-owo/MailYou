@@ -3,7 +3,7 @@
     <div class="mail-list__header">
       <div class="d-flex align-center ga-2">
         <v-checkbox
-          v-if="messages.length > 0"
+          v-if="threads.length > 0"
           :model-value="allSelected"
           :indeterminate="someSelected && !allSelected"
           hide-details
@@ -24,7 +24,7 @@
           {{ t('mailList.markAllRead') }}
         </v-btn>
         <v-chip v-if="unreadCount > 0" size="x-small" color="primary" variant="tonal">{{ unreadCount }}</v-chip>
-        <span class="text-caption text-medium-emphasis">{{ t('mailList.totalCount', { count: messages.length }) }}</span>
+        <span class="text-caption text-medium-emphasis">{{ t('mailList.totalCount', { count: threads.length }) }}</span>
       </div>
     </div>
 
@@ -69,7 +69,7 @@
     </div>
     <v-progress-linear v-if="isLoading" indeterminate color="primary" />
 
-    <div v-if="!isLoading && messages.length === 0" class="mail-list__empty">
+    <div v-if="!isLoading && threads.length === 0" class="mail-list__empty">
       <v-icon :icon="isSearchResult ? 'mdi-magnify' : 'mdi-inbox-outline'" size="40" class="mb-3" />
       <div class="text-h6 mb-1">{{ isSearchResult ? t('mailList.noSearchResults') : t('mailList.noMessages') }}</div>
       <div class="text-body-2 text-medium-emphasis">
@@ -85,47 +85,62 @@
         <v-list-item
           v-else
           :key="item.key"
-          :active="item.message.id === selectedMessageId"
+          :active="item.thread.threadId === selectedThreadId"
           :class="[
             'mail-list__item',
-            { 'mail-list__item--unread': !item.message.isRead },
-            { 'mail-list__item--checked': selectedIds.has(item.message.id) },
+            { 'mail-list__item--unread': item.thread.unreadCount > 0 },
+            { 'mail-list__item--checked': selectedIds.has(item.thread.message.id) },
           ]"
-          @click="$emit('select-message', item.message.id)"
-          @contextmenu="ctxMenu.open($event, item.message)"
+          @click="$emit('select-message', item.thread.message.id)"
+          @contextmenu="ctxMenu.open($event, item.thread.message)"
         >
           <template #prepend>
             <v-checkbox
-              :model-value="selectedIds.has(item.message.id)"
+              :model-value="selectedIds.has(item.thread.message.id)"
               hide-details
               density="compact"
               class="mail-list__checkbox"
               @click.stop
-              @update:model-value="$emit('toggle-selection', item.message.id)"
+              @update:model-value="$emit('toggle-selection', item.thread.message.id)"
             />
           </template>
 
           <div class="mail-list__row1">
-            <span class="mail-list__from" :class="{ 'font-weight-bold': !item.message.isRead }">{{ item.message.from }}</span>
-            <span class="mail-list__date text-caption text-medium-emphasis">{{ formatDate(item.message.receivedAt) }}</span>
-            <v-tooltip :text="item.message.isStarred ? t('common.unstar') : t('common.star')" location="bottom">
+            <span class="mail-list__from" :class="{ 'font-weight-bold': item.thread.unreadCount > 0 }">
+              {{ item.thread.participants.join(', ') }}
+            </span>
+            <v-chip
+              v-if="item.thread.messageCount > 1"
+              size="x-small"
+              variant="tonal"
+              color="secondary"
+            >
+              {{ item.thread.messageCount }}
+            </v-chip>
+            <span class="mail-list__date text-caption text-medium-emphasis">{{ formatDate(item.thread.message.receivedAt) }}</span>
+            <v-tooltip :text="item.thread.message.isStarred ? t('common.unstar') : t('common.star')" location="bottom">
               <template #activator="{ props: tip }">
                 <v-icon
                   v-bind="tip"
-                  :icon="item.message.isStarred ? 'mdi-star' : 'mdi-star-outline'"
-                  :color="item.message.isStarred ? 'warning' : undefined"
+                  :icon="item.thread.message.isStarred ? 'mdi-star' : 'mdi-star-outline'"
+                  :color="item.thread.message.isStarred ? 'warning' : undefined"
                   size="18"
                   class="mail-list__star"
-                  @click.stop="$emit('toggle-star', item.message.id)"
+                  @click.stop="$emit('toggle-star', item.thread.message.id)"
                 />
               </template>
             </v-tooltip>
           </div>
-          <div class="mail-list__row2" :class="{ 'font-weight-medium': !item.message.isRead }">{{ item.message.subject }}</div>
-          <div class="mail-list__row3 text-medium-emphasis">{{ item.message.preview }}</div>
+          <div class="mail-list__row2" :class="{ 'font-weight-medium': item.thread.unreadCount > 0 }">{{ item.thread.message.subject }}</div>
+          <div class="mail-list__row3 text-medium-emphasis">{{ item.thread.message.preview }}</div>
 
-          <template v-if="item.message.hasAttachments" #append>
-            <v-icon icon="mdi-paperclip" size="16" class="text-medium-emphasis" />
+          <template #append>
+            <div class="d-flex align-center ga-2">
+              <v-icon v-if="item.thread.message.hasAttachments" icon="mdi-paperclip" size="16" class="text-medium-emphasis" />
+              <v-chip v-if="item.thread.unreadCount > 0" size="x-small" color="primary" variant="tonal">
+                {{ item.thread.unreadCount }}
+              </v-chip>
+            </div>
           </template>
         </v-list-item>
       </template>
@@ -177,7 +192,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { MailMessage, MailboxFolder } from '@/types/mail'
+import type { MailMessage, MailThreadSummary, MailboxFolder } from '@/types/mail'
 import ContextMenu from '@/components/ContextMenu.vue'
 import { useContextMenu } from '@/composables/useContextMenu'
 
@@ -191,8 +206,9 @@ const props = defineProps<{
   error?: string | null
   isLoading: boolean
   isSearchResult?: boolean
-  messages: MailMessage[]
+  threads: MailThreadSummary[]
   selectedMessageId: string | null
+  selectedThreadId?: string | null
   selectedIds: Set<string>
   title: string
   folders?: MailboxFolder[]
@@ -229,12 +245,12 @@ watch(() => props.error, () => {
   errorDismissed.value = false
 })
 
-const hasUnread = computed(() => props.messages.some((m) => !m.isRead))
+const hasUnread = computed(() => props.threads.some((thread) => thread.unreadCount > 0))
 
-const unreadCount = computed(() => props.messages.filter((m) => !m.isRead).length)
+const unreadCount = computed(() => props.threads.reduce((sum, thread) => sum + thread.unreadCount, 0))
 
 const allSelected = computed(() =>
-  props.messages.length > 0 && props.messages.every((m) => props.selectedIds.has(m.id)),
+  props.threads.length > 0 && props.threads.every((thread) => props.selectedIds.has(thread.message.id)),
 )
 
 const someSelected = computed(() => props.selectedIds.size > 0)
@@ -255,7 +271,7 @@ const moveTargetFolders = computed(() =>
 
 type ListItem =
   | { type: 'header'; label: string; key: string }
-  | { type: 'message'; message: MailMessage; key: string }
+  | { type: 'thread'; thread: MailThreadSummary; key: string }
 
 const dateGroupLabel = (dateStr: string): string => {
   const date = new Date(dateStr)
@@ -275,13 +291,13 @@ const dateGroupLabel = (dateStr: string): string => {
 const flatItems = computed<ListItem[]>(() => {
   const result: ListItem[] = []
   let lastLabel = ''
-  for (const msg of props.messages) {
-    const label = dateGroupLabel(msg.receivedAt)
+  for (const thread of props.threads) {
+    const label = dateGroupLabel(thread.message.receivedAt)
     if (label !== lastLabel) {
       lastLabel = label
       result.push({ type: 'header', label, key: `header-${label}` })
     }
-    result.push({ type: 'message', message: msg, key: msg.id })
+    result.push({ type: 'thread', thread, key: thread.threadId })
   }
   return result
 })

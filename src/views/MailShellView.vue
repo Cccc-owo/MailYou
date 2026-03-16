@@ -49,8 +49,9 @@
         :error="messagesStore.error"
         :is-loading="messagesStore.isLoading"
         :is-search-result="messagesStore.hasSearchQuery"
-        :messages="messagesStore.filteredMessages"
+        :threads="messagesStore.threadSummaries"
         :selected-message-id="messagesStore.selectedMessageId"
+        :selected-thread-id="messagesStore.selectedMessage?.threadId ?? null"
         :selected-ids="messagesStore.selectedIds"
         :title="currentFolderDisplayName"
         :folders="mailboxesStore.folders"
@@ -80,9 +81,10 @@
 
     <template #reader>
       <MailReader
-        :has-messages="messagesStore.filteredMessages.length > 0"
+        :has-messages="messagesStore.threadSummaries.length > 0"
         :has-search-query="messagesStore.hasSearchQuery"
         :message="messagesStore.selectedMessage"
+        :thread-messages="messagesStore.selectedThreadMessages"
         :folders="mailboxesStore.folders"
         :current-folder-id="mailboxesStore.currentFolderId"
         :current-folder-kind="mailboxesStore.currentFolder?.kind ?? null"
@@ -100,6 +102,7 @@
         @view-contact="handleViewContact"
         @toggle-star="toggleStarCurrentMessage"
         @export-pdf="exportCurrentMessagePdf"
+        @select-thread-message="handleSelectMessage"
       />
     </template>
   </MailShellLayout>
@@ -871,18 +874,18 @@ const handleKeyboard = (event: KeyboardEvent) => {
     return
   }
 
-  const msgs = messagesStore.filteredMessages
-  const currentIdx = msgs.findIndex((m) => m.id === messagesStore.selectedMessageId)
+  const threads = messagesStore.threadSummaries
+  const currentIdx = threads.findIndex((thread) => thread.message.id === messagesStore.selectedMessageId)
 
   switch (event.key) {
     case 'j':
-      if (currentIdx < msgs.length - 1) {
-        handleSelectMessage(msgs[currentIdx + 1].id)
+      if (currentIdx < threads.length - 1) {
+        handleSelectMessage(threads[currentIdx + 1].message.id)
       }
       break
     case 'k':
       if (currentIdx > 0) {
-        handleSelectMessage(msgs[currentIdx - 1].id)
+        handleSelectMessage(threads[currentIdx - 1].message.id)
       }
       break
     case 'r':

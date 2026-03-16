@@ -52,6 +52,34 @@
     </div>
 
     <div class="mail-reader__scroll">
+    <div v-if="threadMessages.length > 1" class="mail-reader__conversation">
+      <div class="mail-reader__conversation-header">
+        <span class="text-subtitle-2">{{ t('reader.conversation') }}</span>
+        <v-chip size="x-small" variant="tonal" color="secondary">
+          {{ t('reader.messagesInConversation', { count: threadMessages.length }) }}
+        </v-chip>
+      </div>
+      <v-list density="compact" class="mail-reader__conversation-list">
+        <v-list-item
+          v-for="threadMessage in threadMessages"
+          :key="threadMessage.id"
+          rounded="lg"
+          :active="threadMessage.id === message.id"
+          @click="$emit('select-thread-message', threadMessage.id)"
+        >
+          <v-list-item-title>{{ threadMessage.from }}</v-list-item-title>
+          <v-list-item-subtitle>
+            {{ formatConversationDate(threadMessage.receivedAt) }}
+          </v-list-item-subtitle>
+          <template #append>
+            <div class="d-flex align-center ga-2">
+              <v-icon v-if="threadMessage.hasAttachments" icon="mdi-paperclip" size="16" class="text-medium-emphasis" />
+              <v-icon v-if="!threadMessage.isRead" icon="mdi-circle" size="10" color="primary" />
+            </div>
+          </template>
+        </v-list-item>
+      </v-list>
+    </div>
     <div class="mail-reader__message">
       <!-- Subject + Star -->
       <div class="mail-reader__subject-wrap">
@@ -381,6 +409,7 @@ const props = withDefaults(
     hasMessages?: boolean
     hasSearchQuery?: boolean
     message: MailMessage | null
+    threadMessages?: MailMessage[]
     folders?: MailboxFolder[]
     currentFolderId?: string | null
     currentFolderKind?: string | null
@@ -389,6 +418,7 @@ const props = withDefaults(
   {
     hasMessages: false,
     hasSearchQuery: false,
+    threadMessages: () => [],
     folders: () => [],
     currentFolderId: null,
     currentFolderKind: null,
@@ -410,6 +440,7 @@ defineEmits<{
   'save-contact': [data: { name: string; email: string }]
   'compose-to': [data: { name: string; email: string }]
   'view-contact': [contact: import('@/types/contact').Contact]
+  'select-thread-message': [messageId: string]
 }>()
 
 const isTrashOrArchive = computed(() =>
@@ -472,6 +503,14 @@ const formattedDate = computed(() => {
     minute: '2-digit',
   }).format(new Date(props.message.receivedAt))
 })
+
+const formatConversationDate = (value: string) =>
+  new Intl.DateTimeFormat(locale.value, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value))
 
 const emptyStateTitle = computed(() => {
   if (props.hasSearchQuery && !props.hasMessages) {
@@ -623,6 +662,25 @@ const parseAddr = (addr: string): { name: string; email: string } => {
   flex: 1;
   overflow: auto;
   padding: 12px 20px;
+}
+
+.mail-reader__conversation {
+  margin-bottom: 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 16px;
+  background: rgba(var(--v-theme-on-surface), 0.02);
+}
+
+.mail-reader__conversation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 0;
+}
+
+.mail-reader__conversation-list {
+  background: transparent;
 }
 
 .mail-reader__message {

@@ -1,7 +1,7 @@
 import { computed, ref, shallowReactive } from 'vue'
 import { defineStore } from 'pinia'
 import { mailRepository } from '@/services/mail'
-import type { MailMessage, MailboxBundle, MailboxFolder, SyncStatus } from '@/types/mail'
+import type { MailMessage, MailThreadSummary, MailboxBundle, MailboxFolder, SyncStatus } from '@/types/mail'
 
 const getMessagesForFolder = (
   allMessages: MailMessage[],
@@ -46,9 +46,51 @@ export const useMessagesStore = defineStore('messages', () => {
     return sortByDate(messages.value)
   })
 
+  const threadSummaries = computed<MailThreadSummary[]>(() => {
+    const byThread = new Map<string, MailMessage[]>()
+
+    for (const message of filteredMessages.value) {
+      const thread = byThread.get(message.threadId)
+      if (thread) {
+        thread.push(message)
+      } else {
+        byThread.set(message.threadId, [message])
+      }
+    }
+
+    return [...byThread.entries()]
+      .map(([threadId, threadMessages]) => {
+        const sorted = sortByDate(threadMessages)
+        const participants = [...new Set(sorted.map((message) => message.from).filter(Boolean))]
+
+        return {
+          threadId,
+          accountId: sorted[0].accountId,
+          message: sorted[0],
+          messageCount: sorted.length,
+          unreadCount: sorted.filter((message) => !message.isRead).length,
+          participants,
+        }
+      })
+      .sort((a, b) =>
+        new Date(b.message.receivedAt).getTime() - new Date(a.message.receivedAt).getTime(),
+      )
+  })
+
   const selectedMessage = computed(() =>
     messages.value.find((message) => message.id === selectedMessageId.value) ?? null,
   )
+
+  const selectedThreadMessages = computed(() => {
+    if (!selectedMessage.value) {
+      return []
+    }
+
+    return messages.value
+      .filter((message) => message.threadId === selectedMessage.value!.threadId)
+      .slice()
+      .sort((a, b) => new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime())
+  })
 
   const computeNextSelectedId = (removedId: string): string | null => {
     if (selectedMessageId.value !== removedId) return selectedMessageId.value
@@ -318,7 +360,9 @@ export const useMessagesStore = defineStore('messages', () => {
   return {
     messages,
     filteredMessages,
+    threadSummaries,
     selectedMessage,
+    selectedThreadMessages,
     selectedMessageId,
     isLoading,
     query,

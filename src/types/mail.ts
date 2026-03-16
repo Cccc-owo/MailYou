@@ -56,6 +56,15 @@ export interface MailThread {
   unreadCount: number
 }
 
+export interface MailThreadSummary {
+  threadId: string
+  accountId: string
+  message: MailMessage
+  messageCount: number
+  unreadCount: number
+  participants: string[]
+}
+
 export interface AttachmentContent {
   fileName: string
   mimeType: string
