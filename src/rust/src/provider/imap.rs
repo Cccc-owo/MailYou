@@ -6,7 +6,7 @@ use async_imap::{Authenticator, Session as ImapSession};
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose};
 use futures::TryStreamExt;
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::TcpStream;
 use tokio_native_tls::TlsStream;
 
@@ -361,6 +361,80 @@ async fn imap_tls_connect(host: &str, tcp: TcpStream) -> Result<TlsStream<TcpStr
         .map_err(|e| BackendError::internal(format!("TLS handshake failed: {e}")))
 }
 
+async fn imap_read_greeting<T>(client: &mut async_imap::Client<T>) -> Result<(), BackendError>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
+{
+    let greeting = client
+        .read_response()
+        .await
+        .map_err(|e| BackendError::internal(format!("Failed to read IMAP greeting: {e}")))?;
+
+    if greeting.is_none() {
+        return Err(BackendError::internal("IMAP server closed connection before greeting"));
+    }
+
+    Ok(())
+}
+
+async fn imap_read_raw_line(stream: &mut TcpStream, context: &str) -> Result<String, BackendError> {
+    let mut buf = Vec::new();
+
+    loop {
+        let mut byte = [0_u8; 1];
+        let read = stream
+            .read(&mut byte)
+            .await
+            .map_err(|e| BackendError::internal(format!("{context}: {e}")))?;
+
+        if read == 0 {
+            if buf.is_empty() {
+                return Err(BackendError::internal("IMAP server closed connection unexpectedly"));
+            }
+            break;
+        }
+
+        buf.push(byte[0]);
+        if buf.ends_with(b"\r\n") {
+            break;
+        }
+    }
+
+    String::from_utf8(buf)
+        .map(|line| line.trim_end_matches(['\r', '\n']).to_string())
+        .map_err(|e| BackendError::internal(format!("Invalid IMAP response bytes: {e}")))
+}
+
+async fn imap_upgrade_starttls(host: &str, mut tcp: TcpStream) -> Result<async_imap::Client<TlsStream<TcpStream>>, BackendError> {
+    let greeting = imap_read_raw_line(&mut tcp, "Failed to read IMAP greeting").await?;
+    if !greeting.starts_with("* ") {
+        return Err(BackendError::internal(format!("Unexpected IMAP greeting: {greeting}")));
+    }
+
+    tcp.write_all(b"a001 STARTTLS\r\n")
+        .await
+        .map_err(|e| BackendError::internal(format!("Failed to send IMAP STARTTLS command: {e}")))?;
+    tcp.flush()
+        .await
+        .map_err(|e| BackendError::internal(format!("Failed to flush IMAP STARTTLS command: {e}")))?;
+
+    loop {
+        let response = imap_read_raw_line(&mut tcp, "Failed to read IMAP STARTTLS response").await?;
+        if response.starts_with("* ") {
+            continue;
+        }
+
+        if response.starts_with("a001 OK") {
+            break;
+        }
+
+        return Err(BackendError::internal(format!("IMAP STARTTLS failed: {response}")));
+    }
+
+    let tls_stream = imap_tls_connect(host, tcp).await?;
+    Ok(async_imap::Client::new(tls_stream))
+}
+
 async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), BackendError> {
     let host = draft.incoming_host.trim();
     let port = draft.incoming_port;
@@ -371,14 +445,34 @@ async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), BackendError> 
     eprintln!("[imap] tcp connected, tls={}...", draft.use_tls);
 
     if draft.use_tls {
-        let tls_stream = imap_tls_connect(host, tcp).await
-            .map_err(|e| BackendError::validation(e.message))?;
-        let client = async_imap::Client::new(tls_stream);
+        let client = match imap_tls_connect(host, tcp).await {
+            Ok(tls_stream) => {
+                let mut client = async_imap::Client::new(tls_stream);
+                imap_read_greeting(&mut client)
+                    .await
+                    .map_err(|e| BackendError::validation(e.message))?;
+                client
+            }
+            Err(tls_error) => {
+                eprintln!("[imap] implicit TLS failed, trying STARTTLS fallback: {}", tls_error.message);
+                imap_upgrade_starttls(host, imap_tcp_connect(host, port).await.map_err(|e| BackendError::validation(e.message))?)
+                    .await
+                    .map_err(|starttls_error| {
+                        BackendError::validation(format!(
+                            "{}; STARTTLS fallback failed: {}",
+                            tls_error.message, starttls_error.message
+                        ))
+                    })?
+            }
+        };
         eprintln!("[imap] logging in as {}...", draft.username.trim());
         let mut session = imap_authenticate_client(client, draft).await?;
         let _ = session.logout().await;
     } else {
-        let client = async_imap::Client::new(tcp);
+        let mut client = async_imap::Client::new(tcp);
+        imap_read_greeting(&mut client)
+            .await
+            .map_err(|e| BackendError::validation(e.message))?;
         eprintln!("[imap] logging in as {}...", draft.username.trim());
         let mut session = imap_authenticate_client(client, draft).await?;
         let _ = session.logout().await;
@@ -397,9 +491,22 @@ async fn imap_connect(state: &StoredAccountState) -> Result<ImapAnySession, Back
     let tcp = imap_tcp_connect(host, port).await?;
 
     let stream = if use_tls {
-        ImapStream::Tls(imap_tls_connect(host, tcp).await?)
+        match imap_tls_connect(host, tcp).await {
+            Ok(tls_stream) => {
+                let mut client = async_imap::Client::new(tls_stream);
+                imap_read_greeting(&mut client).await?;
+                ImapStream::Tls(client.into_inner())
+            }
+            Err(tls_error) => {
+                eprintln!("[imap] implicit TLS failed, trying STARTTLS fallback: {}", tls_error.message);
+                let client = imap_upgrade_starttls(host, imap_tcp_connect(host, port).await?).await?;
+                ImapStream::Tls(client.into_inner())
+            }
+        }
     } else {
-        ImapStream::Plain(tcp)
+        let mut client = async_imap::Client::new(tcp);
+        imap_read_greeting(&mut client).await?;
+        ImapStream::Plain(client.into_inner())
     };
 
     let client = async_imap::Client::new(stream);
