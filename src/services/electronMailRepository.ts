@@ -15,6 +15,7 @@ export const electronMailRepository: MailRepository = {
   testAccountConnection: (draft) => getBridge().testAccountConnection(draft),
   listFolders: (accountId) => getBridge().listFolders(accountId),
   listMessages: (accountId, folderId) => getBridge().listMessages(accountId, folderId),
+  searchMessages: (accountId, query) => getBridge().searchMessages(accountId, query),
   getMessage: (accountId, messageId) => getBridge().getMessage(accountId, messageId),
   saveDraft: (draft) => getBridge().saveDraft(draft),
   sendMessage: (draft) => getBridge().sendMessage(draft),

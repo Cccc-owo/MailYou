@@ -1,6 +1,11 @@
 <template>
   <div class="mail-shell-layout">
-    <AppTitleBar :search="search" :search-placeholder="t('shell.searchPlaceholder')" @update:search="$emit('update:search', $event)">
+    <AppTitleBar
+      :hide-search="hideSearch"
+      :search="search"
+      :search-placeholder="t('shell.searchPlaceholder')"
+      @update:search="$emit('update:search', $event)"
+    >
       <template #actions>
         <slot name="actions" />
       </template>
@@ -53,9 +58,16 @@ import AppTitleBar from '@/components/AppTitleBar.vue'
 
 const { t } = useI18n()
 
-defineProps<{
-  search: string
-}>()
+withDefaults(
+  defineProps<{
+    search?: string
+    hideSearch?: boolean
+  }>(),
+  {
+    search: '',
+    hideSearch: false,
+  },
+)
 
 defineEmits<{
   'update:search': [value: string]

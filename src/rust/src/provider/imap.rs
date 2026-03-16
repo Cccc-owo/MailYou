@@ -127,6 +127,10 @@ impl MailProvider for ImapSmtpProvider {
         memory::list_messages(account_id, folder_id)
     }
 
+    async fn search_messages(&self, account_id: &str, query: &str) -> Result<Vec<MailMessage>, BackendError> {
+        memory::search_messages(account_id, query)
+    }
+
     async fn get_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
         memory::get_message(account_id, message_id)
     }

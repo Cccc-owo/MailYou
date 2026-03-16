@@ -55,6 +55,10 @@ pub async fn handle_with_provider(
             let provider = provider_for_account(&account_id);
             serialize(provider.list_messages(&account_id, &folder_id).await?)
         }
+        BackendRequest::SearchMessages { account_id, query } => {
+            let provider = provider_for_account(&account_id);
+            serialize(provider.search_messages(&account_id, &query).await?)
+        }
         BackendRequest::GetMessage {
             account_id,
             message_id,

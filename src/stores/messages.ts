@@ -43,27 +43,7 @@ export const useMessagesStore = defineStore('messages', () => {
     list.slice().sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
 
   const filteredMessages = computed(() => {
-    const search = query.value.trim().toLowerCase()
-
-    if (!search) {
-      return sortByDate(messages.value)
-    }
-
-    return sortByDate(
-      messages.value.filter((message) => {
-        const basicFields = [message.subject, message.preview, message.from, message.fromEmail]
-          .join(' ')
-          .toLowerCase()
-
-        if (basicFields.includes(search)) {
-          return true
-        }
-
-        // Search in body with HTML tags stripped
-        const bodyText = message.body.replace(/<[^>]*>/g, ' ').toLowerCase()
-        return bodyText.includes(search)
-      }),
-    )
+    return sortByDate(messages.value)
   })
 
   const selectedMessage = computed(() =>
@@ -113,6 +93,24 @@ export const useMessagesStore = defineStore('messages', () => {
     } catch (loadError) {
       if (gen !== loadGeneration) return
       error.value = loadError instanceof Error ? loadError.message : 'Unable to load messages'
+    } finally {
+      if (gen === loadGeneration) {
+        isLoading.value = false
+      }
+    }
+  }
+
+  const searchMessages = async (accountId: string, searchQuery: string) => {
+    isLoading.value = true
+    const gen = ++loadGeneration
+
+    try {
+      const result = await mailRepository.searchMessages(accountId, searchQuery)
+      if (gen !== loadGeneration) return
+      setMessages(result)
+    } catch (loadError) {
+      if (gen !== loadGeneration) return
+      error.value = loadError instanceof Error ? loadError.message : 'Unable to search messages'
     } finally {
       if (gen === loadGeneration) {
         isLoading.value = false
@@ -333,6 +331,7 @@ export const useMessagesStore = defineStore('messages', () => {
     setMessages,
     setMailboxBundle,
     loadMessages,
+    searchMessages,
     selectMessage,
     toggleStar,
     toggleRead,

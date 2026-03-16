@@ -22,6 +22,7 @@ export interface MailRepository {
   testAccountConnection(draft: AccountSetupDraft): Promise<SyncStatus>
   listFolders(accountId: string): Promise<MailboxFolder[]>
   listMessages(accountId: string, folderId: string): Promise<MailMessage[]>
+  searchMessages(accountId: string, query: string): Promise<MailMessage[]>
   getMessage(accountId: string, messageId: string): Promise<MailMessage | null>
   saveDraft(draft: DraftMessage): Promise<DraftMessage>
   sendMessage(draft: DraftMessage): Promise<{ ok: true; queuedAt: string }>

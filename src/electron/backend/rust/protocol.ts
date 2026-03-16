@@ -35,6 +35,10 @@ export interface RustBackendMethodMap {
     params: { accountId: string; folderId: string }
     result: MailMessage[]
   }
+  searchMessages: {
+    params: { accountId: string; query: string }
+    result: MailMessage[]
+  }
   getMessage: {
     params: { accountId: string; messageId: string }
     result: MailMessage | null

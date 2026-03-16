@@ -11,6 +11,7 @@ export const webMailRepository: MailRepository = {
   deleteAccount: notAvailable,
   listFolders: notAvailable,
   listMessages: notAvailable,
+  searchMessages: notAvailable,
   getMessage: notAvailable,
   saveDraft: notAvailable,
   sendMessage: notAvailable,

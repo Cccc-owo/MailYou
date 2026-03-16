@@ -1,5 +1,5 @@
 <template>
-  <MailShellLayout :search="messagesStore.query" @update:search="messagesStore.query = $event">
+  <MailShellLayout :search="messagesStore.query" @update:search="handleSearchUpdate">
     <template #actions>
       <v-tooltip :text="t('shell.sync')" location="bottom">
         <template #activator="{ props: tip }">
@@ -294,6 +294,9 @@ const dismissUndo = () => {
 }
 
 const currentFolderDisplayName = computed(() => {
+  if (messagesStore.hasSearchQuery) {
+    return t('mailList.searchResultsTitle')
+  }
   const folder = mailboxesStore.currentFolder
   if (!folder) return t('common.mailbox')
   return folder.kind !== 'custom' ? t(`folders.${folder.kind}`) : folder.name
@@ -319,6 +322,13 @@ const refreshMailbox = async () => {
   }
 
   await loadMailbox(accountsStore.currentAccountId)
+  if (messagesStore.hasSearchQuery) {
+    await messagesStore.searchMessages(accountsStore.currentAccountId, messagesStore.query)
+  }
+}
+
+const handleSearchUpdate = (value: string) => {
+  messagesStore.query = value
 }
 
 const retryLastAction = async () => {
@@ -934,6 +944,36 @@ watch(SYNC_INTERVAL_MS, (newMs) => {
     }
   }, newMs)
 })
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(
+  () => [messagesStore.query, accountsStore.currentAccountId, mailboxesStore.currentFolderId] as const,
+  ([query, accountId, folderId]) => {
+    if (searchTimer) {
+      clearTimeout(searchTimer)
+      searchTimer = null
+    }
+
+    if (!accountId) {
+      return
+    }
+
+    searchTimer = setTimeout(async () => {
+      const trimmed = query.trim()
+      if (trimmed) {
+        await messagesStore.searchMessages(accountId, trimmed)
+        return
+      }
+
+      if (folderId) {
+        await messagesStore.loadMessages(accountId, folderId)
+      } else {
+        await loadMailbox(accountId)
+      }
+    }, 200)
+  },
+)
 </script>
 
 <style>

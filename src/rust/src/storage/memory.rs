@@ -113,6 +113,67 @@ pub fn list_messages(account_id: &str, folder_id: &str) -> Result<Vec<MailMessag
     Ok(messages)
 }
 
+fn strip_html_tags(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut inside_tag = false;
+
+    for ch in input.chars() {
+        match ch {
+            '<' => inside_tag = true,
+            '>' => {
+                inside_tag = false;
+                output.push(' ');
+            }
+            _ if !inside_tag => output.push(ch),
+            _ => {}
+        }
+    }
+
+    output
+}
+
+pub fn search_messages(account_id: &str, query: &str) -> Result<Vec<MailMessage>, BackendError> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let q = trimmed.to_lowercase();
+    let state = lock_state();
+    let mut messages: Vec<MailMessage> = state
+        .messages
+        .iter()
+        .filter(|message| message.account_id == account_id)
+        .filter(|message| {
+            let recipients = message.to.join(" ");
+            let cc = message.cc.join(" ");
+            let labels = message.labels.join(" ");
+            let haystack = format!(
+                "{} {} {} {} {} {} {} {}",
+                message.subject,
+                message.preview,
+                message.body,
+                message.from,
+                message.from_email,
+                recipients,
+                cc,
+                labels,
+            )
+            .to_lowercase();
+
+            if haystack.contains(&q) {
+                return true;
+            }
+
+            strip_html_tags(&message.body).to_lowercase().contains(&q)
+        })
+        .cloned()
+        .collect();
+
+    messages.sort_by(|left, right| right.received_at.cmp(&left.received_at));
+    Ok(messages)
+}
+
 pub fn get_message(account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
     Ok(lock_state()
         .messages

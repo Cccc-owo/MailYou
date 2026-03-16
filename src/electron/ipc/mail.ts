@@ -45,6 +45,9 @@ export const registerMailIpc = () => {
   handle('mail:listMessages', (accountId, folderId) =>
     mailBackend.listMessages(accountId as string, folderId as string),
   )
+  handle('mail:searchMessages', (accountId, query) =>
+    mailBackend.searchMessages(accountId as string, query as string),
+  )
   handle('mail:getMessage', (accountId, messageId) =>
     mailBackend.getMessage(accountId as string, messageId as string),
   )

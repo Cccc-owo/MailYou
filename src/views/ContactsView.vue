@@ -1,5 +1,5 @@
 <template>
-  <MailShellLayout :search="searchQuery" @update:search="handleSearch" :search-placeholder="t('contacts.searchPlaceholder')">
+  <MailShellLayout hide-search>
     <template #actions>
       <v-btn prepend-icon="mdi-arrow-left" variant="text" @click="router.push('/')">{{ t('common.backToMail') }}</v-btn>
     </template>
@@ -99,7 +99,6 @@ const contactsStore = useContactsStore()
 const composerStore = useComposerStore()
 const accountsStore = useAccountsStore()
 
-const searchQuery = ref('')
 const snackbar = ref(false)
 const snackbarText = ref('')
 const mergeDialogOpen = ref(false)
@@ -120,16 +119,7 @@ const currentGroupName = computed(() => {
   return contactsStore.contactGroups.find((g) => g.id === contactsStore.currentGroupId)?.name ?? t('contacts.allContacts')
 })
 
-const displayContacts = computed(() => {
-  const base = contactsStore.filteredContacts
-  if (!searchQuery.value.trim()) return base
-  const q = searchQuery.value.toLowerCase()
-  return base.filter((c) => c.name.toLowerCase().includes(q) || c.emails.some((e) => e.toLowerCase().includes(q)))
-})
-
-const handleSearch = (val: string) => {
-  searchQuery.value = val
-}
+const displayContacts = computed(() => contactsStore.filteredContacts)
 
 const handleSelectGroup = (groupId: string | null) => {
   contactsStore.selectGroup(groupId)

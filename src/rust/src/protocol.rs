@@ -19,6 +19,8 @@ pub enum BackendRequest {
     #[serde(rename_all = "camelCase")]
     ListMessages { account_id: String, folder_id: String },
     #[serde(rename_all = "camelCase")]
+    SearchMessages { account_id: String, query: String },
+    #[serde(rename_all = "camelCase")]
     GetMessage { account_id: String, message_id: String },
     SaveDraft(DraftMessage),
     SendMessage(DraftMessage),
@@ -91,6 +93,7 @@ impl BackendRequest {
             Self::TestAccountConnection(_) => "testAccountConnection",
             Self::ListFolders { .. } => "listFolders",
             Self::ListMessages { .. } => "listMessages",
+            Self::SearchMessages { .. } => "searchMessages",
             Self::GetMessage { .. } => "getMessage",
             Self::SaveDraft(_) => "saveDraft",
             Self::SendMessage(_) => "sendMessage",

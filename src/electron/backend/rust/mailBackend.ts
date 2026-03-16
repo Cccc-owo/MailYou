@@ -8,6 +8,7 @@ export const rustMailBackend: MailBackend = {
   testAccountConnection: (draft) => invokeRustBackend('testAccountConnection', draft),
   listFolders: (accountId) => invokeRustBackend('listFolders', { accountId }),
   listMessages: (accountId, folderId) => invokeRustBackend('listMessages', { accountId, folderId }),
+  searchMessages: (accountId, query) => invokeRustBackend('searchMessages', { accountId, query }),
   getMessage: (accountId, messageId) => invokeRustBackend('getMessage', { accountId, messageId }),
   saveDraft: (draft) => invokeRustBackend('saveDraft', draft),
   sendMessage: (draft) => invokeRustBackend('sendMessage', draft),

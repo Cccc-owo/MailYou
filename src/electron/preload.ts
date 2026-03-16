@@ -8,6 +8,7 @@ const mailyou: MailyouBridge = {
   testAccountConnection: (draft) => ipcRenderer.invoke('mail:testAccountConnection', draft),
   listFolders: (accountId) => ipcRenderer.invoke('mail:listFolders', accountId),
   listMessages: (accountId, folderId) => ipcRenderer.invoke('mail:listMessages', accountId, folderId),
+  searchMessages: (accountId, query) => ipcRenderer.invoke('mail:searchMessages', accountId, query),
   getMessage: (accountId, messageId) => ipcRenderer.invoke('mail:getMessage', accountId, messageId),
   saveDraft: (draft) => ipcRenderer.invoke('mail:saveDraft', draft),
   sendMessage: (draft) => ipcRenderer.invoke('mail:sendMessage', draft),
