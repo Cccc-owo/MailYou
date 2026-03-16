@@ -43,7 +43,7 @@ MailYou 依赖第三方邮箱服务和身份认证服务。此类服务的可用
 
 MailYou 如何处理你的数据，见：
 
-- [MailYou 隐私政策](privacy-policy.zh-CN.md)
+- [MailYou 隐私政策](./privacy-policy)
 
 ## 6. 免责声明
 

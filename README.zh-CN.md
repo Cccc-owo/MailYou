@@ -100,10 +100,10 @@ MailYou 支持两种 OAuth 路径：
 
 ## 法律
 
-- [Privacy Policy](docs/legal/privacy-policy.md)
-- [Terms of Service](docs/legal/terms-of-service.md)
-- [隐私政策](docs/legal/privacy-policy.zh-CN.md)
-- [服务条款](docs/legal/terms-of-service.zh-CN.md)
+- [Privacy Policy](web/legal/privacy-policy.md)
+- [Terms of Service](web/legal/terms-of-service.md)
+- [隐私政策](web/zh/legal/privacy-policy.md)
+- [服务条款](web/zh/legal/terms-of-service.md)
 
 ## 服务商预设
 

@@ -7,6 +7,9 @@
   "scripts": {
     "dev": "vite",
     "dev:web": "MAILYOU_TARGET=web vite",
+    "site:dev": "npm --prefix web run dev",
+    "site:build": "npm --prefix web run build",
+    "site:preview": "npm --prefix web run preview",
     "typecheck": "vue-tsc --noEmit",
     "build": "npm run typecheck && npm run build:rust && vite build && npm run copy:rust-binary",
     "build:web": "npm run typecheck && MAILYOU_TARGET=web vite build",

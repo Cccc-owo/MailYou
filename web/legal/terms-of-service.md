@@ -43,7 +43,7 @@ You understand and agree that:
 
 How MailYou handles your data is described here:
 
-- [MailYou Privacy Policy](privacy-policy.md)
+- [MailYou Privacy Policy](./privacy-policy)
 
 ## 6. Disclaimer
 
@@ -68,4 +68,3 @@ We may update these Terms of Service based on product changes, legal requirement
 If you have questions about these Terms of Service, please contact:
 
 `4hhhhfor@gmail.com`
-

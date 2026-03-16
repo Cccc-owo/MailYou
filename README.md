@@ -100,10 +100,10 @@ Current shared config entry points:
 
 ## Legal
 
-- [Privacy Policy](docs/legal/privacy-policy.md)
-- [Terms of Service](docs/legal/terms-of-service.md)
-- [Privacy Policy (zh-CN)](docs/legal/privacy-policy.zh-CN.md)
-- [Terms of Service (zh-CN)](docs/legal/terms-of-service.zh-CN.md)
+- [Privacy Policy](web/legal/privacy-policy.md)
+- [Terms of Service](web/legal/terms-of-service.md)
+- [Privacy Policy (zh-CN)](web/zh/legal/privacy-policy.md)
+- [Terms of Service (zh-CN)](web/zh/legal/terms-of-service.md)
 
 ## Provider Presets
 
