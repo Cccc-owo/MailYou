@@ -40,7 +40,12 @@ EOF
   chmod 755 "$pkgdir/usr/bin/mailyou"
 
   install -dm755 "$pkgdir/usr/share/applications"
+  install -dm755 "$pkgdir/usr/share/pixmaps"
+  install -dm755 "$pkgdir/usr/share/icons/hicolor/256x256/apps"
+  install -dm755 "$pkgdir/usr/share/icons/hicolor/scalable/apps"
   install -Dm644 src/assets/logo.png "$pkgdir/usr/share/pixmaps/mailyou.png"
+  install -Dm644 src/assets/logo.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/mailyou.png"
+  install -Dm644 src/assets/logo.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/mailyou.svg"
 
   cat > "$pkgdir/usr/share/applications/mailyou.desktop" <<'EOF'
 [Desktop Entry]
@@ -52,7 +57,7 @@ Type=Application
 Icon=mailyou
 Categories=Network;Email;Office;
 MimeType=x-scheme-handler/mailto;x-scheme-handler/mailyou;
-StartupWMClass=MailYou
+StartupWMClass=mailyou
 EOF
 
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/mailyou/LICENSE"

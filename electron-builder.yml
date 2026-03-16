@@ -15,9 +15,13 @@ extraResources:
       - "**/*"
 
 linux:
+  executableName: mailyou
   icon: src/assets/logo.png
   maintainer: iscccc <me@iscccc.cc>
   category: Network;Email;Office
+  desktop:
+    entry:
+      StartupWMClass: mailyou
   mimeTypes:
     - x-scheme-handler/mailto
     - x-scheme-handler/mailyou
