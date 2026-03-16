@@ -5,6 +5,7 @@ pkgdesc="Desktop-first mail client built with Vue, Electron, and Rust"
 arch=('x86_64')
 url="https://github.com/Cccc-owo/MailYou"
 license=('MIT')
+options=('!lto')
 depends=('gtk3' 'nss' 'libsecret' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core')
 makedepends=('git' 'nodejs' 'npm' 'rust')
 source=("git+$url.git")
@@ -34,7 +35,7 @@ package() {
   install -dm755 "$pkgdir/usr/bin"
   cat > "$pkgdir/usr/bin/mailyou" <<'EOF'
 #!/bin/sh
-exec /opt/mailyou/MailYou "$@"
+exec /opt/mailyou/mailyou "$@"
 EOF
   chmod 755 "$pkgdir/usr/bin/mailyou"
 
