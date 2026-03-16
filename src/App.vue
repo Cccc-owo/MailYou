@@ -63,17 +63,19 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useThemeController } from '@/composables/useThemeController'
 import { useSecurityStore } from '@/stores/security'
+import { useUiStore } from '@/stores/ui'
 
 useThemeController()
 
 const { t } = useI18n()
 const router = useRouter()
 const securityStore = useSecurityStore()
+const uiStore = useUiStore()
 const unlockPassword = ref('')
 
 const retryInitialize = async () => {
@@ -92,7 +94,16 @@ const submitUnlock = async () => {
 
 onMounted(async () => {
   await securityStore.initialize()
+  await window.windowControls?.setBackgroundSyncInterval(uiStore.syncIntervalMinutes)
 })
+
+watch(
+  () => uiStore.syncIntervalMinutes,
+  (minutes) => {
+    void window.windowControls?.setBackgroundSyncInterval(minutes)
+  },
+  { immediate: true },
+)
 </script>
 
 <style>

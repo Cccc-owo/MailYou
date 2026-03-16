@@ -45,6 +45,13 @@ const mailyou: MailyouBridge = {
   clearMasterPassword: (currentPassword) => ipcRenderer.invoke('mail:clearMasterPassword', currentPassword),
   lockCurrentSession: () => ipcRenderer.invoke('mail:lockCurrentSession'),
   getStorageDir: () => ipcRenderer.invoke('mail:getStorageDir'),
+  onBackgroundSync: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, accountId: string) => callback(accountId)
+    ipcRenderer.on('mail:backgroundSyncComplete', listener)
+    return () => {
+      ipcRenderer.removeListener('mail:backgroundSyncComplete', listener)
+    }
+  },
 }
 
 const windowControls: WindowControlsBridge = {
@@ -54,6 +61,7 @@ const windowControls: WindowControlsBridge = {
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   openExternal: (url) => ipcRenderer.invoke('window:openExternal', url),
   focus: () => ipcRenderer.invoke('window:focus'),
+  setBackgroundSyncInterval: (minutes) => ipcRenderer.invoke('window:setBackgroundSyncInterval', minutes),
   exportPdf: (html, fileName) => ipcRenderer.invoke('window:exportPdf', html, fileName),
   openTextFile: (filters) => ipcRenderer.invoke('window:openTextFile', filters),
   saveTextFile: (content, suggestedName, filters) =>

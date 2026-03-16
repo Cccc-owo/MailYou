@@ -5,6 +5,7 @@ export interface WindowControlsBridge {
   isMaximized(): Promise<boolean>
   openExternal(url: string): Promise<void>
   focus(): Promise<void>
+  setBackgroundSyncInterval(minutes: number): Promise<void>
   exportPdf(html: string, fileName: string): Promise<boolean>
   openTextFile(
     filters: { name: string; extensions: string[] }[],

@@ -839,8 +839,6 @@ const handleMarkFolderRead = async (folderId: string) => {
   await refreshMailbox()
 }
 
-const knownMessageIds = ref<Set<string>>(new Set())
-
 const syncCurrentAccount = async () => {
   if (!accountsStore.currentAccountId) {
     return
@@ -853,7 +851,6 @@ const syncCurrentAccount = async () => {
     updatedAt: new Date().toISOString(),
   })
 
-  const oldIds = new Set(knownMessageIds.value)
   await messagesStore.syncAccount(accountsStore.currentAccountId)
   if (messagesStore.error) {
     const accountId = accountsStore.currentAccountId
@@ -861,35 +858,9 @@ const syncCurrentAccount = async () => {
     return
   }
   await refreshMailbox()
-
-  // Detect new unread messages and show desktop notification
-  const newUnread = messagesStore.messages.filter(
-    (m) => !m.isRead && !oldIds.has(m.id),
-  )
-  knownMessageIds.value = new Set(messagesStore.messages.map((m) => m.id))
-
-  if (newUnread.length > 0 && Notification.permission === 'granted') {
-    const title = newUnread.length === 1
-      ? (newUnread[0].subject || t('shell.newMessage'))
-      : t('shell.newMail')
-    const body = newUnread.length === 1
-      ? t('shell.fromSender', { sender: newUnread[0].from })
-      : t('shell.newMessagesCount', { count: newUnread.length })
-    const notification = new Notification(title, { body })
-    notification.onclick = () => {
-      window.windowControls?.focus()
-      if (newUnread.length === 1) {
-        handleSelectMessage(newUnread[0].id)
-      }
-    }
-  }
 }
 
 onMounted(async () => {
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission()
-  }
-
   contactsStore.loadContacts()
 
   // Skip re-initialization if already loaded (e.g. returning from settings)
@@ -899,13 +870,10 @@ onMounted(async () => {
 
   if (accountsStore.currentAccountId) {
     await loadMailbox(accountsStore.currentAccountId)
-    knownMessageIds.value = new Set(messagesStore.messages.map((m) => m.id))
 
-    syncCurrentAccount()
+    await syncCurrentAccount()
   }
 })
-
-const SYNC_INTERVAL_MS = computed(() => uiStore.syncIntervalMinutes * 60 * 1000)
 
 const handleKeyboard = (event: KeyboardEvent) => {
   const tag = (event.target as HTMLElement)?.tagName
@@ -966,34 +934,21 @@ const handleKeyboard = (event: KeyboardEvent) => {
   }
 }
 
-let syncInterval: ReturnType<typeof setInterval> | null = null
+let backgroundSyncUnsubscribe: (() => void) | undefined
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyboard)
-  syncInterval = setInterval(() => {
-    if (accountsStore.currentAccountId) {
-      syncCurrentAccount()
+  backgroundSyncUnsubscribe = window.mailyou?.onBackgroundSync(async (accountId) => {
+    if (accountId === accountsStore.currentAccountId) {
+      await refreshMailbox()
     }
-  }, SYNC_INTERVAL_MS.value)
+  })
 })
 
 onUnmounted(() => {
-  if (syncInterval) {
-    clearInterval(syncInterval)
-    syncInterval = null
-  }
+  backgroundSyncUnsubscribe?.()
+  backgroundSyncUnsubscribe = undefined
   window.removeEventListener('keydown', handleKeyboard)
-})
-
-watch(SYNC_INTERVAL_MS, (newMs) => {
-  if (syncInterval) {
-    clearInterval(syncInterval)
-  }
-  syncInterval = setInterval(() => {
-    if (accountsStore.currentAccountId) {
-      syncCurrentAccount()
-    }
-  }, newMs)
 })
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null

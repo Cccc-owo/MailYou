@@ -4,8 +4,13 @@ import { join, basename } from 'path'
 import { tmpdir } from 'os'
 
 let registered = false
+let setBackgroundSyncIntervalHandler: ((minutes: number) => void) | null = null
 
 const getWindowFromEvent = (event: Electron.IpcMainInvokeEvent) => BrowserWindow.fromWebContents(event.sender)
+
+export const setWindowSyncIntervalHandler = (handler: (minutes: number) => void) => {
+  setBackgroundSyncIntervalHandler = handler
+}
 
 export const registerWindowIpc = () => {
   if (registered) {
@@ -51,6 +56,12 @@ export const registerWindowIpc = () => {
     if (win) {
       if (win.isMinimized()) win.restore()
       win.focus()
+    }
+  })
+
+  ipcMain.handle('window:setBackgroundSyncInterval', (_event, minutes: number) => {
+    if (typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0) {
+      setBackgroundSyncIntervalHandler?.(minutes)
     }
   })
 

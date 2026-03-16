@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, protocol, session } from 'electron'
+import { app, BrowserWindow, dialog, Menu, Notification, Tray, nativeImage, protocol, session } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -10,12 +10,17 @@ import {
 import { handleOAuthCallbackUrl } from './backend/oauth'
 import { ensureRustBackendReady, shutdownRustBackend } from './backend/rust/process'
 import { registerMailIpc } from './ipc/mail'
-import { registerWindowIpc } from './ipc/window'
+import { registerWindowIpc, setWindowSyncIntervalHandler } from './ipc/window'
 import { mailBackend } from './backend/mailBackend'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
 let pendingOAuthCallbackUrl: string | null = null
+let isQuitting = false
+let backgroundSyncIntervalMinutes = 5
+let backgroundSyncTimer: ReturnType<typeof setInterval> | null = null
+const knownUnreadIdsByAccount = new Map<string, Set<string>>()
 const isDev = isMailYouDevServerEnabled()
 
 const configureLinuxWindowSystem = () => {
@@ -117,6 +122,15 @@ const createMainWindow = async () => {
     },
   })
 
+  window.on('close', (event) => {
+    if (isQuitting) {
+      return
+    }
+
+    event.preventDefault()
+    window.hide()
+  })
+
   const devServerUrl = getMailYouDevServerUrl()
   if (devServerUrl) {
     await window.loadURL(devServerUrl)
@@ -130,6 +144,107 @@ const createMainWindow = async () => {
   mainWindow = window
   consumePendingOAuthCallback()
   return window
+}
+
+const focusMainWindow = async () => {
+  if (!mainWindow) {
+    mainWindow = await createMainWindow()
+    return
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
+  }
+
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+const sendBackgroundSyncComplete = (accountId: string) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('mail:backgroundSyncComplete', accountId)
+  }
+}
+
+const syncAccountsInBackground = async () => {
+  try {
+    const accounts = await mailBackend.listAccounts()
+    for (const account of accounts) {
+      await mailBackend.syncAccount(account.id)
+      const bundle = await mailBackend.getMailboxBundle(account.id)
+      const unreadIds = new Set(
+        bundle.messages
+          .filter((message) => !message.isRead)
+          .map((message) => message.id),
+      )
+      const previousUnread = knownUnreadIdsByAccount.get(account.id)
+      const newUnread = bundle.messages.filter(
+        (message) => !message.isRead && previousUnread && !previousUnread.has(message.id),
+      )
+
+      knownUnreadIdsByAccount.set(account.id, unreadIds)
+      sendBackgroundSyncComplete(account.id)
+
+      if (newUnread.length === 0 || !Notification.isSupported()) {
+        continue
+      }
+
+      const title = newUnread.length === 1 ? (newUnread[0].subject || 'New mail') : 'New mail'
+      const body = newUnread.length === 1
+        ? `From ${newUnread[0].from}`
+        : `${newUnread.length} new unread messages`
+
+      const notification = new Notification({ title, body, silent: false })
+      notification.on('click', () => {
+        void focusMainWindow()
+      })
+      notification.show()
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[background-sync] failed: ${message}`)
+  }
+}
+
+const restartBackgroundSyncTimer = () => {
+  if (backgroundSyncTimer) {
+    clearInterval(backgroundSyncTimer)
+    backgroundSyncTimer = null
+  }
+
+  backgroundSyncTimer = setInterval(() => {
+    void syncAccountsInBackground()
+  }, backgroundSyncIntervalMinutes * 60 * 1000)
+
+  void syncAccountsInBackground()
+}
+
+const createTray = () => {
+  if (tray) {
+    return
+  }
+
+  const icon = nativeImage.createFromPath(join(__dirname, '../src/assets/logo.png'))
+  tray = new Tray(icon)
+  tray.setToolTip('MailYou')
+  tray.setContextMenu(Menu.buildFromTemplate([
+    {
+      label: 'Show MailYou',
+      click: () => {
+        void focusMainWindow()
+      },
+    },
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      },
+    },
+  ]))
+  tray.on('click', () => {
+    void focusMainWindow()
+  })
 }
 
 app.on('open-url', (event, url) => {
@@ -164,6 +279,10 @@ app.whenReady().then(async () => {
 
   registerMailIpc()
   registerWindowIpc()
+  setWindowSyncIntervalHandler((minutes) => {
+    backgroundSyncIntervalMinutes = minutes
+    restartBackgroundSyncTimer()
+  })
 
   protocol.handle('mailyou-avatar', async (request) => {
     const contactId = decodeURIComponent(request.url.slice('mailyou-avatar://'.length))
@@ -183,6 +302,8 @@ app.whenReady().then(async () => {
   })
 
   await createMainWindow()
+  createTray()
+  restartBackgroundSyncTimer()
   if (initialProtocolUrl) {
     dispatchOAuthCallback(initialProtocolUrl)
   }
@@ -195,12 +316,19 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', async () => {
+  isQuitting = true
+  if (backgroundSyncTimer) {
+    clearInterval(backgroundSyncTimer)
+    backgroundSyncTimer = null
+  }
   await shutdownRustBackend()
 })
 
 app.on('window-all-closed', () => {
-  mainWindow = null
-  if (process.platform !== 'darwin') {
-    app.quit()
+  if (isQuitting) {
+    mainWindow = null
+    if (process.platform !== 'darwin') {
+      app.quit()
+    }
   }
 })
