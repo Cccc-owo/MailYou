@@ -1,6 +1,7 @@
 import type { AccountSetupDraft, MailAccount, OAuthProviderAvailability } from '@/types/account'
 import type { Contact, ContactGroup } from '@/types/contact'
 import type {
+  MailLabel,
   AttachmentContent,
   DraftMessage,
   MailMessage,
@@ -55,9 +56,29 @@ export interface RustBackendMethodMap {
     params: { accountId: string; query: string }
     result: MailMessage[]
   }
+  listLabels: {
+    params: { accountId: string }
+    result: MailLabel[]
+  }
   getMessage: {
     params: { accountId: string; messageId: string }
     result: MailMessage | null
+  }
+  addLabel: {
+    params: { accountId: string; messageId: string; label: string }
+    result: MailMessage | null
+  }
+  removeLabel: {
+    params: { accountId: string; messageId: string; label: string }
+    result: MailMessage | null
+  }
+  renameLabel: {
+    params: { accountId: string; label: string; newLabel: string }
+    result: MailLabel[]
+  }
+  deleteLabel: {
+    params: { accountId: string; label: string }
+    result: MailLabel[]
   }
   saveDraft: {
     params: DraftMessage

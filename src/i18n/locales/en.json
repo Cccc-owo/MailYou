@@ -285,6 +285,22 @@
     "messagesDeleted": "{count} messages deleted",
     "messagesMoved": "{count} messages moved"
   },
+  "labels": {
+    "sidebarTitle": "Labels",
+    "manageTitle": "Manage labels",
+    "manageHint": "Add, remove, or organize labels for this message.",
+    "selectedMessages": "{count} selected messages",
+    "noLabels": "No labels yet.",
+    "newLabel": "New label",
+    "addLabel": "Add",
+    "renameTo": "Rename to",
+    "cancelRename": "Cancel rename",
+    "organize": "Organize existing labels",
+    "usedByCount": "Used by {count} messages",
+    "deleteConfirm": "Delete label \"{label}\"? It will be removed from all messages in this account.",
+    "loadFailed": "Failed to load labels.",
+    "updateFailed": "Failed to update labels."
+  },
   "contacts": {
     "title": "Contacts",
     "groups": "Groups",

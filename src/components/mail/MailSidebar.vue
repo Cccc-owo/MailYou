@@ -100,6 +100,32 @@
       </div>
     </div>
 
+    <v-divider v-if="currentAccount && labels.length > 0" />
+
+    <div v-if="currentAccount && labels.length > 0" class="mail-sidebar__section">
+      <div class="mail-sidebar__section-header">
+        <v-icon icon="mdi-label-multiple-outline" size="18" />
+        <span>{{ t('labels.sidebarTitle') }}</span>
+      </div>
+
+      <v-list class="mail-sidebar__list" nav density="compact">
+        <v-list-item
+          v-for="label in labels"
+          :key="label.name"
+          :active="label.name === currentLabel"
+          @click="$emit('select-label', label.name)"
+        >
+          <template #prepend>
+            <v-icon icon="mdi-label-outline" size="18" />
+          </template>
+          <v-list-item-title class="text-body-2">{{ label.name }}</v-list-item-title>
+          <template #append>
+            <span class="text-caption text-medium-emphasis">{{ label.count }}</span>
+          </template>
+        </v-list-item>
+      </v-list>
+    </div>
+
     <!-- Account context menu -->
     <ContextMenu v-model="accountCtx.isOpen.value" :x="accountCtx.x.value" :y="accountCtx.y.value">
       <v-list-item prepend-icon="mdi-sync" :title="t('shell.sync')" @click="$emit('sync-account', accountCtx.target.value!.id)" />
@@ -183,7 +209,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MailAccount } from '@/types/account'
-import type { MailboxFolder } from '@/types/mail'
+import type { MailLabel, MailboxFolder } from '@/types/mail'
 import ContextMenu from '@/components/ContextMenu.vue'
 import { useContextMenu } from '@/composables/useContextMenu'
 
@@ -200,6 +226,8 @@ const props = defineProps<{
   currentAccountId: string | null
   currentFolderId: string | null
   folders: MailboxFolder[]
+  labels: MailLabel[]
+  currentLabel?: string | null
   isFoldersLoading?: boolean
 }>()
 
@@ -221,6 +249,7 @@ const emit = defineEmits<{
   'add-account': []
   'sync-account': [accountId: string]
   'mark-folder-read': [folderId: string]
+  'select-label': [label: string]
   'create-folder': [name: string]
   'rename-folder': [folderId: string, name: string]
   'delete-folder': [folderId: string]

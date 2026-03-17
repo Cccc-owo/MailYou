@@ -4,22 +4,23 @@ use std::time::{Duration, Instant};
 
 use async_imap::{Authenticator, Session as ImapSession};
 use async_trait::async_trait;
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 use futures::TryStreamExt;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::TcpStream;
 use tokio_native_tls::TlsStream;
 
 use crate::models::{
-    AccountAuthMode, AccountConfig, AccountSetupDraft, AttachmentContent, AttachmentMeta, DraftMessage, MailAccount,
-    MailFolderKind, MailIdentity, MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
+    AccountAuthMode, AccountConfig, AccountSetupDraft, AttachmentContent, AttachmentMeta,
+    DraftMessage, MailAccount, MailFolderKind, MailIdentity, MailLabel, MailMessage, MailThread,
+    MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
 };
 use crate::oauth::{ensure_account_access_token, ensure_config_access_token, xoauth2_payload};
 use crate::protocol::BackendError;
 use crate::provider::common::{
-    validate_draft, extract_body_from_mime, extract_attachments_from_mime,
-    make_preview, strip_html_tags, decode_header_value, find_mime_part_by_path,
-    get_attachment_filename, base64_encode_bytes, base64_decode,
+    base64_decode, base64_encode_bytes, decode_header_value, extract_attachments_from_mime,
+    extract_body_from_mime, find_mime_part_by_path, get_attachment_filename, make_preview,
+    strip_html_tags, validate_draft,
 };
 use crate::provider::MailProvider;
 use crate::storage::memory;
@@ -35,7 +36,11 @@ enum ImapStream {
 }
 
 impl AsyncRead for ImapStream {
-    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
         match self.get_mut() {
             ImapStream::Plain(s) => Pin::new(s).poll_read(cx, buf),
             ImapStream::Tls(s) => Pin::new(s).poll_read(cx, buf),
@@ -44,7 +49,11 @@ impl AsyncRead for ImapStream {
 }
 
 impl AsyncWrite for ImapStream {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
         match self.get_mut() {
             ImapStream::Plain(s) => Pin::new(s).poll_write(cx, buf),
             ImapStream::Tls(s) => Pin::new(s).poll_write(cx, buf),
@@ -81,6 +90,7 @@ struct MsgMeta {
     to: Vec<String>,
     cc: Vec<String>,
     date: String,
+    labels: Vec<String>,
 }
 
 struct FolderSyncResult {
@@ -133,15 +143,24 @@ impl MailProvider for ImapSmtpProvider {
     }
 
     async fn create_account(&self, draft: AccountSetupDraft) -> Result<MailAccount, BackendError> {
-        eprintln!("[imap] testing connection for new account {}...", draft.email);
+        eprintln!(
+            "[imap] testing connection for new account {}...",
+            draft.email
+        );
         self.test_account_connection(draft.clone()).await?;
         eprintln!("[imap] connection test passed, creating account");
         memory::create_account_without_test(draft)
     }
 
-    async fn test_account_connection(&self, draft: AccountSetupDraft) -> Result<SyncStatus, BackendError> {
+    async fn test_account_connection(
+        &self,
+        draft: AccountSetupDraft,
+    ) -> Result<SyncStatus, BackendError> {
         validate_draft(&draft)?;
-        eprintln!("[imap] connecting to {}:{}...", draft.incoming_host, draft.incoming_port);
+        eprintln!(
+            "[imap] connecting to {}:{}...",
+            draft.incoming_host, draft.incoming_port
+        );
         let start = Instant::now();
         imap_login_test(&draft).await?;
         eprintln!("[imap] connection test ok ({:.1?})", start.elapsed());
@@ -161,7 +180,11 @@ impl MailProvider for ImapSmtpProvider {
         memory::list_folders(account_id)
     }
 
-    async fn create_folder(&self, account_id: &str, name: &str) -> Result<Vec<MailboxFolder>, BackendError> {
+    async fn create_folder(
+        &self,
+        account_id: &str,
+        name: &str,
+    ) -> Result<Vec<MailboxFolder>, BackendError> {
         let mailbox_name = encode_imap_utf7(name.trim());
         let mut session = imap_connect_by_account(account_id).await?;
         session
@@ -174,10 +197,17 @@ impl MailProvider for ImapSmtpProvider {
         memory::list_folders(account_id)
     }
 
-    async fn rename_folder(&self, account_id: &str, folder_id: &str, name: &str) -> Result<Vec<MailboxFolder>, BackendError> {
+    async fn rename_folder(
+        &self,
+        account_id: &str,
+        folder_id: &str,
+        name: &str,
+    ) -> Result<Vec<MailboxFolder>, BackendError> {
         let folder = memory::get_folder(account_id, folder_id)?;
         if !matches!(folder.kind, MailFolderKind::Custom) {
-            return Err(BackendError::validation("Only custom folders can be renamed"));
+            return Err(BackendError::validation(
+                "Only custom folders can be renamed",
+            ));
         }
 
         let current_name = folder
@@ -196,13 +226,21 @@ impl MailProvider for ImapSmtpProvider {
         memory::list_folders(account_id)
     }
 
-    async fn delete_folder(&self, account_id: &str, folder_id: &str) -> Result<Vec<MailboxFolder>, BackendError> {
+    async fn delete_folder(
+        &self,
+        account_id: &str,
+        folder_id: &str,
+    ) -> Result<Vec<MailboxFolder>, BackendError> {
         let folder = memory::get_folder(account_id, folder_id)?;
         if !matches!(folder.kind, MailFolderKind::Custom) {
-            return Err(BackendError::validation("Only custom folders can be deleted"));
+            return Err(BackendError::validation(
+                "Only custom folders can be deleted",
+            ));
         }
         if folder.total_count > 0 {
-            return Err(BackendError::validation("Only empty folders can be deleted"));
+            return Err(BackendError::validation(
+                "Only empty folders can be deleted",
+            ));
         }
 
         let mailbox_name = folder
@@ -220,20 +258,105 @@ impl MailProvider for ImapSmtpProvider {
         memory::list_folders(account_id)
     }
 
-    async fn list_messages(&self, account_id: &str, folder_id: &str) -> Result<Vec<MailMessage>, BackendError> {
+    async fn list_messages(
+        &self,
+        account_id: &str,
+        folder_id: &str,
+    ) -> Result<Vec<MailMessage>, BackendError> {
         memory::list_messages(account_id, folder_id)
     }
 
-    async fn get_draft(&self, account_id: &str, draft_id: &str) -> Result<Option<DraftMessage>, BackendError> {
+    async fn get_draft(
+        &self,
+        account_id: &str,
+        draft_id: &str,
+    ) -> Result<Option<DraftMessage>, BackendError> {
         memory::get_draft(account_id, draft_id)
     }
 
-    async fn search_messages(&self, account_id: &str, query: &str) -> Result<Vec<MailMessage>, BackendError> {
+    async fn search_messages(
+        &self,
+        account_id: &str,
+        query: &str,
+    ) -> Result<Vec<MailMessage>, BackendError> {
         memory::search_messages(account_id, query)
     }
 
-    async fn get_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn list_labels(&self, account_id: &str) -> Result<Vec<MailLabel>, BackendError> {
+        imap_list_labels(account_id).await
+    }
+
+    async fn get_message(
+        &self,
+        account_id: &str,
+        message_id: &str,
+    ) -> Result<Option<MailMessage>, BackendError> {
         memory::get_message(account_id, message_id)
+    }
+
+    async fn add_label(
+        &self,
+        account_id: &str,
+        message_id: &str,
+        label: &str,
+    ) -> Result<Option<MailMessage>, BackendError> {
+        let Some(message) = memory::get_message(account_id, message_id)? else {
+            return Ok(None);
+        };
+        let uid = message.imap_uid.ok_or_else(|| {
+            BackendError::validation("This message does not have a remote IMAP UID")
+        })?;
+        imap_store_server_label(account_id, &message.folder_id, uid, label, true).await?;
+        memory::add_label(account_id, message_id, label)
+    }
+
+    async fn remove_label(
+        &self,
+        account_id: &str,
+        message_id: &str,
+        label: &str,
+    ) -> Result<Option<MailMessage>, BackendError> {
+        let Some(message) = memory::get_message(account_id, message_id)? else {
+            return Ok(None);
+        };
+        let uid = message.imap_uid.ok_or_else(|| {
+            BackendError::validation("This message does not have a remote IMAP UID")
+        })?;
+        imap_store_server_label(account_id, &message.folder_id, uid, label, false).await?;
+        memory::remove_label(account_id, message_id, label)
+    }
+
+    async fn rename_label(
+        &self,
+        account_id: &str,
+        label: &str,
+        new_label: &str,
+    ) -> Result<Vec<MailLabel>, BackendError> {
+        if imap_account_uses_gmail_labels(account_id).await? {
+            imap_rename_gmail_label(account_id, label, new_label).await?;
+            self.sync_account(account_id).await?;
+            return imap_list_labels(account_id).await;
+        }
+
+        imap_rename_keyword_label(account_id, label, new_label).await?;
+        self.sync_account(account_id).await?;
+        imap_list_labels(account_id).await
+    }
+
+    async fn delete_label(
+        &self,
+        account_id: &str,
+        label: &str,
+    ) -> Result<Vec<MailLabel>, BackendError> {
+        if imap_account_uses_gmail_labels(account_id).await? {
+            imap_delete_gmail_label(account_id, label).await?;
+            self.sync_account(account_id).await?;
+            return imap_list_labels(account_id).await;
+        }
+
+        imap_delete_keyword_label(account_id, label).await?;
+        self.sync_account(account_id).await?;
+        imap_list_labels(account_id).await
     }
 
     async fn save_draft(&self, draft: DraftMessage) -> Result<DraftMessage, BackendError> {
@@ -242,25 +365,40 @@ impl MailProvider for ImapSmtpProvider {
 
     async fn send_message(&self, draft: DraftMessage) -> Result<String, BackendError> {
         if draft.account_id.trim().is_empty() || draft.to.trim().is_empty() {
-            return Err(BackendError::validation("Recipient and account are required"));
+            return Err(BackendError::validation(
+                "Recipient and account are required",
+            ));
         }
 
         let account_state = memory::get_account_state(&draft.account_id)
             .ok_or_else(|| BackendError::not_found("Account not found"))?;
 
-        eprintln!("[smtp] sending message to {} via {}:{}...", draft.to, account_state.config.outgoing_host, account_state.config.outgoing_port);
+        eprintln!(
+            "[smtp] sending message to {} via {}:{}...",
+            draft.to, account_state.config.outgoing_host, account_state.config.outgoing_port
+        );
         let start = Instant::now();
         smtp_send(&account_state, &draft).await?;
         eprintln!("[smtp] sent ok ({:.1?})", start.elapsed());
         memory::record_sent_message(draft)
     }
 
-    async fn toggle_star(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn toggle_star(
+        &self,
+        account_id: &str,
+        message_id: &str,
+    ) -> Result<Option<MailMessage>, BackendError> {
         let updated = memory::toggle_star(account_id, message_id)?;
         if let Some(ref msg) = updated {
             if let Some(uid) = msg.imap_uid {
-                eprintln!("[imap] pushing star={} for uid {} in {}", msg.is_starred, uid, msg.folder_id);
-                if let Err(e) = imap_store_flag(account_id, &msg.folder_id, uid, "\\Flagged", msg.is_starred).await {
+                eprintln!(
+                    "[imap] pushing star={} for uid {} in {}",
+                    msg.is_starred, uid, msg.folder_id
+                );
+                if let Err(e) =
+                    imap_store_flag(account_id, &msg.folder_id, uid, "\\Flagged", msg.is_starred)
+                        .await
+                {
                     eprintln!("[imap] push star failed: {}", e.message);
                 }
             }
@@ -268,12 +406,21 @@ impl MailProvider for ImapSmtpProvider {
         Ok(updated)
     }
 
-    async fn toggle_read(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn toggle_read(
+        &self,
+        account_id: &str,
+        message_id: &str,
+    ) -> Result<Option<MailMessage>, BackendError> {
         let updated = memory::toggle_read(account_id, message_id)?;
         if let Some(ref msg) = updated {
             if let Some(uid) = msg.imap_uid {
-                eprintln!("[imap] pushing read={} for uid {} in {}", msg.is_read, uid, msg.folder_id);
-                if let Err(e) = imap_store_flag(account_id, &msg.folder_id, uid, "\\Seen", msg.is_read).await {
+                eprintln!(
+                    "[imap] pushing read={} for uid {} in {}",
+                    msg.is_read, uid, msg.folder_id
+                );
+                if let Err(e) =
+                    imap_store_flag(account_id, &msg.folder_id, uid, "\\Seen", msg.is_read).await
+                {
                     eprintln!("[imap] push read failed: {}", e.message);
                 }
             }
@@ -288,9 +435,14 @@ impl MailProvider for ImapSmtpProvider {
         if let Some(msg) = original {
             if let Some(uid) = msg.imap_uid {
                 if let Ok(folders) = memory::list_folders(account_id) {
-                    if let Some(trash) = folders.iter().find(|f| matches!(f.kind, MailFolderKind::Trash)) {
+                    if let Some(trash) = folders
+                        .iter()
+                        .find(|f| matches!(f.kind, MailFolderKind::Trash))
+                    {
                         eprintln!("[imap] moving uid {} to trash", uid);
-                        if let Err(e) = imap_move_message(account_id, &msg.folder_id, &trash.id, uid).await {
+                        if let Err(e) =
+                            imap_move_message(account_id, &msg.folder_id, &trash.id, uid).await
+                        {
                             eprintln!("[imap] push delete failed: {}", e.message);
                         }
                     }
@@ -305,14 +457,23 @@ impl MailProvider for ImapSmtpProvider {
         memory::delete_account(account_id)
     }
 
-    async fn archive_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn archive_message(
+        &self,
+        account_id: &str,
+        message_id: &str,
+    ) -> Result<Option<MailMessage>, BackendError> {
         let original = memory::get_message(account_id, message_id)?;
         let updated = memory::archive_message(account_id, message_id)?;
 
         if let (Some(orig), Some(ref upd)) = (original, &updated) {
             if let Some(uid) = orig.imap_uid {
-                eprintln!("[imap] archiving uid {} from {} to {}", uid, orig.folder_id, upd.folder_id);
-                if let Err(e) = imap_move_message(account_id, &orig.folder_id, &upd.folder_id, uid).await {
+                eprintln!(
+                    "[imap] archiving uid {} from {} to {}",
+                    uid, orig.folder_id, upd.folder_id
+                );
+                if let Err(e) =
+                    imap_move_message(account_id, &orig.folder_id, &upd.folder_id, uid).await
+                {
                     eprintln!("[imap] push archive failed: {}", e.message);
                 }
             }
@@ -320,14 +481,23 @@ impl MailProvider for ImapSmtpProvider {
         Ok(updated)
     }
 
-    async fn restore_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn restore_message(
+        &self,
+        account_id: &str,
+        message_id: &str,
+    ) -> Result<Option<MailMessage>, BackendError> {
         let original = memory::get_message(account_id, message_id)?;
         let updated = memory::restore_message(account_id, message_id)?;
 
         if let (Some(orig), Some(ref upd)) = (original, &updated) {
             if let Some(uid) = orig.imap_uid {
-                eprintln!("[imap] restoring uid {} from {} to {}", uid, orig.folder_id, upd.folder_id);
-                if let Err(e) = imap_move_message(account_id, &orig.folder_id, &upd.folder_id, uid).await {
+                eprintln!(
+                    "[imap] restoring uid {} from {} to {}",
+                    uid, orig.folder_id, upd.folder_id
+                );
+                if let Err(e) =
+                    imap_move_message(account_id, &orig.folder_id, &upd.folder_id, uid).await
+                {
                     eprintln!("[imap] push restore failed: {}", e.message);
                 }
             }
@@ -335,14 +505,23 @@ impl MailProvider for ImapSmtpProvider {
         Ok(updated)
     }
 
-    async fn move_message(&self, account_id: &str, message_id: &str, folder_id: &str) -> Result<Option<MailMessage>, BackendError> {
+    async fn move_message(
+        &self,
+        account_id: &str,
+        message_id: &str,
+        folder_id: &str,
+    ) -> Result<Option<MailMessage>, BackendError> {
         let original = memory::get_message(account_id, message_id)?;
         let updated = memory::move_message(account_id, message_id, folder_id)?;
 
         if let Some(orig) = original {
             if let Some(uid) = orig.imap_uid {
-                eprintln!("[imap] moving uid {} from {} to {}", uid, orig.folder_id, folder_id);
-                if let Err(e) = imap_move_message(account_id, &orig.folder_id, folder_id, uid).await {
+                eprintln!(
+                    "[imap] moving uid {} from {} to {}",
+                    uid, orig.folder_id, folder_id
+                );
+                if let Err(e) = imap_move_message(account_id, &orig.folder_id, folder_id, uid).await
+                {
                     eprintln!("[imap] push move failed: {}", e.message);
                 }
             }
@@ -360,17 +539,25 @@ impl MailProvider for ImapSmtpProvider {
                 .collect()
         };
 
-        eprintln!("[store] marking {} messages read in {folder_id}", unread_uids.len());
+        eprintln!(
+            "[store] marking {} messages read in {folder_id}",
+            unread_uids.len()
+        );
         memory::mark_all_read(account_id, folder_id)?;
 
         if !unread_uids.is_empty() {
             if let Some(real_folder_id) = unread_uids.first().map(|(_, fid)| fid.clone()) {
                 if let Some(mailbox_name) = get_imap_folder_name(account_id, &real_folder_id) {
-                    eprintln!("[imap] pushing \\Seen for {} messages in {mailbox_name}", unread_uids.len());
+                    eprintln!(
+                        "[imap] pushing \\Seen for {} messages in {mailbox_name}",
+                        unread_uids.len()
+                    );
                     if let Ok(mut session) = imap_connect_by_account(account_id).await {
                         if session.select(&mailbox_name).await.is_ok() {
                             for (uid, _) in &unread_uids {
-                                if let Ok(stream) = session.uid_store(uid.to_string(), "+FLAGS (\\Seen)").await {
+                                if let Ok(stream) =
+                                    session.uid_store(uid.to_string(), "+FLAGS (\\Seen)").await
+                                {
                                     let _ = stream.try_collect::<Vec<_>>().await;
                                 }
                             }
@@ -388,10 +575,18 @@ impl MailProvider for ImapSmtpProvider {
         let account_state = memory::get_account_state(account_id)
             .ok_or_else(|| BackendError::not_found("Account not found"))?;
 
-        eprintln!("[imap] syncing account {} ({}:{})...", account_id, account_state.config.incoming_host, account_state.config.incoming_port);
+        eprintln!(
+            "[imap] syncing account {} ({}:{})...",
+            account_id, account_state.config.incoming_host, account_state.config.incoming_port
+        );
         let start = Instant::now();
         let (folders, messages, threads) = imap_fetch_mailbox(&account_state).await?;
-        eprintln!("[imap] fetched {} folders, {} messages in {:.1?}", folders.len(), messages.len(), start.elapsed());
+        eprintln!(
+            "[imap] fetched {} folders, {} messages in {:.1?}",
+            folders.len(),
+            messages.len(),
+            start.elapsed()
+        );
         memory::merge_remote_mailbox(account_id, folders, messages, threads)?;
 
         let timestamp = memory::current_timestamp();
@@ -409,8 +604,9 @@ impl MailProvider for ImapSmtpProvider {
         attachment_id: &str,
     ) -> Result<AttachmentContent, BackendError> {
         let _ = account_id; // message_id already encodes the account
-        let raw = persisted::load_raw_email(message_id)
-            .map_err(|_| BackendError::not_found("Raw email not found. Try syncing the account."))?;
+        let raw = persisted::load_raw_email(message_id).map_err(|_| {
+            BackendError::not_found("Raw email not found. Try syncing the account.")
+        })?;
 
         let parsed = mailparse::parse_mail(&raw)
             .map_err(|e| BackendError::internal(format!("Failed to parse email: {e}")))?;
@@ -432,15 +628,21 @@ impl MailProvider for ImapSmtpProvider {
         })
     }
 
-    async fn get_account_config(&self, account_id: &str) -> Result<AccountSetupDraft, BackendError> {
+    async fn get_account_config(
+        &self,
+        account_id: &str,
+    ) -> Result<AccountSetupDraft, BackendError> {
         memory::get_account_config(account_id)
     }
 
-    async fn update_account(&self, account_id: &str, draft: AccountSetupDraft) -> Result<MailAccount, BackendError> {
+    async fn update_account(
+        &self,
+        account_id: &str,
+        draft: AccountSetupDraft,
+    ) -> Result<MailAccount, BackendError> {
         memory::update_account(account_id, draft)
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // IMAP helpers (async)
@@ -457,11 +659,15 @@ async fn imap_tcp_connect(host: &str, port: u16) -> Result<TcpStream, BackendErr
         .map_err(|e| BackendError::internal(format!("IMAP connection failed: {e}")))
 }
 
-async fn imap_tls_connect(host: &str, tcp: TcpStream) -> Result<TlsStream<TcpStream>, BackendError> {
+async fn imap_tls_connect(
+    host: &str,
+    tcp: TcpStream,
+) -> Result<TlsStream<TcpStream>, BackendError> {
     let connector = native_tls::TlsConnector::new()
         .map_err(|e| BackendError::internal(format!("TLS error: {e}")))?;
     let connector = tokio_native_tls::TlsConnector::from(connector);
-    connector.connect(host, tcp)
+    connector
+        .connect(host, tcp)
         .await
         .map_err(|e| BackendError::internal(format!("TLS handshake failed: {e}")))
 }
@@ -476,7 +682,9 @@ where
         .map_err(|e| BackendError::internal(format!("Failed to read IMAP greeting: {e}")))?;
 
     if greeting.is_none() {
-        return Err(BackendError::internal("IMAP server closed connection before greeting"));
+        return Err(BackendError::internal(
+            "IMAP server closed connection before greeting",
+        ));
     }
 
     Ok(())
@@ -494,7 +702,9 @@ async fn imap_read_raw_line(stream: &mut TcpStream, context: &str) -> Result<Str
 
         if read == 0 {
             if buf.is_empty() {
-                return Err(BackendError::internal("IMAP server closed connection unexpectedly"));
+                return Err(BackendError::internal(
+                    "IMAP server closed connection unexpectedly",
+                ));
             }
             break;
         }
@@ -510,21 +720,27 @@ async fn imap_read_raw_line(stream: &mut TcpStream, context: &str) -> Result<Str
         .map_err(|e| BackendError::internal(format!("Invalid IMAP response bytes: {e}")))
 }
 
-async fn imap_upgrade_starttls(host: &str, mut tcp: TcpStream) -> Result<async_imap::Client<TlsStream<TcpStream>>, BackendError> {
+async fn imap_upgrade_starttls(
+    host: &str,
+    mut tcp: TcpStream,
+) -> Result<async_imap::Client<TlsStream<TcpStream>>, BackendError> {
     let greeting = imap_read_raw_line(&mut tcp, "Failed to read IMAP greeting").await?;
     if !greeting.starts_with("* ") {
-        return Err(BackendError::internal(format!("Unexpected IMAP greeting: {greeting}")));
+        return Err(BackendError::internal(format!(
+            "Unexpected IMAP greeting: {greeting}"
+        )));
     }
 
-    tcp.write_all(b"a001 STARTTLS\r\n")
-        .await
-        .map_err(|e| BackendError::internal(format!("Failed to send IMAP STARTTLS command: {e}")))?;
-    tcp.flush()
-        .await
-        .map_err(|e| BackendError::internal(format!("Failed to flush IMAP STARTTLS command: {e}")))?;
+    tcp.write_all(b"a001 STARTTLS\r\n").await.map_err(|e| {
+        BackendError::internal(format!("Failed to send IMAP STARTTLS command: {e}"))
+    })?;
+    tcp.flush().await.map_err(|e| {
+        BackendError::internal(format!("Failed to flush IMAP STARTTLS command: {e}"))
+    })?;
 
     loop {
-        let response = imap_read_raw_line(&mut tcp, "Failed to read IMAP STARTTLS response").await?;
+        let response =
+            imap_read_raw_line(&mut tcp, "Failed to read IMAP STARTTLS response").await?;
         if response.starts_with("* ") {
             continue;
         }
@@ -533,7 +749,9 @@ async fn imap_upgrade_starttls(host: &str, mut tcp: TcpStream) -> Result<async_i
             break;
         }
 
-        return Err(BackendError::internal(format!("IMAP STARTTLS failed: {response}")));
+        return Err(BackendError::internal(format!(
+            "IMAP STARTTLS failed: {response}"
+        )));
     }
 
     let tls_stream = imap_tls_connect(host, tcp).await?;
@@ -545,7 +763,8 @@ async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), BackendError> 
     let port = draft.incoming_port;
 
     eprintln!("[imap] tcp connecting to {host}:{port}...");
-    let tcp = imap_tcp_connect(host, port).await
+    let tcp = imap_tcp_connect(host, port)
+        .await
         .map_err(|e| BackendError::validation(e.message))?;
     eprintln!("[imap] tcp connected, tls={}...", draft.use_tls);
 
@@ -559,15 +778,23 @@ async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), BackendError> 
                 client
             }
             Err(tls_error) => {
-                eprintln!("[imap] implicit TLS failed, trying STARTTLS fallback: {}", tls_error.message);
-                imap_upgrade_starttls(host, imap_tcp_connect(host, port).await.map_err(|e| BackendError::validation(e.message))?)
-                    .await
-                    .map_err(|starttls_error| {
-                        BackendError::validation(format!(
-                            "{}; STARTTLS fallback failed: {}",
-                            tls_error.message, starttls_error.message
-                        ))
-                    })?
+                eprintln!(
+                    "[imap] implicit TLS failed, trying STARTTLS fallback: {}",
+                    tls_error.message
+                );
+                imap_upgrade_starttls(
+                    host,
+                    imap_tcp_connect(host, port)
+                        .await
+                        .map_err(|e| BackendError::validation(e.message))?,
+                )
+                .await
+                .map_err(|starttls_error| {
+                    BackendError::validation(format!(
+                        "{}; STARTTLS fallback failed: {}",
+                        tls_error.message, starttls_error.message
+                    ))
+                })?
             }
         };
         eprintln!("[imap] logging in as {}...", draft.username.trim());
@@ -603,8 +830,12 @@ async fn imap_connect(state: &StoredAccountState) -> Result<ImapAnySession, Back
                 ImapStream::Tls(client.into_inner())
             }
             Err(tls_error) => {
-                eprintln!("[imap] implicit TLS failed, trying STARTTLS fallback: {}", tls_error.message);
-                let client = imap_upgrade_starttls(host, imap_tcp_connect(host, port).await?).await?;
+                eprintln!(
+                    "[imap] implicit TLS failed, trying STARTTLS fallback: {}",
+                    tls_error.message
+                );
+                let client =
+                    imap_upgrade_starttls(host, imap_tcp_connect(host, port).await?).await?;
                 ImapStream::Tls(client.into_inner())
             }
         }
@@ -636,7 +867,10 @@ async fn imap_connect(state: &StoredAccountState) -> Result<ImapAnySession, Back
         }
     };
 
-    eprintln!("[imap] connected to {host}:{port} ({:.1?})", start.elapsed());
+    eprintln!(
+        "[imap] connected to {host}:{port} ({:.1?})",
+        start.elapsed()
+    );
     Ok(session)
 }
 
@@ -647,11 +881,23 @@ pub(crate) async fn wait_for_mailbox_change(
 ) -> Result<IdleMailboxChange, BackendError> {
     let mut session = imap_connect(state).await?;
     let account_id = &state.account.id;
-    let folder = memory::list_folders(account_id)
-        .ok()
-        .and_then(|folders| folders.into_iter().find(|folder| folder.imap_name.as_deref() == Some(mailbox_name)));
-    let folder_id = folder.as_ref().map(|folder| folder.id.as_str()).unwrap_or(mailbox_name);
-    let _ = select_mailbox_for_incremental_sync(&mut session, account_id, folder_id, mailbox_name, folder.as_ref()).await?;
+    let folder = memory::list_folders(account_id).ok().and_then(|folders| {
+        folders
+            .into_iter()
+            .find(|folder| folder.imap_name.as_deref() == Some(mailbox_name))
+    });
+    let folder_id = folder
+        .as_ref()
+        .map(|folder| folder.id.as_str())
+        .unwrap_or(mailbox_name);
+    let _ = select_mailbox_for_incremental_sync(
+        &mut session,
+        account_id,
+        folder_id,
+        mailbox_name,
+        folder.as_ref(),
+    )
+    .await?;
 
     let mut idle = session.idle();
     idle.init()
@@ -671,7 +917,9 @@ pub(crate) async fn wait_for_mailbox_change(
 
     match response {
         async_imap::extensions::idle::IdleResponse::Timeout => Ok(IdleMailboxChange::Timeout),
-        async_imap::extensions::idle::IdleResponse::ManualInterrupt => Ok(IdleMailboxChange::Changed),
+        async_imap::extensions::idle::IdleResponse::ManualInterrupt => {
+            Ok(IdleMailboxChange::Changed)
+        }
         async_imap::extensions::idle::IdleResponse::NewData(data) => match data.parsed() {
             imap_proto::Response::Vanished { uids, .. } => {
                 let flattened = uids
@@ -685,7 +933,10 @@ pub(crate) async fn wait_for_mailbox_change(
     }
 }
 
-pub(crate) async fn sync_mailbox_incremental(account_id: &str, mailbox_name: &str) -> Result<SyncStatus, BackendError> {
+pub(crate) async fn sync_mailbox_incremental(
+    account_id: &str,
+    mailbox_name: &str,
+) -> Result<SyncStatus, BackendError> {
     let account_state = memory::get_account_state(account_id)
         .ok_or_else(|| BackendError::not_found("Account not found"))?;
     let folder = resolve_or_create_folder(account_id, mailbox_name);
@@ -780,14 +1031,12 @@ async fn imap_connect_by_account(account_id: &str) -> Result<ImapAnySession, Bac
 }
 
 fn get_imap_folder_name(account_id: &str, folder_id: &str) -> Option<String> {
-    memory::list_folders(account_id)
-        .ok()
-        .and_then(|folders| {
-            folders
-                .into_iter()
-                .find(|f| f.id == folder_id)
-                .and_then(|f| f.imap_name)
-        })
+    memory::list_folders(account_id).ok().and_then(|folders| {
+        folders
+            .into_iter()
+            .find(|f| f.id == folder_id)
+            .and_then(|f| f.imap_name)
+    })
 }
 
 async fn imap_store_flag(
@@ -822,6 +1071,353 @@ async fn imap_store_flag(
 
     let _ = session.logout().await;
     Ok(())
+}
+
+fn is_gmail_system_label(label: &str) -> bool {
+    let lower = label.trim().to_lowercase();
+    lower.starts_with("[gmail]/")
+        || lower.starts_with("[google mail]/")
+        || matches!(
+            lower.as_str(),
+            "inbox"
+                | "sent"
+                | "sent mail"
+                | "draft"
+                | "drafts"
+                | "trash"
+                | "spam"
+                | "junk"
+                | "all mail"
+                | "starred"
+                | "important"
+        )
+}
+
+fn normalize_gmail_label(label: &str) -> Option<String> {
+    let decoded = decode_imap_utf7(label).trim().to_string();
+    if decoded.is_empty() || decoded.starts_with('\\') || is_gmail_system_label(&decoded) {
+        return None;
+    }
+    Some(decoded)
+}
+
+fn normalize_keyword_label(label: &str) -> Option<String> {
+    let trimmed = label.trim();
+    if trimmed.is_empty() || trimmed.starts_with('\\') {
+        return None;
+    }
+    Some(trimmed.into())
+}
+
+fn validate_imap_keyword_label_name(label: &str) -> Result<String, BackendError> {
+    let trimmed = label.trim();
+    if trimmed.is_empty() {
+        return Err(BackendError::validation("Label name cannot be empty"));
+    }
+    if !trimmed.is_ascii() {
+        return Err(BackendError::validation(
+            "This IMAP server only supports ASCII keyword labels",
+        ));
+    }
+    if trimmed.chars().any(|ch| {
+        ch.is_whitespace() || matches!(ch, '(' | ')' | '{' | '}' | '%' | '*' | '"' | '\\' | ']')
+    }) {
+        return Err(BackendError::validation(
+            "This IMAP server does not allow this label name",
+        ));
+    }
+    Ok(trimmed.into())
+}
+
+async fn imap_account_uses_gmail_labels(account_id: &str) -> Result<bool, BackendError> {
+    let mut session = imap_connect_by_account(account_id).await?;
+    let capabilities = session
+        .capabilities()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP CAPABILITY failed: {error}")))?;
+    let _ = session.logout().await;
+    Ok(capabilities.has_str("X-GM-EXT-1"))
+}
+
+async fn imap_fetch_gmail_labels(
+    session: &mut ImapAnySession,
+    uid_set: &str,
+) -> Result<std::collections::HashMap<u32, Vec<String>>, BackendError> {
+    let request_id = session
+        .run_command(format!("UID FETCH {uid_set} (UID X-GM-LABELS)"))
+        .await
+        .map_err(|error| {
+            BackendError::internal(format!("IMAP Gmail label fetch failed to send: {error}"))
+        })?;
+
+    let mut labels_by_uid = std::collections::HashMap::new();
+
+    loop {
+        let response = session.read_response().await.map_err(|error| {
+            BackendError::internal(format!("IMAP Gmail label fetch read failed: {error}"))
+        })?;
+        let Some(response) = response else {
+            return Err(BackendError::internal(
+                "IMAP Gmail label fetch connection lost",
+            ));
+        };
+
+        match response.parsed() {
+            imap_proto::Response::Fetch(_, attrs) => {
+                let mut uid = None;
+                let mut labels = Vec::new();
+                for attr in attrs {
+                    match attr {
+                        imap_proto::types::AttributeValue::Uid(value) => uid = Some(*value),
+                        imap_proto::types::AttributeValue::GmailLabels(values) => {
+                            labels = values
+                                .iter()
+                                .filter_map(|value| normalize_gmail_label(value.as_ref()))
+                                .collect();
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some(uid) = uid {
+                    labels_by_uid.insert(uid, labels);
+                }
+            }
+            imap_proto::Response::Done {
+                tag,
+                status,
+                information,
+                ..
+            } if tag == &request_id => match status {
+                imap_proto::Status::Ok => break,
+                other => {
+                    return Err(BackendError::internal(format!(
+                        "IMAP Gmail label fetch failed: {other:?} {information:?}"
+                    )));
+                }
+            },
+            _ => {}
+        }
+    }
+
+    Ok(labels_by_uid)
+}
+
+async fn imap_store_gmail_label(
+    session: &mut ImapAnySession,
+    uid: u32,
+    label: &str,
+    add: bool,
+) -> Result<(), BackendError> {
+    let encoded_label = quote_imap_string(&encode_imap_utf7(label.trim()));
+    let operation = if add { "+X-GM-LABELS" } else { "-X-GM-LABELS" };
+    session
+        .run_command_and_check_ok(format!("UID STORE {uid} {operation} ({encoded_label})"))
+        .await
+        .map_err(|error| {
+            BackendError::internal(format!("IMAP Gmail label store failed: {error}"))
+        })?;
+    Ok(())
+}
+
+async fn imap_store_keyword_label(
+    session: &mut ImapAnySession,
+    uid: u32,
+    label: &str,
+    add: bool,
+) -> Result<(), BackendError> {
+    let keyword = validate_imap_keyword_label_name(label)?;
+    let query = if add {
+        format!("+FLAGS ({keyword})")
+    } else {
+        format!("-FLAGS ({keyword})")
+    };
+    session
+        .uid_store(uid.to_string(), &query)
+        .await
+        .map_err(|error| {
+            BackendError::internal(format!("IMAP keyword label store failed: {error}"))
+        })?
+        .try_collect::<Vec<_>>()
+        .await
+        .map_err(|error| {
+            BackendError::internal(format!("IMAP keyword label store failed: {error}"))
+        })?;
+    Ok(())
+}
+
+async fn imap_store_server_label(
+    account_id: &str,
+    folder_id: &str,
+    uid: u32,
+    label: &str,
+    add: bool,
+) -> Result<(), BackendError> {
+    let mailbox_name = get_imap_folder_name(account_id, folder_id)
+        .ok_or_else(|| BackendError::internal("IMAP folder name not found"))?;
+
+    let mut session = imap_connect_by_account(account_id).await?;
+    let capabilities = session
+        .capabilities()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP CAPABILITY failed: {error}")))?;
+
+    session
+        .select(&mailbox_name)
+        .await
+        .map_err(|e| BackendError::internal(format!("IMAP SELECT failed: {e}")))?;
+
+    let result = if capabilities.has_str("X-GM-EXT-1") {
+        imap_store_gmail_label(&mut session, uid, label, add).await
+    } else {
+        imap_store_keyword_label(&mut session, uid, label, add).await
+    };
+
+    let _ = session.logout().await;
+    result
+}
+
+async fn imap_apply_keyword_label_batch(
+    account_id: &str,
+    label: &str,
+    new_label: Option<&str>,
+) -> Result<(), BackendError> {
+    let source_label = validate_imap_keyword_label_name(label)?;
+    let target_label = match new_label {
+        Some(label) => Some(validate_imap_keyword_label_name(label)?),
+        None => None,
+    };
+
+    for folder in memory::list_folders(account_id)? {
+        let Some(mailbox_name) = folder.imap_name.clone() else {
+            continue;
+        };
+
+        let mut session = imap_connect_by_account(account_id).await?;
+        session
+            .select(&mailbox_name)
+            .await
+            .map_err(|error| BackendError::internal(format!("IMAP SELECT failed: {error}")))?;
+
+        let search_query = format!("KEYWORD {source_label}");
+        let uids = session.uid_search(search_query).await.map_err(|error| {
+            BackendError::internal(format!("IMAP keyword search failed: {error}"))
+        })?;
+        if uids.is_empty() {
+            let _ = session.logout().await;
+            continue;
+        }
+
+        let uid_set = uids
+            .into_iter()
+            .map(|uid| uid.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        if let Some(ref next_label) = target_label {
+            let add_query = format!("+FLAGS ({next_label})");
+            session
+                .uid_store(&uid_set, &add_query)
+                .await
+                .map_err(|error| {
+                    BackendError::internal(format!("IMAP keyword relabel add failed: {error}"))
+                })?
+                .try_collect::<Vec<_>>()
+                .await
+                .map_err(|error| {
+                    BackendError::internal(format!("IMAP keyword relabel add failed: {error}"))
+                })?;
+        }
+
+        let remove_query = format!("-FLAGS ({source_label})");
+        session
+            .uid_store(&uid_set, &remove_query)
+            .await
+            .map_err(|error| {
+                BackendError::internal(format!("IMAP keyword relabel remove failed: {error}"))
+            })?
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|error| {
+                BackendError::internal(format!("IMAP keyword relabel remove failed: {error}"))
+            })?;
+        let _ = session.logout().await;
+    }
+
+    Ok(())
+}
+
+async fn imap_rename_keyword_label(
+    account_id: &str,
+    label: &str,
+    new_label: &str,
+) -> Result<(), BackendError> {
+    imap_apply_keyword_label_batch(account_id, label, Some(new_label)).await
+}
+
+async fn imap_delete_keyword_label(account_id: &str, label: &str) -> Result<(), BackendError> {
+    imap_apply_keyword_label_batch(account_id, label, None).await
+}
+
+async fn imap_rename_gmail_label(
+    account_id: &str,
+    label: &str,
+    new_label: &str,
+) -> Result<(), BackendError> {
+    let current_name = encode_imap_utf7(label.trim());
+    let next_name = encode_imap_utf7(new_label.trim());
+    let mut session = imap_connect_by_account(account_id).await?;
+    session
+        .rename(&current_name, &next_name)
+        .await
+        .map_err(|error| {
+            BackendError::internal(format!("IMAP Gmail label rename failed: {error}"))
+        })?;
+    let _ = session.logout().await;
+    Ok(())
+}
+
+async fn imap_delete_gmail_label(account_id: &str, label: &str) -> Result<(), BackendError> {
+    let mailbox_name = encode_imap_utf7(label.trim());
+    let mut session = imap_connect_by_account(account_id).await?;
+    session.delete(&mailbox_name).await.map_err(|error| {
+        BackendError::internal(format!("IMAP Gmail label delete failed: {error}"))
+    })?;
+    let _ = session.logout().await;
+    Ok(())
+}
+
+async fn imap_list_labels(account_id: &str) -> Result<Vec<MailLabel>, BackendError> {
+    let local_labels = memory::list_labels(account_id)?;
+    if !imap_account_uses_gmail_labels(account_id).await? {
+        return Ok(local_labels);
+    }
+
+    let mut counts = local_labels
+        .into_iter()
+        .map(|label| (label.name.to_lowercase(), label))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    let mut session = imap_connect_by_account(account_id).await?;
+    let remote_folders = session
+        .list(None, Some("*"))
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP LIST labels failed: {error}")))?
+        .try_collect::<Vec<_>>()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP LIST labels failed: {error}")))?;
+    let _ = session.logout().await;
+
+    for remote_folder in remote_folders {
+        let name = decode_imap_utf7(remote_folder.name());
+        if is_gmail_system_label(&name) {
+            continue;
+        }
+        let key = name.to_lowercase();
+        counts.entry(key).or_insert(MailLabel { name, count: 0 });
+    }
+
+    let mut labels = counts.into_values().collect::<Vec<_>>();
+    labels.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    Ok(labels)
 }
 
 async fn imap_move_message(
@@ -875,7 +1471,10 @@ async fn imap_fetch_mailbox(
 
     // Collect existing message bodies from memory so we can skip re-downloading them.
     let existing_bodies = memory::get_existing_bodies(account_id);
-    eprintln!("[imap] incremental sync: {} cached bodies available", existing_bodies.len());
+    eprintln!(
+        "[imap] incremental sync: {} cached bodies available",
+        existing_bodies.len()
+    );
 
     let remote_folders: Vec<_> = session
         .list(None, Some("*"))
@@ -907,7 +1506,11 @@ async fn imap_fetch_mailbox(
     for remote_folder in &remote_folders {
         let raw_name = remote_folder.name();
 
-        if remote_folder.attributes().iter().any(|a| matches!(a, async_imap::types::NameAttribute::NoSelect)) {
+        if remote_folder
+            .attributes()
+            .iter()
+            .any(|a| matches!(a, async_imap::types::NameAttribute::NoSelect))
+        {
             continue;
         }
 
@@ -915,8 +1518,14 @@ async fn imap_fetch_mailbox(
         let (kind, icon) = classify_folder(&display_name);
         let folder_id = format!("{}-{}", slug(raw_name), account_id);
 
-        let (unread, total, messages, threads) =
-            fetch_folder_contents(&mut session, account_id, &folder_id, raw_name, &existing_bodies).await?;
+        let (unread, total, messages, threads) = fetch_folder_contents(
+            &mut session,
+            account_id,
+            &folder_id,
+            raw_name,
+            &existing_bodies,
+        )
+        .await?;
 
         folders.push(MailboxFolder {
             id: folder_id,
@@ -973,17 +1582,29 @@ async fn fetch_folder_contents_incremental(
     let previous_folder = memory::list_folders(account_id)
         .ok()
         .and_then(|folders| folders.into_iter().find(|folder| folder.id == folder_id));
-    let previous_uid_validity = previous_folder.as_ref().and_then(|folder| folder.imap_uid_validity);
-    let previous_highest_modseq = previous_folder.as_ref().and_then(|folder| folder.imap_highest_modseq);
-    let select_result = select_mailbox_for_incremental_sync(session, account_id, folder_id, mailbox_name, previous_folder.as_ref()).await?;
+    let previous_uid_validity = previous_folder
+        .as_ref()
+        .and_then(|folder| folder.imap_uid_validity);
+    let previous_highest_modseq = previous_folder
+        .as_ref()
+        .and_then(|folder| folder.imap_highest_modseq);
+    let select_result = select_mailbox_for_incremental_sync(
+        session,
+        account_id,
+        folder_id,
+        mailbox_name,
+        previous_folder.as_ref(),
+    )
+    .await?;
     let mailbox = select_result.mailbox;
 
     let total = mailbox.exists;
     let uid_validity = mailbox.uid_validity;
     let uid_next = mailbox.uid_next;
     let highest_modseq = mailbox.highest_modseq;
-    let uid_validity_changed =
-        previous_uid_validity.is_some() && uid_validity.is_some() && previous_uid_validity != uid_validity;
+    let uid_validity_changed = previous_uid_validity.is_some()
+        && uid_validity.is_some()
+        && previous_uid_validity != uid_validity;
     let use_changedsince =
         !uid_validity_changed && previous_highest_modseq.is_some() && highest_modseq.is_some();
 
@@ -1009,15 +1630,34 @@ async fn fetch_folder_contents_incremental(
         .map(|ids| ids.len() as u32)
         .unwrap_or(0);
 
+    let capabilities = session
+        .capabilities()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP CAPABILITY failed: {error}")))?;
+    let has_gmail_labels = capabilities.has_str("X-GM-EXT-1");
+
     // Always refresh the recent window for flags/read state, and fetch any UID newer
     // than the local max so realtime sync does not rescan the whole mailbox.
-    let start = if total > recent_limit { total - (recent_limit - 1) } else { 1 };
+    let start = if total > recent_limit {
+        total - (recent_limit - 1)
+    } else {
+        1
+    };
     let range = format!("{start}:{total}");
 
     let recent_query = if let Some(modseq) = previous_highest_modseq.filter(|_| use_changedsince) {
-        format!("(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ) (CHANGEDSINCE {modseq})")
+        let attrs = if has_gmail_labels {
+            "UID FLAGS ENVELOPE RFC822.SIZE MODSEQ X-GM-LABELS"
+        } else {
+            "UID FLAGS ENVELOPE RFC822.SIZE MODSEQ"
+        };
+        format!("({attrs}) (CHANGEDSINCE {modseq})")
     } else {
-        "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ)".into()
+        if has_gmail_labels {
+            "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ X-GM-LABELS)".into()
+        } else {
+            "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ)".into()
+        }
     };
     let recent_fetches: Vec<_> = session
         .fetch(&range, &recent_query)
@@ -1031,10 +1671,17 @@ async fn fetch_folder_contents_incremental(
     if let Some(max_uid) = known_max_uid {
         let next_uid = max_uid.saturating_add(1);
         let uid_range = format!("{next_uid}:*");
-        if let Ok(stream) = session.uid_fetch(&uid_range, "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ)").await {
+        let uid_query = if has_gmail_labels {
+            "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ X-GM-LABELS)"
+        } else {
+            "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ)"
+        };
+        if let Ok(stream) = session.uid_fetch(&uid_range, uid_query).await {
             if let Ok(new_fetches) = stream.try_collect::<Vec<_>>().await {
-                let mut seen_uids: std::collections::HashSet<u32> =
-                    fetches.iter().map(|fetch| fetch.uid.unwrap_or(fetch.message)).collect();
+                let mut seen_uids: std::collections::HashSet<u32> = fetches
+                    .iter()
+                    .map(|fetch| fetch.uid.unwrap_or(fetch.message))
+                    .collect();
                 for fetch in new_fetches {
                     let uid = fetch.uid.unwrap_or(fetch.message);
                     if seen_uids.insert(uid) {
@@ -1047,21 +1694,51 @@ async fn fetch_folder_contents_incremental(
 
     let mut metas: Vec<MsgMeta> = Vec::with_capacity(fetches.len());
     let mut new_uids: Vec<u32> = Vec::new();
+    let mut labels_by_uid = std::collections::HashMap::new();
+
+    if has_gmail_labels && !fetches.is_empty() {
+        let uid_set = fetches
+            .iter()
+            .map(|fetch| fetch.uid.unwrap_or(fetch.message).to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        labels_by_uid = imap_fetch_gmail_labels(session, &uid_set).await?;
+    }
 
     for fetch in &fetches {
         let uid = fetch.uid.unwrap_or(fetch.message);
         let message_id = format!("imap-{account_id}-{folder_id}-{uid}");
         let thread_id = format!("thread-{message_id}");
 
-        let is_read = fetch.flags().any(|f| matches!(f, async_imap::types::Flag::Seen));
-        let is_starred = fetch.flags().any(|f| matches!(f, async_imap::types::Flag::Flagged));
+        let is_read = fetch
+            .flags()
+            .any(|f| matches!(f, async_imap::types::Flag::Seen));
+        let is_starred = fetch
+            .flags()
+            .any(|f| matches!(f, async_imap::types::Flag::Flagged));
+        let labels = if has_gmail_labels {
+            labels_by_uid.get(&uid).cloned().unwrap_or_default()
+        } else {
+            fetch
+                .flags()
+                .filter_map(|flag| match flag {
+                    async_imap::types::Flag::Custom(value) => {
+                        normalize_keyword_label(value.as_ref())
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
 
         let (subject, from, from_email, to, cc, date) = match fetch.envelope() {
             Some(env) => {
                 let (subj, frm, frm_email, t, c, d) = parse_envelope(env);
                 // If envelope has no date, log a warning
                 if d.is_empty() {
-                    eprintln!("[imap] WARNING: no date in envelope for '{}' from {}", subj, frm);
+                    eprintln!(
+                        "[imap] WARNING: no date in envelope for '{}' from {}",
+                        subj, frm
+                    );
                 }
                 (subj, frm, frm_email, t, c, d)
             }
@@ -1080,8 +1757,18 @@ async fn fetch_folder_contents_incremental(
         }
 
         metas.push(MsgMeta {
-            uid, message_id, thread_id, is_read, is_starred,
-            subject, from, from_email, to, cc, date,
+            uid,
+            message_id,
+            thread_id,
+            is_read,
+            is_starred,
+            subject,
+            from,
+            from_email,
+            to,
+            cc,
+            date,
+            labels,
         });
     }
 
@@ -1089,8 +1776,15 @@ async fn fetch_folder_contents_incremental(
     let mut body_map: std::collections::HashMap<u32, Vec<u8>> = std::collections::HashMap::new();
 
     if !new_uids.is_empty() {
-        eprintln!("[imap] fetching body for {} new messages in {mailbox_name}", new_uids.len());
-        let uid_set = new_uids.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
+        eprintln!(
+            "[imap] fetching body for {} new messages in {mailbox_name}",
+            new_uids.len()
+        );
+        let uid_set = new_uids
+            .iter()
+            .map(|u| u.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         if let Ok(stream) = session.uid_fetch(&uid_set, "BODY.PEEK[]").await {
             if let Ok(body_fetches) = stream.try_collect::<Vec<_>>().await {
                 for bf in &body_fetches {
@@ -1104,7 +1798,10 @@ async fn fetch_folder_contents_incremental(
             }
         }
     } else {
-        eprintln!("[imap] all {} messages cached in {mailbox_name}, skipping body fetch", metas.len());
+        eprintln!(
+            "[imap] all {} messages cached in {mailbox_name}, skipping body fetch",
+            metas.len()
+        );
     }
 
     // --- Phase 3: assemble messages ---
@@ -1114,11 +1811,18 @@ async fn fetch_folder_contents_incremental(
     for meta in metas {
         let (body, preview, attachments, final_date) = if meta.date.is_empty() {
             // If no date in envelope, check if we have cached data with a valid date
-            if let Some((cached_body, cached_preview, cached_attachments, cached_date)) = existing_bodies.get(&meta.uid) {
+            if let Some((cached_body, cached_preview, cached_attachments, cached_date)) =
+                existing_bodies.get(&meta.uid)
+            {
                 // Use cached data if we have a valid date (not current timestamp pattern)
                 if !cached_date.is_empty() && !cached_date.starts_with("2026-03-16") {
                     // Cached date looks valid, use it
-                    (cached_body.clone(), cached_preview.clone(), cached_attachments.clone(), cached_date.clone())
+                    (
+                        cached_body.clone(),
+                        cached_preview.clone(),
+                        cached_attachments.clone(),
+                        cached_date.clone(),
+                    )
                 } else if let Some(raw) = body_map.remove(&meta.uid) {
                     // Need to extract date from body
                     let parsed = extract_body_from_mime(&raw);
@@ -1128,8 +1832,16 @@ async fn fetch_folder_contents_incremental(
                     (parsed, prev, atts, date)
                 } else {
                     // No body available, use cached data with current time
-                    eprintln!("[imap] WARNING: no body available for UID {} with empty date", meta.uid);
-                    (cached_body.clone(), cached_preview.clone(), cached_attachments.clone(), memory::current_timestamp())
+                    eprintln!(
+                        "[imap] WARNING: no body available for UID {} with empty date",
+                        meta.uid
+                    );
+                    (
+                        cached_body.clone(),
+                        cached_preview.clone(),
+                        cached_attachments.clone(),
+                        memory::current_timestamp(),
+                    )
                 }
             } else if let Some(raw) = body_map.remove(&meta.uid) {
                 // No cache, extract from body
@@ -1140,12 +1852,27 @@ async fn fetch_folder_contents_incremental(
                 (parsed, prev, atts, date)
             } else {
                 // No body available
-                eprintln!("[imap] WARNING: no body available for UID {} with empty date", meta.uid);
-                (String::new(), "(No preview)".into(), vec![], memory::current_timestamp())
+                eprintln!(
+                    "[imap] WARNING: no body available for UID {} with empty date",
+                    meta.uid
+                );
+                (
+                    String::new(),
+                    "(No preview)".into(),
+                    vec![],
+                    memory::current_timestamp(),
+                )
             }
-        } else if let Some((cached_body, cached_preview, cached_attachments, _)) = existing_bodies.get(&meta.uid) {
+        } else if let Some((cached_body, cached_preview, cached_attachments, _)) =
+            existing_bodies.get(&meta.uid)
+        {
             // Reuse body + preview + attachments from memory, use envelope date
-            (cached_body.clone(), cached_preview.clone(), cached_attachments.clone(), meta.date.clone())
+            (
+                cached_body.clone(),
+                cached_preview.clone(),
+                cached_attachments.clone(),
+                meta.date.clone(),
+            )
         } else if let Some(raw) = body_map.remove(&meta.uid) {
             // Parse newly downloaded body and extract attachments
             let parsed = extract_body_from_mime(&raw);
@@ -1153,7 +1880,12 @@ async fn fetch_folder_contents_incremental(
             let atts = extract_attachments_from_mime(&raw);
             (parsed, prev, atts, meta.date.clone())
         } else {
-            (String::new(), "(No preview)".into(), vec![], meta.date.clone())
+            (
+                String::new(),
+                "(No preview)".into(),
+                vec![],
+                meta.date.clone(),
+            )
         };
 
         messages.push(MailMessage {
@@ -1174,7 +1906,7 @@ async fn fetch_folder_contents_incremental(
             is_starred: meta.is_starred,
             has_attachments: !attachments.is_empty(),
             attachments,
-            labels: vec![],
+            labels: meta.labels,
             imap_uid: Some(meta.uid),
             previous_folder_id: None,
         });
@@ -1212,7 +1944,11 @@ fn classify_folder(name: &str) -> (MailFolderKind, &'static str) {
         (MailFolderKind::Drafts, "mdi-file-document-edit-outline")
     } else if lower.contains("trash") || lower.contains("deleted") || lower.contains("已删除") {
         (MailFolderKind::Trash, "mdi-delete-outline")
-    } else if lower.contains("archive") || lower.contains("all mail") || lower == "[gmail]/all mail" || lower.contains("归档") {
+    } else if lower.contains("archive")
+        || lower.contains("all mail")
+        || lower == "[gmail]/all mail"
+        || lower.contains("归档")
+    {
         (MailFolderKind::Archive, "mdi-archive-outline")
     } else if lower.contains("spam")
         || lower.contains("junk")
@@ -1242,10 +1978,7 @@ async fn select_mailbox_for_incremental_sync(
     let has_condstore = has_qresync || capabilities.has_str("CONDSTORE");
     eprintln!(
         "[imap] mailbox sync capabilities account={} mailbox={} qresync={} condstore={}",
-        account_id,
-        mailbox_name,
-        has_qresync,
-        has_condstore
+        account_id, mailbox_name, has_qresync, has_condstore
     );
 
     if has_qresync {
@@ -1253,16 +1986,13 @@ async fn select_mailbox_for_incremental_sync(
             Ok(()) => {
                 eprintln!(
                     "[imap] enabled QRESYNC account={} mailbox={}",
-                    account_id,
-                    mailbox_name
+                    account_id, mailbox_name
                 );
             }
             Err(error) => {
                 eprintln!(
                     "[imap] ENABLE QRESYNC failed account={} mailbox={}: {}",
-                    account_id,
-                    mailbox_name,
-                    error
+                    account_id, mailbox_name, error
                 );
             }
         }
@@ -1283,7 +2013,15 @@ async fn select_mailbox_for_incremental_sync(
                         highest_modseq,
                         known_uids.len()
                     );
-                    match qresync_select_mailbox(session, mailbox_name, uid_validity, highest_modseq, &known_uids).await {
+                    match qresync_select_mailbox(
+                        session,
+                        mailbox_name,
+                        uid_validity,
+                        highest_modseq,
+                        &known_uids,
+                    )
+                    .await
+                    {
                         Ok(result) => {
                             eprintln!(
                                 "[imap] QRESYNC SELECT ok account={} mailbox={} vanished={}",
@@ -1305,8 +2043,7 @@ async fn select_mailbox_for_incremental_sync(
                 } else {
                     eprintln!(
                         "[imap] skipping QRESYNC SELECT account={} mailbox={} reason=no-known-uids",
-                        account_id,
-                        mailbox_name
+                        account_id, mailbox_name
                     );
                 }
             } else {
@@ -1321,8 +2058,7 @@ async fn select_mailbox_for_incremental_sync(
         } else {
             eprintln!(
                 "[imap] skipping QRESYNC SELECT account={} mailbox={} reason=no-local-folder-state",
-                account_id,
-                mailbox_name
+                account_id, mailbox_name
             );
         }
     }
@@ -1330,26 +2066,33 @@ async fn select_mailbox_for_incremental_sync(
     if has_condstore {
         eprintln!(
             "[imap] falling back to CONDSTORE SELECT account={} mailbox={}",
-            account_id,
-            mailbox_name
+            account_id, mailbox_name
         );
         let mailbox = session
             .select_condstore(mailbox_name)
             .await
-            .map_err(|error| BackendError::internal(format!("IMAP SELECT CONDSTORE '{mailbox_name}' failed: {error}")))?;
-        return Ok(MailboxSelectResult { mailbox, vanished_uids: Vec::new() });
+            .map_err(|error| {
+                BackendError::internal(format!(
+                    "IMAP SELECT CONDSTORE '{mailbox_name}' failed: {error}"
+                ))
+            })?;
+        return Ok(MailboxSelectResult {
+            mailbox,
+            vanished_uids: Vec::new(),
+        });
     }
 
     eprintln!(
         "[imap] falling back to plain SELECT account={} mailbox={}",
-        account_id,
-        mailbox_name
+        account_id, mailbox_name
     );
-    let mailbox = session
-        .select(mailbox_name)
-        .await
-        .map_err(|error| BackendError::internal(format!("IMAP SELECT '{mailbox_name}' failed: {error}")))?;
-    Ok(MailboxSelectResult { mailbox, vanished_uids: Vec::new() })
+    let mailbox = session.select(mailbox_name).await.map_err(|error| {
+        BackendError::internal(format!("IMAP SELECT '{mailbox_name}' failed: {error}"))
+    })?;
+    Ok(MailboxSelectResult {
+        mailbox,
+        vanished_uids: Vec::new(),
+    })
 }
 
 fn resolve_or_create_folder(account_id: &str, mailbox_name: &str) -> MailboxFolder {
@@ -1394,21 +2137,21 @@ async fn qresync_select_mailbox(
         highest_modseq,
         known_uid_set,
     );
-    let request_id = session
-        .run_command(&command)
-        .await
-        .map_err(|error| BackendError::internal(format!("IMAP QRESYNC SELECT failed to send: {error}")))?;
+    let request_id = session.run_command(&command).await.map_err(|error| {
+        BackendError::internal(format!("IMAP QRESYNC SELECT failed to send: {error}"))
+    })?;
 
     let mut mailbox = async_imap::types::Mailbox::default();
     let mut vanished_uids = Vec::new();
 
     loop {
-        let response = session
-            .read_response()
-            .await
-            .map_err(|error| BackendError::internal(format!("IMAP QRESYNC SELECT read failed: {error}")))?;
+        let response = session.read_response().await.map_err(|error| {
+            BackendError::internal(format!("IMAP QRESYNC SELECT read failed: {error}"))
+        })?;
         let Some(response) = response else {
-            return Err(BackendError::internal("IMAP QRESYNC SELECT connection lost"));
+            return Err(BackendError::internal(
+                "IMAP QRESYNC SELECT connection lost",
+            ));
         };
 
         match response.parsed() {
@@ -1418,21 +2161,19 @@ async fn qresync_select_mailbox(
                 code,
                 information,
                 ..
-            } if tag == &request_id => {
-                match status {
-                    imap_proto::Status::Ok => break,
-                    imap_proto::Status::Bad | imap_proto::Status::No => {
-                        return Err(BackendError::internal(format!(
-                            "IMAP QRESYNC SELECT rejected: code={code:?} info={information:?}"
-                        )));
-                    }
-                    other => {
-                        return Err(BackendError::internal(format!(
-                            "IMAP QRESYNC SELECT unexpected status: {other:?}"
-                        )));
-                    }
+            } if tag == &request_id => match status {
+                imap_proto::Status::Ok => break,
+                imap_proto::Status::Bad | imap_proto::Status::No => {
+                    return Err(BackendError::internal(format!(
+                        "IMAP QRESYNC SELECT rejected: code={code:?} info={information:?}"
+                    )));
                 }
-            }
+                other => {
+                    return Err(BackendError::internal(format!(
+                        "IMAP QRESYNC SELECT unexpected status: {other:?}"
+                    )));
+                }
+            },
             imap_proto::Response::Data {
                 status: imap_proto::Status::Ok,
                 code,
@@ -1442,7 +2183,12 @@ async fn qresync_select_mailbox(
                 imap_proto::MailboxDatum::Exists(exists) => mailbox.exists = *exists,
                 imap_proto::MailboxDatum::Recent(recent) => mailbox.recent = *recent,
                 imap_proto::MailboxDatum::Flags(flags) => {
-                    mailbox.flags.extend(flags.iter().map(|flag| (*flag).to_string()).map(async_imap::types::Flag::from));
+                    mailbox.flags.extend(
+                        flags
+                            .iter()
+                            .map(|flag| (*flag).to_string())
+                            .map(async_imap::types::Flag::from),
+                    );
                 }
                 _ => {}
             },
@@ -1453,19 +2199,30 @@ async fn qresync_select_mailbox(
         }
     }
 
-    Ok(MailboxSelectResult { mailbox, vanished_uids })
+    Ok(MailboxSelectResult {
+        mailbox,
+        vanished_uids,
+    })
 }
 
-fn apply_mailbox_code(mailbox: &mut async_imap::types::Mailbox, code: Option<&imap_proto::ResponseCode<'_>>) {
+fn apply_mailbox_code(
+    mailbox: &mut async_imap::types::Mailbox,
+    code: Option<&imap_proto::ResponseCode<'_>>,
+) {
     match code {
         Some(imap_proto::ResponseCode::UidValidity(uid)) => mailbox.uid_validity = Some(*uid),
         Some(imap_proto::ResponseCode::UidNext(uid_next)) => mailbox.uid_next = Some(*uid_next),
-        Some(imap_proto::ResponseCode::HighestModSeq(modseq)) => mailbox.highest_modseq = Some(*modseq),
+        Some(imap_proto::ResponseCode::HighestModSeq(modseq)) => {
+            mailbox.highest_modseq = Some(*modseq)
+        }
         Some(imap_proto::ResponseCode::Unseen(unseen)) => mailbox.unseen = Some(*unseen),
         Some(imap_proto::ResponseCode::PermanentFlags(flags)) => {
-            mailbox
-                .permanent_flags
-                .extend(flags.iter().map(|flag| (*flag).to_string()).map(async_imap::types::Flag::from));
+            mailbox.permanent_flags.extend(
+                flags
+                    .iter()
+                    .map(|flag| (*flag).to_string())
+                    .map(async_imap::types::Flag::from),
+            );
         }
         _ => {}
     }
@@ -1634,20 +2391,24 @@ fn extract_date_from_body(raw: &[u8], _uid: u32) -> String {
     match mailparse::parse_mail(raw) {
         Ok(mail) => {
             // First try Date header
-            let date_header = mail.headers.iter()
+            let date_header = mail
+                .headers
+                .iter()
                 .find(|h| h.get_key().eq_ignore_ascii_case("Date"))
                 .map(|h| h.get_value());
 
             if let Some(date_str) = date_header {
                 if let Ok(ts) = mailparse::dateparse(&date_str) {
-                    let dt = chrono::DateTime::from_timestamp(ts, 0)
-                        .unwrap_or_else(chrono::Utc::now);
+                    let dt =
+                        chrono::DateTime::from_timestamp(ts, 0).unwrap_or_else(chrono::Utc::now);
                     return dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
                 }
             }
 
             // No Date header, try to extract from first Received header
-            let received_header = mail.headers.iter()
+            let received_header = mail
+                .headers
+                .iter()
                 .find(|h| h.get_key().eq_ignore_ascii_case("Received"))
                 .map(|h| h.get_value());
 
@@ -1665,11 +2426,13 @@ fn extract_date_from_body(raw: &[u8], _uid: u32) -> String {
 
             memory::current_timestamp()
         }
-        Err(_) => memory::current_timestamp()
+        Err(_) => memory::current_timestamp(),
     }
 }
 
-fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String, Vec<String>, Vec<String>, String) {
+fn parse_envelope(
+    env: &imap_proto::types::Envelope,
+) -> (String, String, String, Vec<String>, Vec<String>, String) {
     let subject = env
         .subject
         .as_ref()
@@ -1686,8 +2449,16 @@ fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String,
                 .as_ref()
                 .map(|n| decode_header_value(n))
                 .unwrap_or_default();
-            let mailbox = addr.mailbox.as_ref().map(|m| String::from_utf8_lossy(m).to_string()).unwrap_or_default();
-            let host = addr.host.as_ref().map(|h| String::from_utf8_lossy(h).to_string()).unwrap_or_default();
+            let mailbox = addr
+                .mailbox
+                .as_ref()
+                .map(|m| String::from_utf8_lossy(m).to_string())
+                .unwrap_or_default();
+            let host = addr
+                .host
+                .as_ref()
+                .map(|h| String::from_utf8_lossy(h).to_string())
+                .unwrap_or_default();
             let email = format!("{mailbox}@{host}");
             let display = if name.is_empty() { email.clone() } else { name };
             (display, email)
@@ -1698,15 +2469,31 @@ fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String,
         addrs
             .iter()
             .map(|addr| {
-                let mailbox = addr.mailbox.as_ref().map(|m| String::from_utf8_lossy(m).to_string()).unwrap_or_default();
-                let host = addr.host.as_ref().map(|h| String::from_utf8_lossy(h).to_string()).unwrap_or_default();
+                let mailbox = addr
+                    .mailbox
+                    .as_ref()
+                    .map(|m| String::from_utf8_lossy(m).to_string())
+                    .unwrap_or_default();
+                let host = addr
+                    .host
+                    .as_ref()
+                    .map(|h| String::from_utf8_lossy(h).to_string())
+                    .unwrap_or_default();
                 format!("{mailbox}@{host}")
             })
             .collect()
     };
 
-    let to = env.to.as_ref().map(|a| extract_addresses(a)).unwrap_or_default();
-    let cc = env.cc.as_ref().map(|a| extract_addresses(a)).unwrap_or_default();
+    let to = env
+        .to
+        .as_ref()
+        .map(|a| extract_addresses(a))
+        .unwrap_or_default();
+    let cc = env
+        .cc
+        .as_ref()
+        .map(|a| extract_addresses(a))
+        .unwrap_or_default();
 
     let date = env
         .date
@@ -1717,16 +2504,16 @@ fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String,
             mailparse::dateparse(&raw)
                 .map(|ts| {
                     let secs = ts;
-                    let dt = chrono::DateTime::from_timestamp(secs, 0)
-                        .unwrap_or_else(chrono::Utc::now);
+                    let dt =
+                        chrono::DateTime::from_timestamp(secs, 0).unwrap_or_else(chrono::Utc::now);
                     dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
                 })
                 .unwrap_or_else(|e| {
                     eprintln!("[imap] WARNING: failed to parse date '{}': {:?}", raw, e);
-                    String::new()  // Return empty string instead of current time
+                    String::new() // Return empty string instead of current time
                 })
         })
-        .unwrap_or_default();  // Return empty string if no date field
+        .unwrap_or_default(); // Return empty string if no date field
 
     (subject, from, from_email, to, cc, date)
 }
@@ -1734,7 +2521,10 @@ fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String,
 // SMTP helper (async)
 // ---------------------------------------------------------------------------
 
-pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Result<(), BackendError> {
+pub async fn smtp_send(
+    state: &StoredAccountState,
+    draft: &DraftMessage,
+) -> Result<(), BackendError> {
     use lettre::message::header::ContentType;
     use lettre::message::{Attachment, Mailbox, MultiPart, SinglePart};
     use lettre::transport::smtp::authentication::{Credentials, Mechanism};
@@ -1746,7 +2536,11 @@ pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Resu
         .map_err(|e| BackendError::validation(format!("Invalid sender address: {e}")))?;
 
     let mut builder = Message::builder().from(from);
-    if let Some(reply_to) = identity.reply_to.as_ref().filter(|value| !value.trim().is_empty()) {
+    if let Some(reply_to) = identity
+        .reply_to
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
         let reply_to_mailbox: Mailbox = reply_to
             .parse()
             .map_err(|e| BackendError::validation(format!("Invalid Reply-To address: {e}")))?;
@@ -1754,9 +2548,9 @@ pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Resu
     }
 
     for recipient in draft.to.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-        let to: Mailbox = recipient
-            .parse()
-            .map_err(|e| BackendError::validation(format!("Invalid recipient '{recipient}': {e}")))?;
+        let to: Mailbox = recipient.parse().map_err(|e| {
+            BackendError::validation(format!("Invalid recipient '{recipient}': {e}"))
+        })?;
         builder = builder.to(to);
     }
 
@@ -1767,7 +2561,12 @@ pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Resu
         builder = builder.cc(cc);
     }
 
-    for recipient in draft.bcc.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+    for recipient in draft
+        .bcc
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         let bcc: Mailbox = recipient
             .parse()
             .map_err(|e| BackendError::validation(format!("Invalid BCC '{recipient}': {e}")))?;
@@ -1792,8 +2591,8 @@ pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Resu
 
         for att in &draft.attachments {
             let decoded = base64_decode(&att.data_base64).unwrap_or_default();
-            let content_type = ContentType::parse(&att.mime_type)
-                .unwrap_or(ContentType::TEXT_PLAIN);
+            let content_type =
+                ContentType::parse(&att.mime_type).unwrap_or(ContentType::TEXT_PLAIN);
             let attachment = Attachment::new(att.file_name.clone()).body(decoded, content_type);
             multipart = multipart.singlepart(attachment);
         }
@@ -1827,8 +2626,7 @@ pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Resu
             .map_err(|e| BackendError::internal(format!("SMTP relay error: {e}")))?
             .port(port)
     } else {
-        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host)
-            .port(port)
+        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host).port(port)
     };
     let transport_builder = transport_builder.credentials(creds);
     let transport = if let Some(mechanisms) = mechanisms {
@@ -1847,7 +2645,11 @@ pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Resu
 
 fn resolve_sender_identity(account: &MailAccount, identity_id: Option<&str>) -> MailIdentity {
     if let Some(identity_id) = identity_id {
-        if let Some(identity) = account.identities.iter().find(|identity| identity.id == identity_id) {
+        if let Some(identity) = account
+            .identities
+            .iter()
+            .find(|identity| identity.id == identity_id)
+        {
             return identity.clone();
         }
     }

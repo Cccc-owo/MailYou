@@ -95,7 +95,10 @@ pub fn save_accounts(accounts: &[StoredAccountState]) -> io::Result<()> {
         let account_id = &account_state.account.id;
         let password = &account_state.config.password;
 
-        if !password.is_empty() && password != SECRET_PLACEHOLDER && keyring_set(account_id, "password", password) {
+        if !password.is_empty()
+            && password != SECRET_PLACEHOLDER
+            && keyring_set(account_id, "password", password)
+        {
             account_state.config.password = SECRET_PLACEHOLDER.into();
         }
 
@@ -248,7 +251,8 @@ pub fn get_security_status() -> io::Result<StorageSecurityStatus> {
     ensure_initialized()?;
     let connection = open_connection()?;
     let mode = current_security_mode(&connection)?;
-    let is_unlocked = matches!(mode, MODE_KEYRING) || unlocked_storage_key().lock().unwrap().is_some();
+    let is_unlocked =
+        matches!(mode, MODE_KEYRING) || unlocked_storage_key().lock().unwrap().is_some();
     let (keyring_available, keyring_error) = probe_system_keyring();
 
     Ok(StorageSecurityStatus {
@@ -362,7 +366,10 @@ fn load_binary_with_mime(kind: &str, key: &str) -> io::Result<Option<(String, Ve
         return Ok(None);
     };
     let plaintext = decrypt_payload(&payload)?;
-    Ok(Some((mime_type.unwrap_or_else(|| "application/octet-stream".into()), plaintext)))
+    Ok(Some((
+        mime_type.unwrap_or_else(|| "application/octet-stream".into()),
+        plaintext,
+    )))
 }
 
 fn delete_binary(kind: &str, key: &str) -> io::Result<()> {
@@ -708,7 +715,12 @@ fn decrypt_with_key(key_material: &[u8; 32], payload: &EncryptedPayload) -> io::
             Aad::empty(),
             &mut in_out,
         )
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Failed to decrypt stored payload"))?;
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Failed to decrypt stored payload",
+            )
+        })?;
 
     Ok(plaintext.to_vec())
 }
@@ -798,15 +810,27 @@ fn persist_wrapped_data_key(
     let wrapping_key = derive_password_key(password, &salt)?;
     let wrapped = encrypt_with_key(&wrapping_key, data_key)?;
     set_metadata(connection, META_WRAPPED_KEY_SALT, &BASE64.encode(salt))?;
-    set_metadata(connection, META_WRAPPED_KEY_NONCE, &BASE64.encode(wrapped.nonce))?;
-    set_metadata(connection, META_WRAPPED_KEY_CIPHERTEXT, &BASE64.encode(wrapped.ciphertext))?;
+    set_metadata(
+        connection,
+        META_WRAPPED_KEY_NONCE,
+        &BASE64.encode(wrapped.nonce),
+    )?;
+    set_metadata(
+        connection,
+        META_WRAPPED_KEY_CIPHERTEXT,
+        &BASE64.encode(wrapped.ciphertext),
+    )?;
     Ok(())
 }
 
 fn derive_password_key(password: &str, salt: &[u8]) -> io::Result<[u8; 32]> {
     let mut derived = [0_u8; 32];
-    let iterations = NonZeroU32::new(KDF_ITERATIONS)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid PBKDF2 iteration count"))?;
+    let iterations = NonZeroU32::new(KDF_ITERATIONS).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Invalid PBKDF2 iteration count",
+        )
+    })?;
     pbkdf2::derive(
         pbkdf2::PBKDF2_HMAC_SHA256,
         iterations,
@@ -864,7 +888,9 @@ fn legacy_load_accounts(path: &Path) -> io::Result<Vec<StoredAccountState>> {
 }
 
 fn legacy_raw_path(message_id: &str) -> io::Result<PathBuf> {
-    Ok(storage_dir()?.join("raw").join(format!("{}.eml", sanitize_id(message_id))))
+    Ok(storage_dir()?
+        .join("raw")
+        .join(format!("{}.eml", sanitize_id(message_id))))
 }
 
 fn load_legacy_avatar(contact_id: &str) -> io::Result<Option<(String, Vec<u8>)>> {
@@ -876,7 +902,9 @@ fn load_legacy_avatar(contact_id: &str) -> io::Result<Option<(String, Vec<u8>)>>
 }
 
 fn legacy_avatar_path(contact_id: &str) -> io::Result<Option<PathBuf>> {
-    let path = storage_dir()?.join("avatars").join(format!("{contact_id}.webp"));
+    let path = storage_dir()?
+        .join("avatars")
+        .join(format!("{contact_id}.webp"));
     if path.exists() {
         Ok(Some(path))
     } else {

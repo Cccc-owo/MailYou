@@ -3,8 +3,7 @@ use serde_json::Value;
 
 use crate::models::{
     AccountSetupDraft, AttachmentContent, Contact, ContactGroup, DraftMessage, MailAccount,
-    MailMessage, MailboxBundle, MailboxFolder, SyncStatus,
-    OAuthProviderAvailability,
+    MailMessage, MailboxBundle, MailboxFolder, OAuthProviderAvailability, SyncStatus,
 };
 
 #[derive(Debug, Deserialize)]
@@ -15,80 +14,199 @@ pub enum BackendRequest {
     CreateAccount(AccountSetupDraft),
     TestAccountConnection(AccountSetupDraft),
     #[serde(rename_all = "camelCase")]
-    ListFolders { account_id: String },
+    ListFolders {
+        account_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    CreateFolder { account_id: String, name: String },
+    CreateFolder {
+        account_id: String,
+        name: String,
+    },
     #[serde(rename_all = "camelCase")]
-    RenameFolder { account_id: String, folder_id: String, name: String },
+    RenameFolder {
+        account_id: String,
+        folder_id: String,
+        name: String,
+    },
     #[serde(rename_all = "camelCase")]
-    DeleteFolder { account_id: String, folder_id: String },
+    DeleteFolder {
+        account_id: String,
+        folder_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    ListMessages { account_id: String, folder_id: String },
+    ListMessages {
+        account_id: String,
+        folder_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    GetDraft { account_id: String, draft_id: String },
+    GetDraft {
+        account_id: String,
+        draft_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    SearchMessages { account_id: String, query: String },
+    SearchMessages {
+        account_id: String,
+        query: String,
+    },
     #[serde(rename_all = "camelCase")]
-    GetMessage { account_id: String, message_id: String },
+    ListLabels {
+        account_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    GetMessage {
+        account_id: String,
+        message_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    AddLabel {
+        account_id: String,
+        message_id: String,
+        label: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    RemoveLabel {
+        account_id: String,
+        message_id: String,
+        label: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    RenameLabel {
+        account_id: String,
+        label: String,
+        new_label: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    DeleteLabel {
+        account_id: String,
+        label: String,
+    },
     SaveDraft(DraftMessage),
     SendMessage(DraftMessage),
     #[serde(rename_all = "camelCase")]
-    ToggleStar { account_id: String, message_id: String },
+    ToggleStar {
+        account_id: String,
+        message_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    ToggleRead { account_id: String, message_id: String },
+    ToggleRead {
+        account_id: String,
+        message_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    DeleteMessage { account_id: String, message_id: String },
+    DeleteMessage {
+        account_id: String,
+        message_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    DeleteAccount { account_id: String },
+    DeleteAccount {
+        account_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    ArchiveMessage { account_id: String, message_id: String },
+    ArchiveMessage {
+        account_id: String,
+        message_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    RestoreMessage { account_id: String, message_id: String },
+    RestoreMessage {
+        account_id: String,
+        message_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    MoveMessage { account_id: String, message_id: String, folder_id: String },
+    MoveMessage {
+        account_id: String,
+        message_id: String,
+        folder_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    MarkAllRead { account_id: String, folder_id: String },
+    MarkAllRead {
+        account_id: String,
+        folder_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    SyncAccount { account_id: String },
+    SyncAccount {
+        account_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    GetMailboxBundle { account_id: String },
+    GetMailboxBundle {
+        account_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    GetAttachmentContent { account_id: String, message_id: String, attachment_id: String },
+    GetAttachmentContent {
+        account_id: String,
+        message_id: String,
+        attachment_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    GetAccountConfig { account_id: String },
+    GetAccountConfig {
+        account_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    UpdateAccount { account_id: String, draft: AccountSetupDraft },
+    UpdateAccount {
+        account_id: String,
+        draft: AccountSetupDraft,
+    },
     ListOAuthProviders,
     // -- Contacts (local-only, bypass MailProvider) --
     #[serde(rename_all = "camelCase")]
-    ListContacts { group_id: Option<String> },
+    ListContacts {
+        group_id: Option<String>,
+    },
     CreateContact(Contact),
     #[serde(rename_all = "camelCase")]
-    UpdateContact { contact_id: String, contact: Contact },
+    UpdateContact {
+        contact_id: String,
+        contact: Contact,
+    },
     #[serde(rename_all = "camelCase")]
-    DeleteContact { contact_id: String },
+    DeleteContact {
+        contact_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    SearchContacts { query: String },
+    SearchContacts {
+        query: String,
+    },
     ListContactGroups,
     #[serde(rename_all = "camelCase")]
-    CreateContactGroup { name: String },
+    CreateContactGroup {
+        name: String,
+    },
     #[serde(rename_all = "camelCase")]
-    UpdateContactGroup { group_id: String, name: String },
+    UpdateContactGroup {
+        group_id: String,
+        name: String,
+    },
     #[serde(rename_all = "camelCase")]
-    DeleteContactGroup { group_id: String },
+    DeleteContactGroup {
+        group_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    UploadContactAvatar { contact_id: String, data_base64: String, mime_type: String },
+    UploadContactAvatar {
+        contact_id: String,
+        data_base64: String,
+        mime_type: String,
+    },
     #[serde(rename_all = "camelCase")]
-    DeleteContactAvatar { contact_id: String },
+    DeleteContactAvatar {
+        contact_id: String,
+    },
     #[serde(rename_all = "camelCase")]
-    GetContactAvatar { contact_id: String },
+    GetContactAvatar {
+        contact_id: String,
+    },
     GetSecurityStatus,
     #[serde(rename_all = "camelCase")]
-    UnlockStorage { password: String },
+    UnlockStorage {
+        password: String,
+    },
     #[serde(rename_all = "camelCase")]
-    SetMasterPassword { current_password: Option<String>, new_password: String },
+    SetMasterPassword {
+        current_password: Option<String>,
+        new_password: String,
+    },
     #[serde(rename_all = "camelCase")]
-    ClearMasterPassword { current_password: String },
+    ClearMasterPassword {
+        current_password: String,
+    },
     GetStorageDir,
 }
 
@@ -106,7 +224,12 @@ impl BackendRequest {
             Self::ListMessages { .. } => "listMessages",
             Self::GetDraft { .. } => "getDraft",
             Self::SearchMessages { .. } => "searchMessages",
+            Self::ListLabels { .. } => "listLabels",
             Self::GetMessage { .. } => "getMessage",
+            Self::AddLabel { .. } => "addLabel",
+            Self::RemoveLabel { .. } => "removeLabel",
+            Self::RenameLabel { .. } => "renameLabel",
+            Self::DeleteLabel { .. } => "deleteLabel",
             Self::SaveDraft(_) => "saveDraft",
             Self::SendMessage(_) => "sendMessage",
             Self::ToggleStar { .. } => "toggleStar",
@@ -244,7 +367,10 @@ impl BackendMessage {
         Self::Response(response)
     }
 
-    pub fn mailbox_changed(account_id: impl Into<String>, source: &'static str) -> Result<Self, BackendError> {
+    pub fn mailbox_changed(
+        account_id: impl Into<String>,
+        source: &'static str,
+    ) -> Result<Self, BackendError> {
         Ok(Self::Event(BackendEvent {
             event: "mailboxChanged",
             payload: serialize(MailboxChangedEvent {

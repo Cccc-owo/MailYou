@@ -52,6 +52,11 @@ export interface MailMessage {
   previousFolderId?: string
 }
 
+export interface MailLabel {
+  name: string
+  count: number
+}
+
 export interface MailThread {
   id: string
   accountId: string

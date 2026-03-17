@@ -59,6 +59,15 @@
           />
         </v-list>
       </v-menu>
+      <v-btn
+        v-if="!props.isPop3"
+        size="small"
+        variant="tonal"
+        prepend-icon="mdi-label-multiple-outline"
+        @click="$emit('batch-manage-labels')"
+      >
+        {{ t('labels.manageTitle') }}
+      </v-btn>
       <v-btn size="small" variant="text" @click="$emit('clear-selection')">{{ t('common.cancel') }}</v-btn>
     </div>
 
@@ -162,6 +171,12 @@
         :title="ctxMenu.target.value?.isRead ? t('mailList.markUnread') : t('mailList.markRead')"
         @click="$emit('context-toggle-read', ctxMenu.target.value!.id)"
       />
+      <v-list-item
+        v-if="!props.isPop3"
+        prepend-icon="mdi-label-outline"
+        :title="t('labels.manageTitle')"
+        @click="$emit('context-manage-labels', ctxMenu.target.value!.id)"
+      />
       <v-divider />
       <template v-if="currentFolderKind === 'trash' || currentFolderKind === 'archive' || currentFolderKind === 'junk'">
         <v-list-item prepend-icon="mdi-inbox-arrow-down" :title="currentFolderKind === 'junk' ? t('reader.notSpam') : t('reader.restoreToInbox')" @click="$emit('context-restore', ctxMenu.target.value!.id)" />
@@ -230,10 +245,12 @@ const emit = defineEmits<{
   'batch-mark-read': []
   'batch-mark-unread': []
   'batch-move': [folderId: string]
+  'batch-manage-labels': []
   'context-reply': [messageId: string]
   'context-reply-all': [messageId: string]
   'context-forward': [messageId: string]
   'context-toggle-read': [messageId: string]
+  'context-manage-labels': [messageId: string]
   'context-archive': [messageId: string]
   'context-mark-spam': [messageId: string]
   'context-restore': [messageId: string]

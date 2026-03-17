@@ -36,7 +36,10 @@ impl RealtimeController {
         let mut desired = HashSet::new();
         let mut task_specs = Vec::new();
 
-        for account in accounts.into_iter().filter(|account| account.incoming_protocol == "imap") {
+        for account in accounts
+            .into_iter()
+            .filter(|account| account.incoming_protocol == "imap")
+        {
             let profile = realtime_profile(&account.provider);
             for mailbox_name in resolve_watched_mailboxes(&account.id, profile.watch_junk) {
                 let task_key = format!("{}\n{}", account.id, mailbox_name);
@@ -95,14 +98,18 @@ async fn run_realtime_loop(
                         "[idle] incremental sync failed for {account_id} {mailbox_name}: {}",
                         error.message
                     );
-                } else if let Ok(event) = BackendMessage::mailbox_changed(account_id.clone(), "idle") {
+                } else if let Ok(event) =
+                    BackendMessage::mailbox_changed(account_id.clone(), "idle")
+                {
                     let _ = tx.send(event);
                 }
                 backoff = profile.base_backoff;
             }
             Ok(IdleMailboxChange::Vanished(uids)) => {
                 if let Some(folder_id) = resolve_folder_id(&account_id, &mailbox_name) {
-                    if let Err(error) = memory::remove_messages_by_imap_uids(&account_id, &folder_id, &uids) {
+                    if let Err(error) =
+                        memory::remove_messages_by_imap_uids(&account_id, &folder_id, &uids)
+                    {
                         eprintln!(
                             "[idle] vanished prune failed for {account_id} {mailbox_name}: {}",
                             error.message
@@ -115,7 +122,9 @@ async fn run_realtime_loop(
                         "[idle] incremental sync after vanished failed for {account_id} {mailbox_name}: {}",
                         error.message
                     );
-                } else if let Ok(event) = BackendMessage::mailbox_changed(account_id.clone(), "idle") {
+                } else if let Ok(event) =
+                    BackendMessage::mailbox_changed(account_id.clone(), "idle")
+                {
                     let _ = tx.send(event);
                 }
                 backoff = profile.base_backoff;
@@ -146,14 +155,12 @@ async fn idle_until_mailbox_changes(
 }
 
 fn resolve_folder_id(account_id: &str, mailbox_name: &str) -> Option<String> {
-    memory::list_folders(account_id)
-        .ok()
-        .and_then(|folders| {
-            folders
-                .into_iter()
-                .find(|folder| folder.imap_name.as_deref() == Some(mailbox_name))
-                .map(|folder| folder.id)
-        })
+    memory::list_folders(account_id).ok().and_then(|folders| {
+        folders
+            .into_iter()
+            .find(|folder| folder.imap_name.as_deref() == Some(mailbox_name))
+            .map(|folder| folder.id)
+    })
 }
 
 fn resolve_watched_mailboxes(account_id: &str, watch_junk: bool) -> Vec<String> {
@@ -188,7 +195,11 @@ fn resolve_watched_mailboxes(account_id: &str, watch_junk: bool) -> Vec<String> 
 fn realtime_profile(provider: &str) -> RealtimeProfile {
     let normalized = provider.trim().to_lowercase();
 
-    if normalized.contains("qq") || normalized.contains("netease") || normalized.contains("163") || normalized.contains("126") {
+    if normalized.contains("qq")
+        || normalized.contains("netease")
+        || normalized.contains("163")
+        || normalized.contains("126")
+    {
         return RealtimeProfile {
             watch_junk: true,
             idle_timeout: Duration::from_secs(60 * 8),
@@ -197,7 +208,10 @@ fn realtime_profile(provider: &str) -> RealtimeProfile {
         };
     }
 
-    if normalized.contains("outlook") || normalized.contains("hotmail") || normalized.contains("live") {
+    if normalized.contains("outlook")
+        || normalized.contains("hotmail")
+        || normalized.contains("live")
+    {
         return RealtimeProfile {
             watch_junk: true,
             idle_timeout: Duration::from_secs(60 * 8),

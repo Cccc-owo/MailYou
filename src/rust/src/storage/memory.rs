@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use crate::models::{
-    AccountSetupDraft, AccountStatus, AttachmentContent, AttachmentMeta, Contact, ContactGroup, DraftMessage,
-    MailAccount, MailFolderKind, MailIdentity, MailMessage, MailThread, MailboxBundle, MailboxFolder,
-    StoredAccountState, SyncStatus,
+    AccountSetupDraft, AccountStatus, AttachmentContent, AttachmentMeta, Contact, ContactGroup,
+    DraftMessage, MailAccount, MailFolderKind, MailIdentity, MailLabel, MailMessage, MailThread,
+    MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
 };
 use crate::protocol::{BackendError, StorageSecurityStatus};
 use crate::storage::{accounts, mailbox, persisted, sync};
@@ -69,7 +69,9 @@ pub fn create_account_without_test(draft: AccountSetupDraft) -> Result<MailAccou
         account: account.clone(),
         config,
     });
-    state.folders.splice(0..0, mailbox::default_folders_for_account(&account_id));
+    state
+        .folders
+        .splice(0..0, mailbox::default_folders_for_account(&account_id));
     state.sync_statuses.insert(
         account_id.clone(),
         sync::initial_sync_status(&account_id, &last_synced_at),
@@ -193,7 +195,102 @@ pub fn search_messages(account_id: &str, query: &str) -> Result<Vec<MailMessage>
     Ok(messages)
 }
 
-pub fn get_message(account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+fn normalize_label_name(label: &str) -> Result<String, BackendError> {
+    let trimmed = label.trim();
+    if trimmed.is_empty() {
+        return Err(BackendError::validation("Label name cannot be empty"));
+    }
+    Ok(trimmed.into())
+}
+
+fn sort_message_labels(labels: &mut Vec<String>) {
+    labels.sort_by_key(|label| label.to_lowercase());
+    labels.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+}
+
+pub fn list_labels(account_id: &str) -> Result<Vec<MailLabel>, BackendError> {
+    let state = lock_state();
+    let mut counts: HashMap<String, (String, u32)> = HashMap::new();
+
+    for message in state
+        .messages
+        .iter()
+        .filter(|message| message.account_id == account_id)
+    {
+        for label in &message.labels {
+            let key = label.to_lowercase();
+            let entry = counts.entry(key).or_insert_with(|| (label.clone(), 0));
+            entry.1 += 1;
+        }
+    }
+
+    let mut labels: Vec<MailLabel> = counts
+        .into_values()
+        .map(|(name, count)| MailLabel { name, count })
+        .collect();
+    labels.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    Ok(labels)
+}
+
+pub fn add_label(
+    account_id: &str,
+    message_id: &str,
+    label: &str,
+) -> Result<Option<MailMessage>, BackendError> {
+    let normalized = normalize_label_name(label)?;
+    let mut state = lock_state();
+    let updated = {
+        let Some(message) = state
+            .messages
+            .iter_mut()
+            .find(|message| message.account_id == account_id && message.id == message_id)
+        else {
+            return Ok(None);
+        };
+
+        if !message
+            .labels
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(&normalized))
+        {
+            message.labels.push(normalized);
+            sort_message_labels(&mut message.labels);
+        }
+        message.clone()
+    };
+    state.persist()?;
+    Ok(Some(updated))
+}
+
+pub fn remove_label(
+    account_id: &str,
+    message_id: &str,
+    label: &str,
+) -> Result<Option<MailMessage>, BackendError> {
+    let normalized = normalize_label_name(label)?;
+    let mut state = lock_state();
+    let updated = {
+        let Some(message) = state
+            .messages
+            .iter_mut()
+            .find(|message| message.account_id == account_id && message.id == message_id)
+        else {
+            return Ok(None);
+        };
+
+        message
+            .labels
+            .retain(|existing| !existing.eq_ignore_ascii_case(&normalized));
+        message.clone()
+    };
+    state.persist()?;
+    Ok(Some(updated))
+}
+
+pub fn get_message(
+    account_id: &str,
+    message_id: &str,
+) -> Result<Option<MailMessage>, BackendError> {
     Ok(lock_state()
         .messages
         .iter()
@@ -227,7 +324,10 @@ pub fn save_draft(draft: DraftMessage) -> Result<DraftMessage, BackendError> {
     Ok(next_draft)
 }
 
-pub fn toggle_star(account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+pub fn toggle_star(
+    account_id: &str,
+    message_id: &str,
+) -> Result<Option<MailMessage>, BackendError> {
     let mut state = lock_state();
     let updated = {
         let Some(message) = state
@@ -246,7 +346,10 @@ pub fn toggle_star(account_id: &str, message_id: &str) -> Result<Option<MailMess
     Ok(Some(updated))
 }
 
-pub fn toggle_read(account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+pub fn toggle_read(
+    account_id: &str,
+    message_id: &str,
+) -> Result<Option<MailMessage>, BackendError> {
     let mut state = lock_state();
     let updated = {
         let Some(message) = state
@@ -270,7 +373,9 @@ pub fn delete_message(account_id: &str, message_id: &str) -> Result<(), BackendE
     let trash_folder_id = state
         .folders
         .iter()
-        .find(|folder| folder.account_id == account_id && matches!(folder.kind, MailFolderKind::Trash))
+        .find(|folder| {
+            folder.account_id == account_id && matches!(folder.kind, MailFolderKind::Trash)
+        })
         .map(|folder| folder.id.clone())
         .ok_or_else(|| BackendError::internal("Trash folder is missing"))?;
 
@@ -293,7 +398,11 @@ pub fn delete_message(account_id: &str, message_id: &str) -> Result<(), BackendE
 pub fn delete_account(account_id: &str) -> Result<(), BackendError> {
     let mut state = lock_state();
 
-    if !state.account_states.iter().any(|s| s.account.id == account_id) {
+    if !state
+        .account_states
+        .iter()
+        .any(|s| s.account.id == account_id)
+    {
         return Err(BackendError::not_found("Account not found"));
     }
 
@@ -307,12 +416,17 @@ pub fn delete_account(account_id: &str) -> Result<(), BackendError> {
     Ok(())
 }
 
-pub fn archive_message(account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+pub fn archive_message(
+    account_id: &str,
+    message_id: &str,
+) -> Result<Option<MailMessage>, BackendError> {
     let mut state = lock_state();
     let archive_folder_id = state
         .folders
         .iter()
-        .find(|folder| folder.account_id == account_id && matches!(folder.kind, MailFolderKind::Archive))
+        .find(|folder| {
+            folder.account_id == account_id && matches!(folder.kind, MailFolderKind::Archive)
+        })
         .map(|folder| folder.id.clone())
         .ok_or_else(|| BackendError::internal("Archive folder is missing"))?;
 
@@ -332,12 +446,17 @@ pub fn archive_message(account_id: &str, message_id: &str) -> Result<Option<Mail
     Ok(Some(updated))
 }
 
-pub fn restore_message(account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError> {
+pub fn restore_message(
+    account_id: &str,
+    message_id: &str,
+) -> Result<Option<MailMessage>, BackendError> {
     let mut state = lock_state();
     let inbox_folder_id = state
         .folders
         .iter()
-        .find(|folder| folder.account_id == account_id && matches!(folder.kind, MailFolderKind::Inbox))
+        .find(|folder| {
+            folder.account_id == account_id && matches!(folder.kind, MailFolderKind::Inbox)
+        })
         .map(|folder| folder.id.clone())
         .ok_or_else(|| BackendError::internal("Inbox folder is missing"))?;
 
@@ -379,7 +498,11 @@ pub fn restore_message(account_id: &str, message_id: &str) -> Result<Option<Mail
     Ok(Some(updated))
 }
 
-pub fn move_message(account_id: &str, message_id: &str, folder_id: &str) -> Result<Option<MailMessage>, BackendError> {
+pub fn move_message(
+    account_id: &str,
+    message_id: &str,
+    folder_id: &str,
+) -> Result<Option<MailMessage>, BackendError> {
     let mut state = lock_state();
 
     let target_folder = state
@@ -424,7 +547,9 @@ pub fn mark_all_read(account_id: &str, folder_id: &str) -> Result<(), BackendErr
         .iter()
         .find(|f| f.account_id == account_id && f.id == folder_id);
 
-    let is_starred = folder.map(|f| matches!(f.kind, MailFolderKind::Starred)).unwrap_or(false);
+    let is_starred = folder
+        .map(|f| matches!(f.kind, MailFolderKind::Starred))
+        .unwrap_or(false);
 
     for message in state.messages.iter_mut() {
         if message.account_id != account_id {
@@ -479,13 +604,23 @@ pub fn get_mailbox_bundle(account_id: &str) -> Result<MailboxBundle, BackendErro
 /// Return cached (body, preview, attachments, received_at) keyed by IMAP UID for all messages that
 /// belong to the given account and already have a downloaded body.
 /// Used by incremental sync to skip re-fetching bodies we already have.
-pub fn get_existing_bodies(account_id: &str) -> std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>, String)> {
+pub fn get_existing_bodies(
+    account_id: &str,
+) -> std::collections::HashMap<u32, (String, String, Vec<AttachmentMeta>, String)> {
     let state = lock_state();
     let mut map = std::collections::HashMap::new();
     for msg in state.messages.iter().filter(|m| m.account_id == account_id) {
         if let Some(uid) = msg.imap_uid {
             if !msg.body.is_empty() {
-                map.insert(uid, (msg.body.clone(), msg.preview.clone(), msg.attachments.clone(), msg.received_at.clone()));
+                map.insert(
+                    uid,
+                    (
+                        msg.body.clone(),
+                        msg.preview.clone(),
+                        msg.attachments.clone(),
+                        msg.received_at.clone(),
+                    ),
+                );
             }
         }
     }
@@ -522,7 +657,8 @@ pub fn get_existing_bodies_for_folder(
 
 pub fn get_max_imap_uid_for_folder(account_id: &str, folder_id: &str) -> Option<u32> {
     let state = lock_state();
-    state.messages
+    state
+        .messages
         .iter()
         .filter(|m| m.account_id == account_id && m.folder_id == folder_id)
         .filter_map(|m| m.imap_uid)
@@ -569,13 +705,18 @@ pub fn remove_messages_by_imap_uids(
         return Ok(());
     }
 
-    state.messages.retain(|message| !removed_ids.contains(&message.id));
+    state
+        .messages
+        .retain(|message| !removed_ids.contains(&message.id));
     state.threads.retain(|thread| {
         if thread.account_id != account_id {
             return true;
         }
 
-        !thread.message_ids.iter().any(|message_id| removed_ids.contains(message_id))
+        !thread
+            .message_ids
+            .iter()
+            .any(|message_id| removed_ids.contains(message_id))
     });
     state.recalculate_counts();
     state.persist()
@@ -583,7 +724,8 @@ pub fn remove_messages_by_imap_uids(
 
 pub fn get_existing_message_ids(account_id: &str) -> std::collections::HashSet<String> {
     let state = lock_state();
-    state.messages
+    state
+        .messages
         .iter()
         .filter(|m| m.account_id == account_id)
         .map(|m| m.id.clone())
@@ -628,7 +770,10 @@ pub fn get_account_config(account_id: &str) -> Result<AccountSetupDraft, Backend
     })
 }
 
-pub fn update_account(account_id: &str, draft: AccountSetupDraft) -> Result<MailAccount, BackendError> {
+pub fn update_account(
+    account_id: &str,
+    draft: AccountSetupDraft,
+) -> Result<MailAccount, BackendError> {
     let mut state = lock_state();
     let account_state = state
         .account_states
@@ -698,7 +843,9 @@ pub fn record_sent_message(draft: DraftMessage) -> Result<String, BackendError> 
     let sent_folder = state
         .folders
         .iter()
-        .find(|folder| folder.account_id == draft.account_id && matches!(folder.kind, MailFolderKind::Sent))
+        .find(|folder| {
+            folder.account_id == draft.account_id && matches!(folder.kind, MailFolderKind::Sent)
+        })
         .map(|folder| folder.id.clone())
         .ok_or_else(|| BackendError::internal("Sent folder is missing"))?;
 
@@ -729,12 +876,16 @@ pub fn record_sent_message(draft: DraftMessage) -> Result<String, BackendError> 
         is_read: true,
         is_starred: false,
         has_attachments: !draft.attachments.is_empty(),
-        attachments: draft.attachments.iter().map(|a| crate::models::AttachmentMeta {
-            id: a.file_name.clone(),
-            file_name: a.file_name.clone(),
-            mime_type: a.mime_type.clone(),
-            size_bytes: a.data_base64.len() as u64 * 3 / 4, // approximate decoded size
-        }).collect(),
+        attachments: draft
+            .attachments
+            .iter()
+            .map(|a| crate::models::AttachmentMeta {
+                id: a.file_name.clone(),
+                file_name: a.file_name.clone(),
+                mime_type: a.mime_type.clone(),
+                size_bytes: a.data_base64.len() as u64 * 3 / 4, // approximate decoded size
+            })
+            .collect(),
         labels: vec!["Sent".into()],
         previous_folder_id: None,
         imap_uid: None,
@@ -839,8 +990,10 @@ pub fn merge_remote_folder(
         .filter(|message| message.account_id == account_id)
         .map(|message| (message.id.clone(), message))
         .collect();
-    let remote_ids: std::collections::HashSet<String> =
-        remote_messages.iter().map(|message| message.id.clone()).collect();
+    let remote_ids: std::collections::HashSet<String> = remote_messages
+        .iter()
+        .map(|message| message.id.clone())
+        .collect();
 
     let mut merged_remote = Vec::with_capacity(remote_messages.len());
     for mut remote in remote_messages {
@@ -881,8 +1034,10 @@ pub fn merge_remote_folder(
 
     state.messages.extend(merged_remote);
 
-    let remote_thread_ids: std::collections::HashSet<String> =
-        remote_threads.iter().map(|thread| thread.id.clone()).collect();
+    let remote_thread_ids: std::collections::HashSet<String> = remote_threads
+        .iter()
+        .map(|thread| thread.id.clone())
+        .collect();
     state.threads.retain(|thread| {
         !(thread.account_id == account_id && remote_thread_ids.contains(&thread.id))
     });
@@ -911,7 +1066,9 @@ pub fn finish_sync(account_id: &str, timestamp: &str) -> Result<SyncStatus, Back
         account_state.account.status = AccountStatus::Connected;
     }
 
-    state.sync_statuses.insert(account_id.to_string(), status.clone());
+    state
+        .sync_statuses
+        .insert(account_id.to_string(), status.clone());
     state.persist()?;
     Ok(status)
 }
@@ -1090,7 +1247,11 @@ fn initial_state() -> MemoryState {
     // Load contacts
     if persisted::has_contacts_file() {
         let loaded = persisted::load_contacts();
-        eprintln!("[store] loaded {} contacts, {} groups from disk", loaded.contacts.len(), loaded.groups.len());
+        eprintln!(
+            "[store] loaded {} contacts, {} groups from disk",
+            loaded.contacts.len(),
+            loaded.groups.len()
+        );
         state.contacts = loaded.contacts;
         state.contact_groups = loaded.groups;
     }
@@ -1113,7 +1274,9 @@ fn sync_draft_mailbox_message(state: &mut MemoryState, draft: &DraftMessage) {
     let Some(folder_id) = state
         .folders
         .iter()
-        .find(|folder| folder.account_id == draft.account_id && matches!(folder.kind, MailFolderKind::Drafts))
+        .find(|folder| {
+            folder.account_id == draft.account_id && matches!(folder.kind, MailFolderKind::Drafts)
+        })
         .map(|folder| folder.id.clone())
     else {
         return;
@@ -1124,9 +1287,18 @@ fn sync_draft_mailbox_message(state: &mut MemoryState, draft: &DraftMessage) {
         .account_states
         .iter()
         .find(|account_state| account_state.account.id == draft.account_id)
-        .map(|account_state| resolve_identity(&account_state.account, draft.selected_identity_id.as_deref()))
+        .map(|account_state| {
+            resolve_identity(
+                &account_state.account,
+                draft.selected_identity_id.as_deref(),
+            )
+        })
         .unwrap_or_else(|| default_identity("draft", "Draft", "draft@local"));
-    if let Some(message) = state.messages.iter_mut().find(|message| message.id == draft.id) {
+    if let Some(message) = state
+        .messages
+        .iter_mut()
+        .find(|message| message.id == draft.id)
+    {
         message.folder_id = folder_id;
         message.subject = draft.subject.clone();
         message.preview = preview.clone();
@@ -1244,7 +1416,10 @@ fn normalize_identities(
         return vec![default_identity(account_id, fallback_name, fallback_email)];
     }
 
-    let default_index = normalized.iter().position(|identity| identity.is_default).unwrap_or(0);
+    let default_index = normalized
+        .iter()
+        .position(|identity| identity.is_default)
+        .unwrap_or(0);
     for (index, identity) in normalized.iter_mut().enumerate() {
         identity.is_default = index == default_index;
     }
@@ -1254,7 +1429,11 @@ fn normalize_identities(
 
 fn resolve_identity(account: &MailAccount, identity_id: Option<&str>) -> MailIdentity {
     if let Some(identity_id) = identity_id {
-        if let Some(identity) = account.identities.iter().find(|identity| identity.id == identity_id) {
+        if let Some(identity) = account
+            .identities
+            .iter()
+            .find(|identity| identity.id == identity_id)
+        {
             return identity.clone();
         }
     }
@@ -1314,7 +1493,12 @@ pub fn current_timestamp() -> String {
 pub fn list_contacts(group_id: Option<&str>) -> Result<Vec<Contact>, BackendError> {
     let state = lock_state();
     let mut out: Vec<Contact> = match group_id {
-        Some(gid) => state.contacts.iter().filter(|c| c.group_id.as_deref() == Some(gid)).cloned().collect(),
+        Some(gid) => state
+            .contacts
+            .iter()
+            .filter(|c| c.group_id.as_deref() == Some(gid))
+            .cloned()
+            .collect(),
         None => state.contacts.clone(),
     };
     out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -1334,7 +1518,10 @@ pub fn create_contact(mut contact: Contact) -> Result<Contact, BackendError> {
 
 pub fn update_contact(contact_id: &str, mut contact: Contact) -> Result<Contact, BackendError> {
     let mut state = lock_state();
-    let existing = state.contacts.iter_mut().find(|c| c.id == contact_id)
+    let existing = state
+        .contacts
+        .iter_mut()
+        .find(|c| c.id == contact_id)
         .ok_or_else(|| BackendError::not_found(format!("Contact '{contact_id}' not found")))?;
     contact.id = existing.id.clone();
     contact.created_at = existing.created_at.clone();
@@ -1360,7 +1547,10 @@ pub fn search_contacts(query: &str) -> Result<Vec<Contact>, BackendError> {
     let results: Vec<Contact> = state
         .contacts
         .iter()
-        .filter(|c| c.name.to_lowercase().contains(&q) || c.emails.iter().any(|e| e.to_lowercase().contains(&q)))
+        .filter(|c| {
+            c.name.to_lowercase().contains(&q)
+                || c.emails.iter().any(|e| e.to_lowercase().contains(&q))
+        })
         .take(20)
         .cloned()
         .collect();
@@ -1384,7 +1574,10 @@ pub fn create_contact_group(name: String) -> Result<ContactGroup, BackendError> 
 
 pub fn update_contact_group(group_id: &str, name: String) -> Result<ContactGroup, BackendError> {
     let mut state = lock_state();
-    let group = state.contact_groups.iter_mut().find(|g| g.id == group_id)
+    let group = state
+        .contact_groups
+        .iter_mut()
+        .find(|g| g.id == group_id)
         .ok_or_else(|| BackendError::not_found(format!("Contact group '{group_id}' not found")))?;
     group.name = name;
     let updated = group.clone();
@@ -1405,14 +1598,21 @@ pub fn delete_contact_group(group_id: &str) -> Result<(), BackendError> {
     Ok(())
 }
 
-pub fn upload_contact_avatar(contact_id: &str, data_base64: &str, mime_type: &str) -> Result<Contact, BackendError> {
+pub fn upload_contact_avatar(
+    contact_id: &str,
+    data_base64: &str,
+    mime_type: &str,
+) -> Result<Contact, BackendError> {
     let decoded = base64_decode(data_base64)
         .map_err(|e| BackendError::validation(format!("Invalid base64: {e}")))?;
     persisted::save_avatar(contact_id, mime_type, &decoded)
         .map_err(|e| BackendError::internal(e.to_string()))?;
 
     let mut state = lock_state();
-    let contact = state.contacts.iter_mut().find(|c| c.id == contact_id)
+    let contact = state
+        .contacts
+        .iter_mut()
+        .find(|c| c.id == contact_id)
         .ok_or_else(|| BackendError::not_found(format!("Contact '{contact_id}' not found")))?;
     contact.avatar_path = Some(contact_id.to_string());
     contact.updated_at = current_timestamp();
@@ -1423,10 +1623,12 @@ pub fn upload_contact_avatar(contact_id: &str, data_base64: &str, mime_type: &st
 
 pub fn delete_contact_avatar(contact_id: &str) -> Result<Contact, BackendError> {
     let mut state = lock_state();
-    let contact = state.contacts.iter_mut().find(|c| c.id == contact_id)
+    let contact = state
+        .contacts
+        .iter_mut()
+        .find(|c| c.id == contact_id)
         .ok_or_else(|| BackendError::not_found(format!("Contact '{contact_id}' not found")))?;
-    persisted::delete_avatar(contact_id)
-        .map_err(|e| BackendError::internal(e.to_string()))?;
+    persisted::delete_avatar(contact_id).map_err(|e| BackendError::internal(e.to_string()))?;
 
     contact.avatar_path = None;
     contact.updated_at = current_timestamp();
@@ -1436,8 +1638,8 @@ pub fn delete_contact_avatar(contact_id: &str) -> Result<Contact, BackendError> 
 }
 
 pub fn get_contact_avatar(contact_id: &str) -> Result<Option<AttachmentContent>, BackendError> {
-    let Some((mime_type, payload)) = persisted::load_avatar(contact_id)
-        .map_err(|e| BackendError::internal(e.to_string()))?
+    let Some((mime_type, payload)) =
+        persisted::load_avatar(contact_id).map_err(|e| BackendError::internal(e.to_string()))?
     else {
         return Ok(None);
     };
@@ -1471,14 +1673,15 @@ pub fn set_master_password(
         .map_err(|e| BackendError::validation(e.to_string()))
 }
 
-pub fn clear_master_password(current_password: &str) -> Result<StorageSecurityStatus, BackendError> {
+pub fn clear_master_password(
+    current_password: &str,
+) -> Result<StorageSecurityStatus, BackendError> {
     persisted::clear_master_password(current_password)
         .map_err(|e| BackendError::validation(e.to_string()))
 }
 
 pub fn get_storage_dir() -> Result<String, BackendError> {
-    let dir = persisted::storage_dir_path()
-        .map_err(|e| BackendError::internal(e.to_string()))?;
+    let dir = persisted::storage_dir_path().map_err(|e| BackendError::internal(e.to_string()))?;
     dir.to_str()
         .map(|s| s.to_string())
         .ok_or_else(|| BackendError::internal("Non-UTF-8 storage path"))
@@ -1493,9 +1696,14 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     let mut bits: u32 = 0;
 
     for ch in cleaned.bytes() {
-        if ch == b'=' { break; }
-        let val = alphabet.iter().position(|&b| b == ch)
-            .ok_or_else(|| format!("Invalid base64 char: {}", ch as char))? as u32;
+        if ch == b'=' {
+            break;
+        }
+        let val = alphabet
+            .iter()
+            .position(|&b| b == ch)
+            .ok_or_else(|| format!("Invalid base64 char: {}", ch as char))?
+            as u32;
         buf = (buf << 6) | val;
         bits += 6;
         if bits >= 8 {

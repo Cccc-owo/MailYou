@@ -285,6 +285,22 @@
     "messagesDeleted": "{count} 封邮件已删除",
     "messagesMoved": "{count} 封邮件已移动"
   },
+  "labels": {
+    "sidebarTitle": "标签",
+    "manageTitle": "管理标签",
+    "manageHint": "为这封邮件添加、移除或整理标签。",
+    "selectedMessages": "已选中 {count} 封邮件",
+    "noLabels": "当前还没有标签。",
+    "newLabel": "新标签",
+    "addLabel": "添加",
+    "renameTo": "重命名为",
+    "cancelRename": "取消重命名",
+    "organize": "整理现有标签",
+    "usedByCount": "已用于 {count} 封邮件",
+    "deleteConfirm": "确定删除标签“{label}”吗？这会从当前账户的所有邮件中移除它。",
+    "loadFailed": "加载标签失败。",
+    "updateFailed": "更新标签失败。"
+  },
   "contacts": {
     "title": "通讯录",
     "groups": "分组",

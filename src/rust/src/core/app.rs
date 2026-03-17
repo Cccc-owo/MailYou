@@ -1,7 +1,5 @@
-use crate::protocol::{
-    serialize, BackendRequest, HealthCheckResult, SendMessageResult,
-};
 use crate::oauth::list_oauth_providers;
+use crate::protocol::{serialize, BackendRequest, HealthCheckResult, SendMessageResult};
 use crate::provider::imap::IMAP_SMTP_PROVIDER;
 use crate::provider::pop3::POP3_SMTP_PROVIDER;
 use crate::provider::MailProvider;
@@ -28,7 +26,6 @@ pub async fn handle_with_provider(
     _default_provider: &'static dyn MailProvider,
     request: BackendRequest,
 ) -> Result<serde_json::Value, crate::protocol::BackendError> {
-
     match request {
         BackendRequest::HealthCheck => serialize(HealthCheckResult {
             ok: true,
@@ -58,9 +55,16 @@ pub async fn handle_with_provider(
             name,
         } => {
             let provider = provider_for_account(&account_id);
-            serialize(provider.rename_folder(&account_id, &folder_id, &name).await?)
+            serialize(
+                provider
+                    .rename_folder(&account_id, &folder_id, &name)
+                    .await?,
+            )
         }
-        BackendRequest::DeleteFolder { account_id, folder_id } => {
+        BackendRequest::DeleteFolder {
+            account_id,
+            folder_id,
+        } => {
             let provider = provider_for_account(&account_id);
             serialize(provider.delete_folder(&account_id, &folder_id).await?)
         }
@@ -71,7 +75,10 @@ pub async fn handle_with_provider(
             let provider = provider_for_account(&account_id);
             serialize(provider.list_messages(&account_id, &folder_id).await?)
         }
-        BackendRequest::GetDraft { account_id, draft_id } => {
+        BackendRequest::GetDraft {
+            account_id,
+            draft_id,
+        } => {
             let provider = provider_for_account(&account_id);
             serialize(provider.get_draft(&account_id, &draft_id).await?)
         }
@@ -79,12 +86,52 @@ pub async fn handle_with_provider(
             let provider = provider_for_account(&account_id);
             serialize(provider.search_messages(&account_id, &query).await?)
         }
+        BackendRequest::ListLabels { account_id } => {
+            let provider = provider_for_account(&account_id);
+            serialize(provider.list_labels(&account_id).await?)
+        }
         BackendRequest::GetMessage {
             account_id,
             message_id,
         } => {
             let provider = provider_for_account(&account_id);
             serialize(provider.get_message(&account_id, &message_id).await?)
+        }
+        BackendRequest::AddLabel {
+            account_id,
+            message_id,
+            label,
+        } => {
+            let provider = provider_for_account(&account_id);
+            serialize(provider.add_label(&account_id, &message_id, &label).await?)
+        }
+        BackendRequest::RemoveLabel {
+            account_id,
+            message_id,
+            label,
+        } => {
+            let provider = provider_for_account(&account_id);
+            serialize(
+                provider
+                    .remove_label(&account_id, &message_id, &label)
+                    .await?,
+            )
+        }
+        BackendRequest::RenameLabel {
+            account_id,
+            label,
+            new_label,
+        } => {
+            let provider = provider_for_account(&account_id);
+            serialize(
+                provider
+                    .rename_label(&account_id, &label, &new_label)
+                    .await?,
+            )
+        }
+        BackendRequest::DeleteLabel { account_id, label } => {
+            let provider = provider_for_account(&account_id);
+            serialize(provider.delete_label(&account_id, &label).await?)
         }
         BackendRequest::SaveDraft(draft) => {
             let provider = provider_for_account(&draft.account_id);
@@ -142,7 +189,11 @@ pub async fn handle_with_provider(
             folder_id,
         } => {
             let provider = provider_for_account(&account_id);
-            serialize(provider.move_message(&account_id, &message_id, &folder_id).await?)
+            serialize(
+                provider
+                    .move_message(&account_id, &message_id, &folder_id)
+                    .await?,
+            )
         }
         BackendRequest::MarkAllRead {
             account_id,
@@ -165,7 +216,11 @@ pub async fn handle_with_provider(
             attachment_id,
         } => {
             let provider = provider_for_account(&account_id);
-            serialize(provider.get_attachment_content(&account_id, &message_id, &attachment_id).await?)
+            serialize(
+                provider
+                    .get_attachment_content(&account_id, &message_id, &attachment_id)
+                    .await?,
+            )
         }
         BackendRequest::GetAccountConfig { account_id } => {
             let provider = provider_for_account(&account_id);
@@ -177,23 +232,52 @@ pub async fn handle_with_provider(
         }
         BackendRequest::ListOAuthProviders => serialize(list_oauth_providers()),
         // -- Contacts (local-only, bypass MailProvider) --
-        BackendRequest::ListContacts { group_id } => serialize(memory::list_contacts(group_id.as_deref())?),
+        BackendRequest::ListContacts { group_id } => {
+            serialize(memory::list_contacts(group_id.as_deref())?)
+        }
         BackendRequest::CreateContact(contact) => serialize(memory::create_contact(contact)?),
-        BackendRequest::UpdateContact { contact_id, contact } => serialize(memory::update_contact(&contact_id, contact)?),
-        BackendRequest::DeleteContact { contact_id } => serialize(memory::delete_contact(&contact_id)?),
+        BackendRequest::UpdateContact {
+            contact_id,
+            contact,
+        } => serialize(memory::update_contact(&contact_id, contact)?),
+        BackendRequest::DeleteContact { contact_id } => {
+            serialize(memory::delete_contact(&contact_id)?)
+        }
         BackendRequest::SearchContacts { query } => serialize(memory::search_contacts(&query)?),
         BackendRequest::ListContactGroups => serialize(memory::list_contact_groups()?),
-        BackendRequest::CreateContactGroup { name } => serialize(memory::create_contact_group(name)?),
-        BackendRequest::UpdateContactGroup { group_id, name } => serialize(memory::update_contact_group(&group_id, name)?),
-        BackendRequest::DeleteContactGroup { group_id } => serialize(memory::delete_contact_group(&group_id)?),
-        BackendRequest::UploadContactAvatar { contact_id, data_base64, mime_type } => serialize(memory::upload_contact_avatar(&contact_id, &data_base64, &mime_type)?),
-        BackendRequest::DeleteContactAvatar { contact_id } => serialize(memory::delete_contact_avatar(&contact_id)?),
-        BackendRequest::GetContactAvatar { contact_id } => serialize(memory::get_contact_avatar(&contact_id)?),
+        BackendRequest::CreateContactGroup { name } => {
+            serialize(memory::create_contact_group(name)?)
+        }
+        BackendRequest::UpdateContactGroup { group_id, name } => {
+            serialize(memory::update_contact_group(&group_id, name)?)
+        }
+        BackendRequest::DeleteContactGroup { group_id } => {
+            serialize(memory::delete_contact_group(&group_id)?)
+        }
+        BackendRequest::UploadContactAvatar {
+            contact_id,
+            data_base64,
+            mime_type,
+        } => serialize(memory::upload_contact_avatar(
+            &contact_id,
+            &data_base64,
+            &mime_type,
+        )?),
+        BackendRequest::DeleteContactAvatar { contact_id } => {
+            serialize(memory::delete_contact_avatar(&contact_id)?)
+        }
+        BackendRequest::GetContactAvatar { contact_id } => {
+            serialize(memory::get_contact_avatar(&contact_id)?)
+        }
         BackendRequest::GetSecurityStatus => serialize(memory::get_security_status()?),
         BackendRequest::UnlockStorage { password } => serialize(memory::unlock_storage(&password)?),
-        BackendRequest::SetMasterPassword { current_password, new_password } => {
-            serialize(memory::set_master_password(current_password.as_deref(), &new_password)?)
-        }
+        BackendRequest::SetMasterPassword {
+            current_password,
+            new_password,
+        } => serialize(memory::set_master_password(
+            current_password.as_deref(),
+            &new_password,
+        )?),
         BackendRequest::ClearMasterPassword { current_password } => {
             serialize(memory::clear_master_password(&current_password)?)
         }

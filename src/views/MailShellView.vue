@@ -32,6 +32,8 @@
         :current-account-id="accountsStore.currentAccountId"
         :current-folder-id="mailboxesStore.currentFolderId"
         :folders="mailboxesStore.folders"
+        :labels="sidebarLabels"
+        :current-label="selectedLabel"
         :is-folders-loading="isSyncing"
         @add-account="router.push('/account-setup')"
         @compose="openComposer"
@@ -41,6 +43,7 @@
         @select-folder="handleFolderChange"
         @sync-account="handleSyncAccount"
         @mark-folder-read="handleMarkFolderRead"
+        @select-label="handleLabelSelect"
         @create-folder="handleCreateFolder"
         @rename-folder="handleRenameFolder"
         @delete-folder="handleDeleteFolder"
@@ -72,10 +75,12 @@
         @batch-mark-read="handleBatchMarkRead"
         @batch-mark-unread="handleBatchMarkUnread"
         @batch-move="handleBatchMove"
+        @batch-manage-labels="openBatchLabelDialog"
         @context-reply="handleContextReply"
         @context-reply-all="handleContextReplyAll"
         @context-forward="handleContextForward"
         @context-toggle-read="handleContextToggleRead"
+        @context-manage-labels="openLabelDialog"
         @context-archive="handleContextArchive"
         @context-mark-spam="handleContextMarkSpam"
         @context-restore="handleContextRestore"
@@ -103,6 +108,7 @@
         @reply-all="replyAllToCurrentMessage"
         @edit-draft="editCurrentDraft"
         @toggle-read="toggleReadCurrentMessage"
+        @manage-labels="openCurrentMessageLabelDialog"
         @move="moveCurrentMessage"
         @save-contact="handleSaveContact"
         @compose-to="handleComposeTo"
@@ -149,6 +155,97 @@
         <v-spacer />
         <v-btn variant="text" @click="deleteConfirmDialog = false">{{ t('common.cancel') }}</v-btn>
         <v-btn color="error" variant="tonal" @click="confirmDeleteCurrentMessage">{{ t('common.delete') }}</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <v-dialog v-model="labelDialogOpen" max-width="560">
+    <v-card>
+      <v-card-title>{{ t('labels.manageTitle') }}</v-card-title>
+      <v-card-text>
+        <div class="text-body-2 text-medium-emphasis mb-4">
+          {{ labelDialogSummary }}
+        </div>
+
+        <v-alert v-if="labelDialogError" type="error" variant="tonal" class="mb-4">
+          {{ labelDialogError }}
+        </v-alert>
+
+        <div v-if="labelDialogLabels.length > 0" class="d-flex flex-wrap ga-2 mb-4">
+          <v-chip
+            v-for="label in labelDialogLabels"
+            :key="label.name"
+            :color="isLabelApplied(label.name) ? 'primary' : undefined"
+            :variant="isLabelApplied(label.name) ? 'flat' : 'tonal'"
+            :disabled="labelDialogBusy"
+            @click="toggleMessageLabel(label.name)"
+          >
+            {{ label.name }} ({{ label.count }})
+          </v-chip>
+        </div>
+        <div v-else class="text-body-2 text-medium-emphasis mb-4">
+          {{ t('labels.noLabels') }}
+        </div>
+
+        <div class="d-flex ga-2 align-start mb-4">
+          <v-text-field
+            v-model="labelDraftName"
+            :label="labelRenameSource ? t('labels.renameTo') : t('labels.newLabel')"
+            density="comfortable"
+            hide-details
+            variant="outlined"
+            class="flex-grow-1"
+            @keydown.enter.prevent="submitLabelDraft"
+          />
+          <v-btn
+            color="primary"
+            variant="tonal"
+            :disabled="!labelDraftName.trim() || labelDialogBusy"
+            :loading="labelDialogBusy"
+            @click="submitLabelDraft"
+          >
+            {{ labelRenameSource ? t('common.save') : t('labels.addLabel') }}
+          </v-btn>
+        </div>
+
+        <div v-if="labelRenameSource" class="d-flex justify-end mb-4">
+          <v-btn variant="text" :disabled="labelDialogBusy" @click="cancelLabelRename">
+            {{ t('labels.cancelRename') }}
+          </v-btn>
+        </div>
+
+        <div v-if="labelDialogLabels.length > 0">
+          <div class="text-caption text-medium-emphasis mb-2">{{ t('labels.organize') }}</div>
+          <v-list density="compact" class="rounded-lg border-thin">
+            <v-list-item v-for="label in labelDialogLabels" :key="`manage-${label.name}`">
+              <v-list-item-title>{{ label.name }}</v-list-item-title>
+              <v-list-item-subtitle>{{ t('labels.usedByCount', { count: label.count }) }}</v-list-item-subtitle>
+              <template #append>
+                <div class="d-flex ga-1">
+                  <v-btn
+                    icon="mdi-pencil-outline"
+                    size="small"
+                    variant="text"
+                    :disabled="labelDialogBusy"
+                    @click="startRenameLabel(label.name)"
+                  />
+                  <v-btn
+                    icon="mdi-delete-outline"
+                    size="small"
+                    variant="text"
+                    color="error"
+                    :disabled="labelDialogBusy"
+                    @click="deleteAccountLabel(label.name)"
+                  />
+                </div>
+              </template>
+            </v-list-item>
+          </v-list>
+        </div>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" :disabled="labelDialogBusy" @click="closeLabelDialog">{{ t('common.cancel') }}</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -244,6 +341,7 @@ import { useMessagesStore } from '@/stores/messages'
 import { useUiStore } from '@/stores/ui'
 import { useContactsStore } from '@/stores/contacts'
 import { mailRepository } from '@/services/mail'
+import type { MailLabel, MailboxBundle } from '@/types/mail'
 
 const { t, locale } = useI18n()
 const router = useRouter()
@@ -286,6 +384,16 @@ const { currentAccount } = storeToRefs(accountsStore)
 const { syncStatus } = storeToRefs(messagesStore)
 
 const deleteConfirmDialog = ref(false)
+const selectedLabel = ref<string | null>(null)
+const labelDialogOpen = ref(false)
+const labelDialogMessageIds = ref<string[]>([])
+const labelDialogBusy = ref(false)
+const labelDialogError = ref<string | null>(null)
+const labelDraftName = ref('')
+const labelRenameSource = ref<string | null>(null)
+const sidebarLabels = ref<MailLabel[]>([])
+const labelDialogLabels = ref<MailLabel[]>([])
+const currentMailboxBundle = ref<MailboxBundle | null>(null)
 const lastFailedAction = ref<(() => Promise<void>) | null>(null)
 
 interface UndoableAction {
@@ -320,6 +428,9 @@ const currentFolderDisplayName = computed(() => {
   if (messagesStore.hasSearchQuery) {
     return t('mailList.searchResultsTitle')
   }
+  if (selectedLabel.value) {
+    return selectedLabel.value
+  }
   const folder = mailboxesStore.currentFolder
   if (!folder) return t('common.mailbox')
   return folder.kind !== 'custom' ? t(`folders.${folder.kind}`) : folder.name
@@ -327,13 +438,37 @@ const currentFolderDisplayName = computed(() => {
 
 const isSyncing = computed(() => syncStatus.value?.state === 'syncing')
 
+const buildLabelFilteredMessages = (bundle: MailboxBundle, label: string) =>
+  bundle.messages
+    .filter((message) => message.labels.some((item) => item.toLowerCase() === label.toLowerCase()))
+    .sort((left, right) => new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime())
+
+const applyMailboxView = async (accountId: string, bundle?: MailboxBundle) => {
+  const mailboxBundle = bundle ?? await mailRepository.getMailboxBundle(accountId)
+  currentMailboxBundle.value = mailboxBundle
+  mailboxesStore.setFolders(mailboxBundle.folders)
+  sidebarLabels.value = await mailRepository.listLabels(accountId)
+
+  if (messagesStore.hasSearchQuery) {
+    await messagesStore.searchMessages(accountId, messagesStore.query)
+    return
+  }
+
+  if (selectedLabel.value) {
+    messagesStore.setSyncStatus(mailboxBundle.syncStatus)
+    messagesStore.setMessages(buildLabelFilteredMessages(mailboxBundle, selectedLabel.value))
+    return
+  }
+
+  messagesStore.setMailboxBundle(mailboxBundle, mailboxesStore.currentFolderId)
+}
+
 const loadMailbox = async (accountId: string) => {
   messagesStore.isLoading = true
 
   try {
     const bundle = await mailRepository.getMailboxBundle(accountId)
-    mailboxesStore.setFolders(bundle.folders)
-    messagesStore.setMailboxBundle(bundle, mailboxesStore.currentFolderId)
+    await applyMailboxView(accountId, bundle)
   } finally {
     messagesStore.isLoading = false
   }
@@ -345,13 +480,13 @@ const refreshMailbox = async () => {
   }
 
   await loadMailbox(accountsStore.currentAccountId)
-  if (messagesStore.hasSearchQuery) {
-    await messagesStore.searchMessages(accountsStore.currentAccountId, messagesStore.query)
-  }
 }
 
 const handleSearchUpdate = (value: string) => {
   messagesStore.query = value
+  if (value.trim()) {
+    selectedLabel.value = null
+  }
 }
 
 const retryLastAction = async () => {
@@ -385,6 +520,7 @@ const handleAccountChange = async (accountId: string) => {
   accountsStore.selectAccount(accountId)
   messagesStore.clearSelection()
   messagesStore.clearError()
+  selectedLabel.value = null
   lastFailedAction.value = null
   try {
     await loadMailbox(accountId)
@@ -403,6 +539,8 @@ const handleDeleteAccount = async (accountId: string) => {
   mailboxesStore.setFolders([])
   messagesStore.clearAll()
   messagesStore.clearError()
+  currentMailboxBundle.value = null
+  sidebarLabels.value = []
   lastFailedAction.value = null
 
   if (accountsStore.currentAccountId) {
@@ -416,12 +554,25 @@ const handleFolderChange = async (folderId: string) => {
   }
 
   messagesStore.clearSelection()
+  selectedLabel.value = null
   mailboxesStore.selectFolder(folderId)
   try {
     await messagesStore.loadMessages(accountsStore.currentAccountId, folderId)
   } catch {
     messagesStore.error = t('shell.failedToLoadMessages')
   }
+}
+
+const handleLabelSelect = async (label: string) => {
+  if (!accountsStore.currentAccountId) return
+  messagesStore.clearSelection()
+  messagesStore.query = ''
+  selectedLabel.value = label
+  if (currentMailboxBundle.value) {
+    await applyMailboxView(accountsStore.currentAccountId, currentMailboxBundle.value)
+    return
+  }
+  await loadMailbox(accountsStore.currentAccountId)
 }
 
 const openComposer = () => {
@@ -760,6 +911,161 @@ const handleBatchMove = async (folderId: string) => {
 const findMessage = (messageId: string) =>
   messagesStore.messages.find((m) => m.id === messageId)
 
+const labelDialogMessages = computed(() =>
+  labelDialogMessageIds.value
+    .map((messageId) => findMessage(messageId))
+    .filter((message): message is NonNullable<typeof message> => Boolean(message)),
+)
+
+const labelDialogSummary = computed(() => {
+  if (labelDialogMessages.value.length === 1) {
+    return labelDialogMessages.value[0].subject || t('labels.manageHint')
+  }
+  if (labelDialogMessages.value.length > 1) {
+    return t('labels.selectedMessages', { count: labelDialogMessages.value.length })
+  }
+  return t('labels.manageHint')
+})
+
+const resetLabelDialogState = () => {
+  labelDialogBusy.value = false
+  labelDialogError.value = null
+  labelDraftName.value = ''
+  labelRenameSource.value = null
+  labelDialogLabels.value = []
+}
+
+const loadAccountLabels = async () => {
+  if (!accountsStore.currentAccountId) {
+    labelDialogLabels.value = []
+    return
+  }
+
+  labelDialogLabels.value = await mailRepository.listLabels(accountsStore.currentAccountId)
+}
+
+const openLabelDialog = async (messageId: string) => {
+  await openLabelDialogForMessages([messageId])
+}
+
+const openLabelDialogForMessages = async (messageIds: string[]) => {
+  if (!accountsStore.currentAccountId) return
+  labelDialogMessageIds.value = messageIds
+  resetLabelDialogState()
+  labelDialogOpen.value = true
+  try {
+    await loadAccountLabels()
+  } catch (error) {
+    labelDialogError.value = error instanceof Error ? error.message : t('labels.loadFailed')
+  }
+}
+
+const openCurrentMessageLabelDialog = async () => {
+  if (!messagesStore.selectedMessageId) return
+  await openLabelDialog(messagesStore.selectedMessageId)
+}
+
+const openBatchLabelDialog = async () => {
+  if (messagesStore.selectedIds.size === 0) return
+  await openLabelDialogForMessages([...messagesStore.selectedIds])
+}
+
+const closeLabelDialog = () => {
+  labelDialogOpen.value = false
+  labelDialogMessageIds.value = []
+  resetLabelDialogState()
+}
+
+const isLabelApplied = (label: string) =>
+  labelDialogMessages.value.length > 0
+    && labelDialogMessages.value.every((message) =>
+      message.labels.some((item) => item.toLowerCase() === label.toLowerCase()),
+    )
+
+const toggleMessageLabel = async (label: string) => {
+  if (!accountsStore.currentAccountId || labelDialogMessageIds.value.length === 0) return
+
+  labelDialogBusy.value = true
+  labelDialogError.value = null
+  try {
+    const applyToAll = !isLabelApplied(label)
+    for (const messageId of labelDialogMessageIds.value) {
+      if (applyToAll) {
+        await mailRepository.addLabel(accountsStore.currentAccountId, messageId, label)
+      } else {
+        await mailRepository.removeLabel(accountsStore.currentAccountId, messageId, label)
+      }
+    }
+    await refreshMailbox()
+    await loadAccountLabels()
+  } catch (error) {
+    labelDialogError.value = error instanceof Error ? error.message : t('labels.updateFailed')
+  } finally {
+    labelDialogBusy.value = false
+  }
+}
+
+const startRenameLabel = (label: string) => {
+  labelRenameSource.value = label
+  labelDraftName.value = label
+  labelDialogError.value = null
+}
+
+const cancelLabelRename = () => {
+  labelRenameSource.value = null
+  labelDraftName.value = ''
+  labelDialogError.value = null
+}
+
+const submitLabelDraft = async () => {
+  if (!accountsStore.currentAccountId || labelDialogMessageIds.value.length === 0 || !labelDraftName.value.trim()) return
+
+  labelDialogBusy.value = true
+  labelDialogError.value = null
+  try {
+    if (labelRenameSource.value) {
+      labelDialogLabels.value = await mailRepository.renameLabel(
+        accountsStore.currentAccountId,
+        labelRenameSource.value,
+        labelDraftName.value,
+      )
+      await refreshMailbox()
+      cancelLabelRename()
+      return
+    }
+
+    for (const messageId of labelDialogMessageIds.value) {
+      await mailRepository.addLabel(accountsStore.currentAccountId, messageId, labelDraftName.value)
+    }
+    labelDraftName.value = ''
+    await refreshMailbox()
+    await loadAccountLabels()
+  } catch (error) {
+    labelDialogError.value = error instanceof Error ? error.message : t('labels.updateFailed')
+  } finally {
+    labelDialogBusy.value = false
+  }
+}
+
+const deleteAccountLabel = async (label: string) => {
+  if (!accountsStore.currentAccountId) return
+  if (!window.confirm(t('labels.deleteConfirm', { label }))) return
+
+  labelDialogBusy.value = true
+  labelDialogError.value = null
+  try {
+    labelDialogLabels.value = await mailRepository.deleteLabel(accountsStore.currentAccountId, label)
+    await refreshMailbox()
+    if (labelRenameSource.value?.toLowerCase() === label.toLowerCase()) {
+      cancelLabelRename()
+    }
+  } catch (error) {
+    labelDialogError.value = error instanceof Error ? error.message : t('labels.updateFailed')
+  } finally {
+    labelDialogBusy.value = false
+  }
+}
+
 const handleContextReply = (messageId: string) => {
   if (!accountsStore.currentAccountId) return
   const msg = findMessage(messageId)
@@ -1023,8 +1329,8 @@ onUnmounted(() => {
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(
-  () => [messagesStore.query, accountsStore.currentAccountId, mailboxesStore.currentFolderId] as const,
-  ([query, accountId, folderId]) => {
+  () => [messagesStore.query, accountsStore.currentAccountId, mailboxesStore.currentFolderId, selectedLabel.value] as const,
+  ([query, accountId, folderId, label]) => {
     if (searchTimer) {
       clearTimeout(searchTimer)
       searchTimer = null
@@ -1038,6 +1344,15 @@ watch(
       const trimmed = query.trim()
       if (trimmed) {
         await messagesStore.searchMessages(accountId, trimmed)
+        return
+      }
+
+      if (label) {
+        if (currentMailboxBundle.value) {
+          await applyMailboxView(accountId, currentMailboxBundle.value)
+        } else {
+          await loadMailbox(accountId)
+        }
         return
       }
 

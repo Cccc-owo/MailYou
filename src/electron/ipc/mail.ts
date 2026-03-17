@@ -60,8 +60,23 @@ export const registerMailIpc = () => {
   handle('mail:searchMessages', (accountId, query) =>
     mailBackend.searchMessages(accountId as string, query as string),
   )
+  handle('mail:listLabels', (accountId) =>
+    mailBackend.listLabels(accountId as string),
+  )
   handle('mail:getMessage', (accountId, messageId) =>
     mailBackend.getMessage(accountId as string, messageId as string),
+  )
+  handle('mail:addLabel', (accountId, messageId, label) =>
+    mailBackend.addLabel(accountId as string, messageId as string, label as string),
+  )
+  handle('mail:removeLabel', (accountId, messageId, label) =>
+    mailBackend.removeLabel(accountId as string, messageId as string, label as string),
+  )
+  handle('mail:renameLabel', (accountId, label, newLabel) =>
+    mailBackend.renameLabel(accountId as string, label as string, newLabel as string),
+  )
+  handle('mail:deleteLabel', (accountId, label) =>
+    mailBackend.deleteLabel(accountId as string, label as string),
   )
   handle('mail:saveDraft', (draft) => mailBackend.saveDraft(draft as DraftMessage))
   handle('mail:sendMessage', (draft) => mailBackend.sendMessage(draft as DraftMessage))

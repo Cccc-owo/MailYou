@@ -1,6 +1,7 @@
 pub mod oauth {
     pub const PROXY_TOKEN_ENV: &str = "MAILYOU_OAUTH_PROXY_TOKEN";
-    pub const PROXY_AUTH_TOKEN: &str = "Lu6WVgtL31TkaXWVeVBIaB8T8CsU3jMfXoxbpomAuas5hF5wpOx5IWfdUiokkc5G";
+    pub const PROXY_AUTH_TOKEN: &str =
+        "Lu6WVgtL31TkaXWVeVBIaB8T8CsU3jMfXoxbpomAuas5hF5wpOx5IWfdUiokkc5G";
     pub const DEFAULT_PROXY_BASE_URL: &str = "https://oauth2-proxy.iscccc.cc";
     pub const PROXY_URL_ENV: &str = "MAILYOU_OAUTH_PROXY_URL";
 

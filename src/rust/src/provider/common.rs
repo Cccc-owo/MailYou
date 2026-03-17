@@ -8,7 +8,9 @@ use crate::protocol::BackendError;
 pub fn validate_draft(draft: &AccountSetupDraft) -> Result<(), BackendError> {
     if matches!(draft.auth_mode, crate::models::AccountAuthMode::Oauth) {
         if draft.incoming_protocol != "imap" {
-            return Err(BackendError::validation("OAuth accounts currently require IMAP"));
+            return Err(BackendError::validation(
+                "OAuth accounts currently require IMAP",
+            ));
         }
 
         if draft.email.trim().is_empty()
@@ -16,15 +18,21 @@ pub fn validate_draft(draft: &AccountSetupDraft) -> Result<(), BackendError> {
             || draft.incoming_host.trim().is_empty()
             || draft.outgoing_host.trim().is_empty()
         {
-            return Err(BackendError::validation("All OAuth account fields are required"));
+            return Err(BackendError::validation(
+                "All OAuth account fields are required",
+            ));
         }
 
         if draft.oauth_provider.is_none() || draft.oauth_source.is_none() {
-            return Err(BackendError::validation("OAuth provider and source are required"));
+            return Err(BackendError::validation(
+                "OAuth provider and source are required",
+            ));
         }
 
         if draft.access_token.trim().is_empty() && draft.refresh_token.trim().is_empty() {
-            return Err(BackendError::validation("Authorize the OAuth account before testing or saving"));
+            return Err(BackendError::validation(
+                "Authorize the OAuth account before testing or saving",
+            ));
         }
 
         return Ok(());
@@ -147,7 +155,11 @@ pub fn extract_attachments_from_mime(raw: &[u8]) -> Vec<AttachmentMeta> {
     result
 }
 
-fn collect_attachments(part: &mailparse::ParsedMail, result: &mut Vec<AttachmentMeta>, path: &mut Vec<usize>) {
+fn collect_attachments(
+    part: &mailparse::ParsedMail,
+    result: &mut Vec<AttachmentMeta>,
+    path: &mut Vec<usize>,
+) {
     let mime_type = part.ctype.mimetype.to_lowercase();
 
     if mime_type.starts_with("multipart/") {
@@ -163,11 +175,13 @@ fn collect_attachments(part: &mailparse::ParsedMail, result: &mut Vec<Attachment
         let id = if path.is_empty() {
             "0".into()
         } else {
-            path.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(".")
+            path.iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(".")
         };
 
-        let file_name = get_attachment_filename(part)
-            .unwrap_or_else(|| format!("attachment-{id}"));
+        let file_name = get_attachment_filename(part).unwrap_or_else(|| format!("attachment-{id}"));
 
         let size_bytes = part.get_body_raw().map(|b| b.len() as u64).unwrap_or(0);
 
@@ -194,11 +208,16 @@ fn is_attachment_part(part: &mailparse::ParsedMail) -> bool {
     }
 
     let disposition = part.get_content_disposition();
-    if matches!(disposition.disposition, mailparse::DispositionType::Attachment) {
+    if matches!(
+        disposition.disposition,
+        mailparse::DispositionType::Attachment
+    ) {
         return true;
     }
 
-    let has_content_id = part.headers.iter()
+    let has_content_id = part
+        .headers
+        .iter()
         .any(|h| h.get_key().eq_ignore_ascii_case("content-id"));
     if has_content_id && mime_type.starts_with("image/") {
         return false;
@@ -236,9 +255,7 @@ pub fn find_mime_part_by_path<'a>(
         return Some(mail);
     }
 
-    let indices: Vec<usize> = path.split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect();
+    let indices: Vec<usize> = path.split('.').filter_map(|s| s.parse().ok()).collect();
 
     let mut current = mail;
     for idx in indices {
@@ -431,10 +448,8 @@ fn qp_decode_rfc2047(input: &str) -> Vec<u8> {
             out.push(b' ');
             i += 1;
         } else if bytes[i] == b'=' && i + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(
-                &String::from_utf8_lossy(&bytes[i + 1..i + 3]),
-                16,
-            ) {
+            if let Ok(byte) = u8::from_str_radix(&String::from_utf8_lossy(&bytes[i + 1..i + 3]), 16)
+            {
                 out.push(byte);
                 i += 3;
             } else {

@@ -21,7 +21,11 @@ async fn main() {
     let start = Instant::now();
     let app_context = app_context();
     let provider = app_context.provider();
-    eprintln!("[backend] initialized provider '{}' in {:?}", provider.backend_name(), start.elapsed());
+    eprintln!(
+        "[backend] initialized provider '{}' in {:?}",
+        provider.backend_name(),
+        start.elapsed()
+    );
 
     let stdin = BufReader::new(tokio::io::stdin());
     let (tx, mut rx) = mpsc::unbounded_channel::<BackendMessage>();
@@ -32,7 +36,9 @@ async fn main() {
     let writer_handle = tokio::spawn(async move {
         let mut stdout = BufWriter::new(tokio::io::stdout());
         while let Some(message) = rx.recv().await {
-            let Ok(json) = serde_json::to_vec(&message) else { continue };
+            let Ok(json) = serde_json::to_vec(&message) else {
+                continue;
+            };
             if stdout.write_all(&json).await.is_err()
                 || stdout.write_all(b"\n").await.is_err()
                 || stdout.flush().await.is_err()

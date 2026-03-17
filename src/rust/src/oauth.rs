@@ -40,13 +40,15 @@ pub fn list_oauth_providers() -> Vec<OAuthProviderAvailability> {
         OAuthProviderAvailability {
             id: "gmail".into(),
             label: "Gmail".into(),
-            supports_direct: direct_provider_by_id("gmail").is_some_and(direct_provider_is_configured),
+            supports_direct: direct_provider_by_id("gmail")
+                .is_some_and(direct_provider_is_configured),
             supports_proxy: true,
         },
         OAuthProviderAvailability {
             id: "outlook".into(),
             label: "Outlook".into(),
-            supports_direct: direct_provider_by_id("outlook").is_some_and(direct_provider_is_configured),
+            supports_direct: direct_provider_by_id("outlook")
+                .is_some_and(direct_provider_is_configured),
             supports_proxy: true,
         },
         OAuthProviderAvailability {
@@ -81,9 +83,13 @@ pub async fn ensure_account_access_token(
     Ok(Some(token))
 }
 
-pub async fn ensure_config_access_token(config: &AccountConfig) -> Result<ActiveOAuthToken, BackendError> {
+pub async fn ensure_config_access_token(
+    config: &AccountConfig,
+) -> Result<ActiveOAuthToken, BackendError> {
     if !matches!(config.auth_mode, AccountAuthMode::Oauth) {
-        return Err(BackendError::validation("OAuth token requested for a password account"));
+        return Err(BackendError::validation(
+            "OAuth token requested for a password account",
+        ));
     }
 
     if !config.access_token.trim().is_empty() && !token_expires_soon(&config.token_expires_at) {
@@ -98,7 +104,11 @@ pub async fn ensure_config_access_token(config: &AccountConfig) -> Result<Active
 }
 
 pub fn xoauth2_payload(username: &str, access_token: &str) -> String {
-    format!("user={}\x01auth=Bearer {}\x01\x01", username.trim(), access_token.trim())
+    format!(
+        "user={}\x01auth=Bearer {}\x01\x01",
+        username.trim(),
+        access_token.trim()
+    )
 }
 
 async fn refresh_oauth_token(config: &AccountConfig) -> Result<ActiveOAuthToken, BackendError> {
@@ -109,7 +119,9 @@ async fn refresh_oauth_token(config: &AccountConfig) -> Result<ActiveOAuthToken,
     let refresh_token = config.refresh_token.trim();
 
     if refresh_token.is_empty() {
-        return Err(BackendError::validation("Refresh token is required for OAuth account"));
+        return Err(BackendError::validation(
+            "Refresh token is required for OAuth account",
+        ));
     }
 
     match config.oauth_source.clone().unwrap_or(OAuthSource::Direct) {
@@ -143,10 +155,9 @@ async fn refresh_via_proxy(
         )));
     }
 
-    let payload: ProxyTokenResponse = response
-        .json()
-        .await
-        .map_err(|error| BackendError::internal(format!("OAuth proxy response parse failed: {error}")))?;
+    let payload: ProxyTokenResponse = response.json().await.map_err(|error| {
+        BackendError::internal(format!("OAuth proxy response parse failed: {error}"))
+    })?;
 
     Ok(ActiveOAuthToken {
         access_token: payload.access_token,
@@ -163,8 +174,11 @@ async fn refresh_direct(
     provider_id: &str,
     refresh_token: &str,
 ) -> Result<ActiveOAuthToken, BackendError> {
-    let provider = direct_provider_by_id(provider_id)
-        .ok_or_else(|| BackendError::validation(format!("Direct OAuth is not supported for provider '{provider_id}'")))?;
+    let provider = direct_provider_by_id(provider_id).ok_or_else(|| {
+        BackendError::validation(format!(
+            "Direct OAuth is not supported for provider '{provider_id}'"
+        ))
+    })?;
 
     if !direct_provider_is_configured(provider) {
         return Err(BackendError::validation(format!(
@@ -172,10 +186,12 @@ async fn refresh_direct(
         )));
     }
 
-    let client_id = std::env::var(provider.client_id_env)
-        .map_err(|_| BackendError::validation(format!("{} is not configured", provider.client_id_env)))?;
-    let client_secret = std::env::var(provider.client_secret_env)
-        .map_err(|_| BackendError::validation(format!("{} is not configured", provider.client_secret_env)))?;
+    let client_id = std::env::var(provider.client_id_env).map_err(|_| {
+        BackendError::validation(format!("{} is not configured", provider.client_id_env))
+    })?;
+    let client_secret = std::env::var(provider.client_secret_env).map_err(|_| {
+        BackendError::validation(format!("{} is not configured", provider.client_secret_env))
+    })?;
 
     let response = Client::new()
         .post(provider.token_url)
@@ -187,7 +203,9 @@ async fn refresh_direct(
         ])
         .send()
         .await
-        .map_err(|error| BackendError::internal(format!("OAuth refresh request failed: {error}")))?;
+        .map_err(|error| {
+            BackendError::internal(format!("OAuth refresh request failed: {error}"))
+        })?;
 
     if !response.status().is_success() {
         let text = response.text().await.unwrap_or_default();
@@ -204,7 +222,9 @@ async fn refresh_direct(
 
     Ok(ActiveOAuthToken {
         access_token: payload.access_token,
-        refresh_token: payload.refresh_token.unwrap_or_else(|| refresh_token.to_string()),
+        refresh_token: payload
+            .refresh_token
+            .unwrap_or_else(|| refresh_token.to_string()),
         expires_at: (Utc::now() + Duration::seconds(payload.expires_in)).to_rfc3339(),
     })
 }
@@ -216,18 +236,27 @@ fn extract_proxy_error_message(payload: &str) -> String {
             value
                 .get("error")
                 .and_then(|error| {
-                    error
-                        .as_str()
-                        .map(ToOwned::to_owned)
-                        .or_else(|| error.get("message").and_then(|message| message.as_str()).map(ToOwned::to_owned))
+                    error.as_str().map(ToOwned::to_owned).or_else(|| {
+                        error
+                            .get("message")
+                            .and_then(|message| message.as_str())
+                            .map(ToOwned::to_owned)
+                    })
                 })
-                .or_else(|| value.get("message").and_then(|message| message.as_str()).map(ToOwned::to_owned))
+                .or_else(|| {
+                    value
+                        .get("message")
+                        .and_then(|message| message.as_str())
+                        .map(ToOwned::to_owned)
+                })
         })
         .unwrap_or_else(|| payload.trim().to_string())
 }
 
 fn direct_provider_by_id(provider_id: &str) -> Option<&'static DirectProviderConfig> {
-    DIRECT_PROVIDERS.iter().find(|provider| provider.id == provider_id)
+    DIRECT_PROVIDERS
+        .iter()
+        .find(|provider| provider.id == provider_id)
 }
 
 fn direct_provider_is_configured(provider: &DirectProviderConfig) -> bool {

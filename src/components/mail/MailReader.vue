@@ -38,6 +38,12 @@
               @click="$emit('toggle-read')"
             />
             <v-list-item
+              v-if="!isPop3"
+              prepend-icon="mdi-label-outline"
+              :title="t('labels.manageTitle')"
+              @click="$emit('manage-labels')"
+            />
+            <v-list-item
               v-if="isTrashArchiveOrJunk"
               prepend-icon="mdi-inbox-arrow-down"
               :title="currentFolderKind === 'junk' ? t('reader.notSpam') : t('reader.restoreToInbox')"
@@ -454,6 +460,7 @@ defineEmits<{
   delete: []
   'toggle-read': []
   'toggle-star': []
+  'manage-labels': []
   move: [folderId: string]
   'export-pdf': []
   'save-contact': [data: { name: string; email: string }]

@@ -7,6 +7,7 @@ import type {
 } from '@/types/account'
 import type { Contact, ContactGroup } from '@/types/contact'
 import type {
+  MailLabel,
   AttachmentContent,
   DraftMessage,
   MailMessage,
@@ -27,7 +28,12 @@ export interface MailRepository {
   listMessages(accountId: string, folderId: string): Promise<MailMessage[]>
   getDraft(accountId: string, draftId: string): Promise<DraftMessage | null>
   searchMessages(accountId: string, query: string): Promise<MailMessage[]>
+  listLabels(accountId: string): Promise<MailLabel[]>
   getMessage(accountId: string, messageId: string): Promise<MailMessage | null>
+  addLabel(accountId: string, messageId: string, label: string): Promise<MailMessage | null>
+  removeLabel(accountId: string, messageId: string, label: string): Promise<MailMessage | null>
+  renameLabel(accountId: string, label: string, newLabel: string): Promise<MailLabel[]>
+  deleteLabel(accountId: string, label: string): Promise<MailLabel[]>
   saveDraft(draft: DraftMessage): Promise<DraftMessage>
   sendMessage(draft: DraftMessage): Promise<{ ok: true; queuedAt: string }>
   toggleStar(accountId: string, messageId: string): Promise<MailMessage | null>
