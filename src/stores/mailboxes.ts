@@ -87,6 +87,24 @@ export const useMailboxesStore = defineStore('mailboxes', () => {
     }
   }
 
+  const incrementUnread = (folderId: string) => {
+    const folder = folders.value.find((f) => f.id === folderId)
+    if (folder) {
+      folder.unreadCount++
+    }
+  }
+
+  const adjustUnread = (folderId: string, delta: number) => {
+    if (delta === 0) {
+      return
+    }
+
+    const folder = folders.value.find((f) => f.id === folderId)
+    if (folder) {
+      folder.unreadCount = Math.max(0, folder.unreadCount + delta)
+    }
+  }
+
   return {
     folders,
     currentFolder,
@@ -100,5 +118,7 @@ export const useMailboxesStore = defineStore('mailboxes', () => {
     deleteFolder,
     selectFolder,
     decrementUnread,
+    incrementUnread,
+    adjustUnread,
   }
 })

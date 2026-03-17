@@ -1,5 +1,11 @@
 <template>
-  <MailShellLayout :search="messagesStore.query" @update:search="handleSearchUpdate">
+  <MailShellLayout
+    :search="messagesStore.query"
+    :loading-active="loadingBarActive"
+    :loading-progress="loadingBarProgress"
+    :loading-label="loadingBarLabel"
+    @update:search="handleSearchUpdate"
+  >
     <template #actions>
       <v-tooltip :text="t('shell.sync')" location="bottom">
         <template #activator="{ props: tip }">
@@ -395,6 +401,20 @@ const sidebarLabels = ref<MailLabel[]>([])
 const labelDialogLabels = ref<MailLabel[]>([])
 const currentMailboxBundle = ref<MailboxBundle | null>(null)
 const lastFailedAction = ref<(() => Promise<void>) | null>(null)
+const mailboxRequestGeneration = ref(0)
+let mailboxLoadPromise: Promise<MailboxBundle> | null = null
+let mailboxLoadAccountId: string | null = null
+let labelsLoadPromise: Promise<MailLabel[]> | null = null
+let labelsLoadAccountId: string | null = null
+let lastMailboxLoadedAt = 0
+let lastLabelsLoadedAt = 0
+let refreshMailboxPromise: Promise<void> | null = null
+let refreshMailboxPending = false
+
+const MAILBOX_CACHE_WINDOW_MS = 1200
+const LABEL_CACHE_WINDOW_MS = 1500
+type LoadingStage = 'idle' | 'syncing' | 'fetching' | 'applying' | 'searching' | 'finalizing'
+const loadingStage = ref<LoadingStage>('idle')
 
 interface UndoableAction {
   label: string
@@ -437,20 +457,181 @@ const currentFolderDisplayName = computed(() => {
 })
 
 const isSyncing = computed(() => syncStatus.value?.state === 'syncing')
+const loadingBarActive = computed(() =>
+  isSyncing.value || messagesStore.isLoading || loadingStage.value !== 'idle',
+)
+const loadingBarProgress = computed(() => {
+  switch (loadingStage.value) {
+    case 'syncing':
+      return 18
+    case 'fetching':
+      return 42
+    case 'applying':
+      return 72
+    case 'searching':
+      return 84
+    case 'finalizing':
+      return 96
+    default:
+      return isSyncing.value || messagesStore.isLoading ? null : 100
+  }
+})
+const loadingBarLabel = computed(() => {
+  switch (loadingStage.value) {
+    case 'syncing':
+      return t('shell.syncInProgress')
+    case 'fetching':
+      return t('shell.loadingMail')
+    case 'applying':
+      return t('shell.applyingMailboxChanges')
+    case 'searching':
+      return t('shell.searchingMail')
+    case 'finalizing':
+      return t('shell.finalizingMailbox')
+    default:
+      return ''
+  }
+})
+
+const setLoadingStage = (stage: LoadingStage) => {
+  loadingStage.value = stage
+}
 
 const buildLabelFilteredMessages = (bundle: MailboxBundle, label: string) =>
   bundle.messages
     .filter((message) => message.labels.some((item) => item.toLowerCase() === label.toLowerCase()))
     .sort((left, right) => new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime())
 
+const fetchMailboxBundle = async (accountId: string, options?: { force?: boolean }) => {
+  const force = options?.force ?? false
+  const now = Date.now()
+
+  if (!force
+    && currentMailboxBundle.value
+    && mailboxLoadAccountId === accountId
+    && now - lastMailboxLoadedAt < MAILBOX_CACHE_WINDOW_MS) {
+    return currentMailboxBundle.value
+  }
+
+  if (!force && mailboxLoadPromise && mailboxLoadAccountId === accountId) {
+    return mailboxLoadPromise
+  }
+
+  mailboxLoadAccountId = accountId
+  mailboxLoadPromise = mailRepository.getMailboxBundle(accountId)
+    .then((bundle) => {
+      currentMailboxBundle.value = bundle
+      lastMailboxLoadedAt = Date.now()
+      return bundle
+    })
+    .finally(() => {
+      mailboxLoadPromise = null
+    })
+
+  return mailboxLoadPromise
+}
+
+const fetchAccountLabels = async (accountId: string, options?: { force?: boolean }) => {
+  const force = options?.force ?? false
+  const now = Date.now()
+
+  if (!force
+    && sidebarLabels.value.length > 0
+    && labelsLoadAccountId === accountId
+    && now - lastLabelsLoadedAt < LABEL_CACHE_WINDOW_MS) {
+    return sidebarLabels.value
+  }
+
+  if (!force && labelsLoadPromise && labelsLoadAccountId === accountId) {
+    return labelsLoadPromise
+  }
+
+  labelsLoadAccountId = accountId
+  labelsLoadPromise = mailRepository.listLabels(accountId)
+    .then((labels) => {
+      sidebarLabels.value = labels
+      lastLabelsLoadedAt = Date.now()
+      return labels
+    })
+    .finally(() => {
+      labelsLoadPromise = null
+    })
+
+  return labelsLoadPromise
+}
+
+const patchCachedMessage = (messageId: string, updater: (message: import('@/types/mail').MailMessage) => import('@/types/mail').MailMessage) => {
+  if (!currentMailboxBundle.value) {
+    return
+  }
+
+  currentMailboxBundle.value = {
+    ...currentMailboxBundle.value,
+    messages: currentMailboxBundle.value.messages.map((message) =>
+      message.id === messageId ? updater(message) : message,
+    ),
+  }
+}
+
+const patchCachedMessages = (messageIds: Iterable<string>, updater: (message: import('@/types/mail').MailMessage) => import('@/types/mail').MailMessage) => {
+  if (!currentMailboxBundle.value) {
+    return
+  }
+
+  const ids = new Set(messageIds)
+  if (ids.size === 0) {
+    return
+  }
+
+  currentMailboxBundle.value = {
+    ...currentMailboxBundle.value,
+    messages: currentMailboxBundle.value.messages.map((message) =>
+      ids.has(message.id) ? updater(message) : message,
+    ),
+  }
+}
+
+const applyCachedReadState = (messageIds: Iterable<string>, isRead: boolean) => {
+  patchCachedMessages(messageIds, (message) => ({ ...message, isRead }))
+}
+
+const adjustUnreadCountsForMessages = (
+  messages: Array<Pick<import('@/types/mail').MailMessage, 'folderId' | 'isRead'>>,
+  nextIsRead: boolean,
+) => {
+  const perFolderDelta = new Map<string, number>()
+
+  for (const message of messages) {
+    if (message.isRead === nextIsRead) {
+      continue
+    }
+
+    const delta = nextIsRead ? -1 : 1
+    perFolderDelta.set(message.folderId, (perFolderDelta.get(message.folderId) ?? 0) + delta)
+  }
+
+  for (const [folderId, delta] of perFolderDelta) {
+    mailboxesStore.adjustUnread(folderId, delta)
+  }
+}
+
 const applyMailboxView = async (accountId: string, bundle?: MailboxBundle) => {
-  const mailboxBundle = bundle ?? await mailRepository.getMailboxBundle(accountId)
+  const requestId = ++mailboxRequestGeneration.value
+  const mailboxBundle = bundle ?? await fetchMailboxBundle(accountId)
+  setLoadingStage('applying')
+  const labels = await fetchAccountLabels(accountId)
+  if (requestId !== mailboxRequestGeneration.value) {
+    return
+  }
+
   currentMailboxBundle.value = mailboxBundle
   mailboxesStore.setFolders(mailboxBundle.folders)
-  sidebarLabels.value = await mailRepository.listLabels(accountId)
+  sidebarLabels.value = labels
 
   if (messagesStore.hasSearchQuery) {
+    setLoadingStage('searching')
     await messagesStore.searchMessages(accountId, messagesStore.query)
+    setLoadingStage('finalizing')
     return
   }
 
@@ -467,10 +648,13 @@ const loadMailbox = async (accountId: string) => {
   messagesStore.isLoading = true
 
   try {
-    const bundle = await mailRepository.getMailboxBundle(accountId)
+    setLoadingStage('fetching')
+    const bundle = await fetchMailboxBundle(accountId, { force: true })
     await applyMailboxView(accountId, bundle)
+    setLoadingStage('finalizing')
   } finally {
     messagesStore.isLoading = false
+    setLoadingStage('idle')
   }
 }
 
@@ -479,7 +663,30 @@ const refreshMailbox = async () => {
     return
   }
 
-  await loadMailbox(accountsStore.currentAccountId)
+  if (refreshMailboxPromise) {
+    refreshMailboxPending = true
+    return refreshMailboxPromise
+  }
+
+  refreshMailboxPromise = (async () => {
+    do {
+      const accountId = accountsStore.currentAccountId
+      if (!accountId) {
+        refreshMailboxPending = false
+        break
+      }
+      refreshMailboxPending = false
+      mailboxLoadPromise = null
+      labelsLoadPromise = null
+      lastMailboxLoadedAt = 0
+      lastLabelsLoadedAt = 0
+      await loadMailbox(accountId)
+    } while (refreshMailboxPending)
+  })().finally(() => {
+    refreshMailboxPromise = null
+  })
+
+  return refreshMailboxPromise
 }
 
 const handleSearchUpdate = (value: string) => {
@@ -513,6 +720,7 @@ const handleSelectMessage = async (messageId: string) => {
   if (message && !message.isRead) {
     await messagesStore.toggleRead(accountsStore.currentAccountId, messageId)
     mailboxesStore.decrementUnread(message.folderId)
+    patchCachedMessage(messageId, (cached) => ({ ...cached, isRead: true }))
   }
 }
 
@@ -541,6 +749,12 @@ const handleDeleteAccount = async (accountId: string) => {
   messagesStore.clearError()
   currentMailboxBundle.value = null
   sidebarLabels.value = []
+  mailboxLoadPromise = null
+  mailboxLoadAccountId = null
+  labelsLoadPromise = null
+  labelsLoadAccountId = null
+  lastMailboxLoadedAt = 0
+  lastLabelsLoadedAt = 0
   lastFailedAction.value = null
 
   if (accountsStore.currentAccountId) {
@@ -557,9 +771,13 @@ const handleFolderChange = async (folderId: string) => {
   selectedLabel.value = null
   mailboxesStore.selectFolder(folderId)
   try {
+    setLoadingStage('fetching')
     await messagesStore.loadMessages(accountsStore.currentAccountId, folderId)
+    setLoadingStage('finalizing')
   } catch {
     messagesStore.error = t('shell.failedToLoadMessages')
+  } finally {
+    setLoadingStage('idle')
   }
 }
 
@@ -664,7 +882,10 @@ const toggleStar = async (messageId: string) => {
   }
 
   await messagesStore.toggleStar(accountsStore.currentAccountId, messageId)
-  await refreshMailbox()
+  const updated = messagesStore.messages.find((message) => message.id === messageId)
+  if (updated) {
+    patchCachedMessage(messageId, () => updated)
+  }
 }
 
 const toggleReadCurrentMessage = async () => {
@@ -672,8 +893,13 @@ const toggleReadCurrentMessage = async () => {
     return
   }
 
+  const before = messagesStore.messages.find((message) => message.id === messagesStore.selectedMessageId)
   await messagesStore.toggleRead(accountsStore.currentAccountId, messagesStore.selectedMessageId)
-  await refreshMailbox()
+  const after = messagesStore.messages.find((message) => message.id === messagesStore.selectedMessageId)
+  if (before && after) {
+    mailboxesStore.adjustUnread(before.folderId, after.isRead === before.isRead ? 0 : (after.isRead ? -1 : 1))
+    patchCachedMessage(after.id, () => after)
+  }
 }
 
 const toggleStarCurrentMessage = async () => {
@@ -812,8 +1038,12 @@ const handleMarkAllRead = async () => {
     return
   }
 
+  const unreadMessages = messagesStore.messages
+    .filter((message) => !message.isRead)
+    .map((message) => ({ folderId: message.folderId, isRead: message.isRead }))
   await messagesStore.markAllRead(accountsStore.currentAccountId, mailboxesStore.currentFolderId)
-  await refreshMailbox()
+  adjustUnreadCountsForMessages(unreadMessages, true)
+  applyCachedReadState(messagesStore.messages.map((message) => message.id), true)
 }
 
 const handleCreateFolder = async (name: string) => {
@@ -882,14 +1112,24 @@ const handleBatchArchive = async () => {
 
 const handleBatchMarkRead = async () => {
   if (!accountsStore.currentAccountId) return
+  const selectedIds = [...messagesStore.selectedIds]
+  const affectedMessages = selectedIds
+    .map((id) => messagesStore.messages.find((message) => message.id === id))
+    .filter((message): message is NonNullable<typeof message> => Boolean(message))
   await messagesStore.batchToggleRead(accountsStore.currentAccountId, true)
-  await refreshMailbox()
+  adjustUnreadCountsForMessages(affectedMessages, true)
+  applyCachedReadState(selectedIds, true)
 }
 
 const handleBatchMarkUnread = async () => {
   if (!accountsStore.currentAccountId) return
+  const selectedIds = [...messagesStore.selectedIds]
+  const affectedMessages = selectedIds
+    .map((id) => messagesStore.messages.find((message) => message.id === id))
+    .filter((message): message is NonNullable<typeof message> => Boolean(message))
   await messagesStore.batchToggleRead(accountsStore.currentAccountId, false)
-  await refreshMailbox()
+  adjustUnreadCountsForMessages(affectedMessages, false)
+  applyCachedReadState(selectedIds, false)
 }
 
 const handleBatchMove = async (folderId: string) => {
@@ -941,7 +1181,7 @@ const loadAccountLabels = async () => {
     return
   }
 
-  labelDialogLabels.value = await mailRepository.listLabels(accountsStore.currentAccountId)
+  labelDialogLabels.value = await fetchAccountLabels(accountsStore.currentAccountId, { force: true })
 }
 
 const openLabelDialog = async (messageId: string) => {
@@ -1092,8 +1332,13 @@ const handleContextForward = (messageId: string) => {
 
 const handleContextToggleRead = async (messageId: string) => {
   if (!accountsStore.currentAccountId) return
+  const before = messagesStore.messages.find((message) => message.id === messageId)
   await messagesStore.toggleRead(accountsStore.currentAccountId, messageId)
-  await refreshMailbox()
+  const after = messagesStore.messages.find((message) => message.id === messageId)
+  if (before && after) {
+    mailboxesStore.adjustUnread(before.folderId, after.isRead === before.isRead ? 0 : (after.isRead ? -1 : 1))
+    patchCachedMessage(messageId, () => after)
+  }
 }
 
 const handleContextArchive = async (messageId: string) => {
@@ -1195,18 +1440,23 @@ const handleViewContact = (contact: { id: string }) => {
 }
 
 const handleSyncAccount = async (accountId: string) => {
-  messagesStore.setSyncStatus({
-    accountId,
-    state: 'syncing',
-    message: t('shell.syncInProgress'),
-    updatedAt: new Date().toISOString(),
-  })
+  setLoadingStage('syncing')
+  try {
+    messagesStore.setSyncStatus({
+      accountId,
+      state: 'syncing',
+      message: t('shell.syncInProgress'),
+      updatedAt: new Date().toISOString(),
+    })
 
-  await messagesStore.syncAccount(accountId)
-  if (messagesStore.error) {
-    lastFailedAction.value = () => handleSyncAccount(accountId)
-  } else {
-    await refreshMailbox()
+    await messagesStore.syncAccount(accountId)
+    if (messagesStore.error) {
+      lastFailedAction.value = () => handleSyncAccount(accountId)
+    } else {
+      await refreshMailbox()
+    }
+  } finally {
+    setLoadingStage('idle')
   }
 }
 
@@ -1221,20 +1471,25 @@ const syncCurrentAccount = async () => {
     return
   }
 
-  messagesStore.setSyncStatus({
-    accountId: accountsStore.currentAccountId,
-    state: 'syncing',
-    message: t('shell.syncInProgress'),
-    updatedAt: new Date().toISOString(),
-  })
+  setLoadingStage('syncing')
+  try {
+    messagesStore.setSyncStatus({
+      accountId: accountsStore.currentAccountId,
+      state: 'syncing',
+      message: t('shell.syncInProgress'),
+      updatedAt: new Date().toISOString(),
+    })
 
-  await messagesStore.syncAccount(accountsStore.currentAccountId)
-  if (messagesStore.error) {
-    const accountId = accountsStore.currentAccountId
-    lastFailedAction.value = () => handleSyncAccount(accountId)
-    return
+    await messagesStore.syncAccount(accountsStore.currentAccountId)
+    if (messagesStore.error) {
+      const accountId = accountsStore.currentAccountId
+      lastFailedAction.value = () => handleSyncAccount(accountId)
+      return
+    }
+    await refreshMailbox()
+  } finally {
+    setLoadingStage('idle')
   }
-  await refreshMailbox()
 }
 
 onMounted(async () => {
@@ -1343,7 +1598,9 @@ watch(
     searchTimer = setTimeout(async () => {
       const trimmed = query.trim()
       if (trimmed) {
+        setLoadingStage('searching')
         await messagesStore.searchMessages(accountId, trimmed)
+        setLoadingStage('idle')
         return
       }
 
@@ -1357,7 +1614,9 @@ watch(
       }
 
       if (folderId) {
+        setLoadingStage('fetching')
         await messagesStore.loadMessages(accountId, folderId)
+        setLoadingStage('idle')
       } else {
         await loadMailbox(accountId)
       }

@@ -768,26 +768,6 @@ const saveAccount = async () => {
 .account-setup-page__scroller {
   height: calc(100vh - 40px);
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(var(--v-theme-on-surface), 0.2) transparent;
-}
-
-.account-setup-page__scroller::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.account-setup-page__scroller::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.account-setup-page__scroller::-webkit-scrollbar-thumb {
-  background: rgba(var(--v-theme-on-surface), 0.15);
-  border-radius: 3px;
-}
-
-.account-setup-page__scroller::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--v-theme-on-surface), 0.3);
 }
 
 .account-setup-page__content {

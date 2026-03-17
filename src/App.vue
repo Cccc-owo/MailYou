@@ -178,34 +178,73 @@ onUnmounted(() => {
   border-radius: 24px;
 }
 
-/* Custom scrollbar — thin, theme-aware, applied globally */
+/* Global scrollbar tokens */
+:root {
+  --app-scrollbar-size: 8px;
+  --app-scrollbar-radius: 999px;
+  --app-scrollbar-thumb: rgba(var(--v-theme-on-surface), 0.18);
+  --app-scrollbar-thumb-hover: rgba(var(--v-theme-on-surface), 0.32);
+  --app-scrollbar-track: rgba(var(--v-theme-on-surface), 0.04);
+}
+
+/* Custom scrollbar — theme-aware, applied globally */
+html,
+body,
+#app,
+.v-application,
+.v-application__wrap,
+.v-overlay__content,
+.v-overlay__content *,
+.v-menu > .v-overlay__content,
+.v-dialog > .v-overlay__content,
+.v-autocomplete__content,
+.v-select__content,
 *,
 *::before,
 *::after {
   scrollbar-width: thin;
-  scrollbar-color: rgba(var(--v-theme-on-surface), 0.2) transparent;
+  scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+::-webkit-scrollbar,
+.v-overlay__content::-webkit-scrollbar,
+.v-overlay__content *::-webkit-scrollbar {
+  width: var(--app-scrollbar-size);
+  height: var(--app-scrollbar-size);
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+::-webkit-scrollbar-track,
+.v-overlay__content::-webkit-scrollbar-track,
+.v-overlay__content *::-webkit-scrollbar-track {
+  background: var(--app-scrollbar-track);
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(var(--v-theme-on-surface), 0.15);
-  border-radius: 3px;
+::-webkit-scrollbar-thumb,
+.v-overlay__content::-webkit-scrollbar-thumb,
+.v-overlay__content *::-webkit-scrollbar-thumb {
+  background: var(--app-scrollbar-thumb);
+  border-radius: var(--app-scrollbar-radius);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--v-theme-on-surface), 0.3);
+::-webkit-scrollbar-thumb:hover,
+.v-overlay__content::-webkit-scrollbar-thumb:hover,
+.v-overlay__content *::-webkit-scrollbar-thumb:hover {
+  background: var(--app-scrollbar-thumb-hover);
+  background-clip: padding-box;
 }
 
-::-webkit-scrollbar-corner {
-  background: transparent;
+::-webkit-scrollbar-corner,
+.v-overlay__content::-webkit-scrollbar-corner,
+.v-overlay__content *::-webkit-scrollbar-corner {
+  background: var(--app-scrollbar-track);
+}
+
+html,
+body,
+#app {
+  background: rgb(var(--v-theme-background));
 }
 
 .v-tooltip > .v-overlay__content {

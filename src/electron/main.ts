@@ -22,6 +22,7 @@ let isQuitting = false
 let isClosePromptVisible = false
 let backgroundSyncIntervalMinutes = 5
 let backgroundSyncTimer: ReturnType<typeof setInterval> | null = null
+let backgroundSyncRunPromise: Promise<void> | null = null
 const knownUnreadIdsByAccount = new Map<string, Set<string>>()
 const isDev = isMailYouDevServerEnabled()
 let closeBehaviorPreference: CloseBehaviorPreference = 'ask'
@@ -273,16 +274,26 @@ const syncSingleAccountInBackground = async (accountId: string) => {
 }
 
 const syncAccountsInBackground = async () => {
-  try {
-    const accounts = await mailBackend.listAccounts()
-    for (const account of accounts) {
-      await mailBackend.syncAccount(account.id)
-      await syncSingleAccountInBackground(account.id)
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    console.error(`[background-sync] failed: ${message}`)
+  if (backgroundSyncRunPromise) {
+    return backgroundSyncRunPromise
   }
+
+  backgroundSyncRunPromise = (async () => {
+    try {
+      const accounts = await mailBackend.listAccounts()
+      for (const account of accounts) {
+        await mailBackend.syncAccount(account.id)
+        await syncSingleAccountInBackground(account.id)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[background-sync] failed: ${message}`)
+    }
+  })().finally(() => {
+    backgroundSyncRunPromise = null
+  })
+
+  return backgroundSyncRunPromise
 }
 
 const restartBackgroundSyncTimer = () => {

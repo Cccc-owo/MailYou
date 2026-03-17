@@ -11,6 +11,22 @@
       </template>
     </AppTitleBar>
 
+    <div
+      v-if="loadingActive"
+      class="mail-shell-layout__progress"
+      :class="{ 'mail-shell-layout__progress--indeterminate': loadingProgress === null }"
+    >
+      <div v-if="loadingLabel" class="mail-shell-layout__progress-label">
+        {{ loadingLabel }}
+      </div>
+      <v-progress-linear
+        :model-value="loadingProgress ?? undefined"
+        :indeterminate="loadingProgress === null"
+        color="primary"
+        height="4"
+      />
+    </div>
+
     <main
       class="mail-shell-layout__content"
       :class="{ 'mail-shell-layout__content--dragging': draggingGutter !== null }"
@@ -62,10 +78,16 @@ withDefaults(
   defineProps<{
     search?: string
     hideSearch?: boolean
+    loadingActive?: boolean
+    loadingProgress?: number | null
+    loadingLabel?: string
   }>(),
   {
     search: '',
     hideSearch: false,
+    loadingActive: false,
+    loadingProgress: null,
+    loadingLabel: '',
   },
 )
 
@@ -135,16 +157,35 @@ onUnmounted(() => {
 <style scoped>
 .mail-shell-layout {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
   background: rgb(var(--v-theme-background));
 }
 
+.mail-shell-layout__progress {
+  grid-row: 2;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  background: rgba(var(--v-theme-primary), 0.03);
+}
+
+.mail-shell-layout__progress--indeterminate {
+  background: rgba(var(--v-theme-primary), 0.02);
+}
+
+.mail-shell-layout__progress-label {
+  padding: 6px 12px 4px;
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface), 0.65);
+}
+
 .mail-shell-layout__content {
+  grid-row: 3;
   display: grid;
   grid-template-columns: var(--sidebar-w, 260px) auto var(--list-w, 340px) auto minmax(0, 1fr);
+  height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .mail-shell-layout__content--dragging * {
