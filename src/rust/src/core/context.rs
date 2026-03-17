@@ -1,5 +1,4 @@
 use crate::provider::registry::{default_provider_registry, ProviderRegistry};
-use crate::provider::MailProvider;
 
 pub struct AppContext {
     registry: ProviderRegistry,
@@ -10,8 +9,8 @@ impl AppContext {
         Self { registry }
     }
 
-    pub fn provider(&self) -> &'static dyn MailProvider {
-        self.registry.default_provider()
+    pub fn registry(&self) -> &ProviderRegistry {
+        &self.registry
     }
 }
 

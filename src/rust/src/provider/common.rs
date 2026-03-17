@@ -1,5 +1,11 @@
-use crate::models::{AccountSetupDraft, AttachmentMeta};
+use std::time::Instant;
+
+use crate::models::{
+    AccountSetupDraft, AttachmentContent, AttachmentMeta, DraftMessage, StoredAccountState,
+    SyncStatus,
+};
 use crate::protocol::BackendError;
+use crate::storage::{memory, persisted};
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -245,6 +251,78 @@ pub fn get_attachment_filename(part: &mailparse::ParsedMail) -> Option<String> {
     }
 
     None
+}
+
+pub fn build_connection_test_status(message: String) -> SyncStatus {
+    SyncStatus {
+        account_id: "connection-test".into(),
+        state: "idle".into(),
+        message,
+        updated_at: memory::current_timestamp(),
+    }
+}
+
+pub fn prepare_smtp_send(draft: &DraftMessage) -> Result<StoredAccountState, BackendError> {
+    if draft.account_id.trim().is_empty() || draft.to.trim().is_empty() {
+        return Err(BackendError::validation(
+            "Recipient and account are required",
+        ));
+    }
+
+    memory::store()
+        .accounts()
+        .get_account_state(&draft.account_id)
+        .ok_or_else(|| BackendError::not_found("Account not found"))
+}
+
+pub fn log_smtp_send_start(draft: &DraftMessage, account_state: &StoredAccountState) -> Instant {
+    eprintln!(
+        "[smtp] sending message to {} via {}:{}...",
+        draft.to, account_state.config.outgoing_host, account_state.config.outgoing_port
+    );
+    Instant::now()
+}
+
+pub fn finalize_smtp_send(
+    draft: DraftMessage,
+    raw_email: Vec<u8>,
+    start: Instant,
+) -> Result<String, BackendError> {
+    eprintln!("[smtp] sent ok ({:.1?})", start.elapsed());
+    let (message_id, queued_at) = memory::store().mail().record_sent_message(draft)?;
+    let _ = persisted::save_raw_email(&message_id, &raw_email);
+    Ok(queued_at)
+}
+
+pub fn get_attachment_content_from_storage(
+    account_id: &str,
+    message_id: &str,
+    attachment_id: &str,
+) -> Result<AttachmentContent, BackendError> {
+    if let Some(content) = memory::store()
+        .mail()
+        .get_attachment_content(account_id, message_id, attachment_id)?
+    {
+        return Ok(content);
+    }
+    let raw = persisted::load_raw_email(message_id)
+        .map_err(|_| BackendError::not_found("Raw email not found. Try syncing the account."))?;
+
+    let parsed = mailparse::parse_mail(&raw)
+        .map_err(|error| BackendError::internal(format!("Failed to parse email: {error}")))?;
+    let part = find_mime_part_by_path(&parsed, attachment_id)
+        .ok_or_else(|| BackendError::not_found("Attachment part not found"))?;
+    let file_name = get_attachment_filename(part).unwrap_or_else(|| "attachment".into());
+    let mime_type = part.ctype.mimetype.clone();
+    let raw_body = part
+        .get_body_raw()
+        .map_err(|error| BackendError::internal(format!("Failed to read attachment body: {error}")))?;
+
+    Ok(AttachmentContent {
+        file_name,
+        mime_type,
+        data_base64: base64_encode_bytes(&raw_body),
+    })
 }
 
 pub fn find_mime_part_by_path<'a>(

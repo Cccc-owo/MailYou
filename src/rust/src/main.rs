@@ -20,10 +20,10 @@ async fn main() {
     eprintln!("[backend] starting...");
     let start = Instant::now();
     let app_context = app_context();
-    let provider = app_context.provider();
+    let registry = *app_context.registry();
     eprintln!(
         "[backend] initialized provider '{}' in {:?}",
-        provider.backend_name(),
+        "imap-smtp/pop3-smtp",
         start.elapsed()
     );
 
@@ -80,10 +80,11 @@ async fn main() {
         let realtime = realtime.clone();
         tokio::spawn(async move {
             let start = Instant::now();
+            let registry = registry;
 
             // Nested spawn to catch panics (JoinError on panic)
             let inner = tokio::spawn(async move {
-                core::app::handle_with_provider(provider, request.request).await
+                core::app::handle_request(&registry, request.request).await
             });
 
             let response = match inner.await {

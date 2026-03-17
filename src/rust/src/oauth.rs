@@ -72,7 +72,7 @@ pub async fn ensure_account_access_token(
         || token.refresh_token != state.config.refresh_token
         || token.expires_at != state.config.token_expires_at
     {
-        memory::update_account_oauth_tokens(
+        memory::store().accounts().update_account_oauth_tokens(
             &state.account.id,
             &token.access_token,
             &token.refresh_token,

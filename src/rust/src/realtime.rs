@@ -29,7 +29,7 @@ impl RealtimeController {
     }
 
     pub fn reconcile(&self, tx: mpsc::UnboundedSender<BackendMessage>) {
-        let Ok(accounts) = memory::list_accounts() else {
+        let Ok(accounts) = memory::store().accounts().list_accounts() else {
             return;
         };
 
@@ -108,7 +108,9 @@ async fn run_realtime_loop(
             Ok(IdleMailboxChange::Vanished(uids)) => {
                 if let Some(folder_id) = resolve_folder_id(&account_id, &mailbox_name) {
                     if let Err(error) =
-                        memory::remove_messages_by_imap_uids(&account_id, &folder_id, &uids)
+                        memory::store()
+                            .mail()
+                            .remove_messages_by_imap_uids(&account_id, &folder_id, &uids)
                     {
                         eprintln!(
                             "[idle] vanished prune failed for {account_id} {mailbox_name}: {}",
@@ -149,13 +151,15 @@ async fn idle_until_mailbox_changes(
     mailbox_name: &str,
     idle_timeout: Duration,
 ) -> Result<IdleMailboxChange, crate::protocol::BackendError> {
-    let account_state = memory::get_account_state(account_id)
+    let account_state = memory::store()
+        .accounts()
+        .get_account_state(account_id)
         .ok_or_else(|| crate::protocol::BackendError::not_found("Account not found"))?;
     wait_for_mailbox_change(&account_state, mailbox_name, idle_timeout).await
 }
 
 fn resolve_folder_id(account_id: &str, mailbox_name: &str) -> Option<String> {
-    memory::list_folders(account_id).ok().and_then(|folders| {
+    memory::store().mail().list_folders(account_id).ok().and_then(|folders| {
         folders
             .into_iter()
             .find(|folder| folder.imap_name.as_deref() == Some(mailbox_name))
@@ -164,7 +168,7 @@ fn resolve_folder_id(account_id: &str, mailbox_name: &str) -> Option<String> {
 }
 
 fn resolve_watched_mailboxes(account_id: &str, watch_junk: bool) -> Vec<String> {
-    let Ok(folders) = memory::list_folders(account_id) else {
+    let Ok(folders) = memory::store().mail().list_folders(account_id) else {
         return vec!["INBOX".into()];
     };
 

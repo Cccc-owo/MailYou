@@ -146,7 +146,7 @@ pub enum BackendRequest {
         draft: AccountSetupDraft,
     },
     ListOAuthProviders,
-    // -- Contacts (local-only, bypass MailProvider) --
+    // -- Contacts (local-only, bypass mail capability providers) --
     #[serde(rename_all = "camelCase")]
     ListContacts {
         group_id: Option<String>,
