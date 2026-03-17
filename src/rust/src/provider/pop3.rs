@@ -208,9 +208,11 @@ impl MailProvider for Pop3SmtpProvider {
             draft.to, account_state.config.outgoing_host, account_state.config.outgoing_port
         );
         let start = Instant::now();
-        smtp_send(&account_state, &draft).await?;
+        let raw_email = smtp_send(&account_state, &draft).await?;
         eprintln!("[smtp] sent ok ({:.1?})", start.elapsed());
-        memory::record_sent_message(draft)
+        let (message_id, queued_at) = memory::record_sent_message(draft)?;
+        let _ = persisted::save_raw_email(&message_id, &raw_email);
+        Ok(queued_at)
     }
 
     async fn toggle_star(
@@ -298,7 +300,11 @@ impl MailProvider for Pop3SmtpProvider {
         message_id: &str,
         attachment_id: &str,
     ) -> Result<AttachmentContent, BackendError> {
-        let _ = account_id;
+        if let Some(content) =
+            memory::get_local_attachment_content(account_id, message_id, attachment_id)?
+        {
+            return Ok(content);
+        }
         let raw = persisted::load_raw_email(message_id).map_err(|_| {
             BackendError::not_found("Raw email not found. Try syncing the account.")
         })?;

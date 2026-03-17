@@ -147,4 +147,31 @@ export const registerWindowIpc = () => {
       return true
     },
   )
+
+  ipcMain.handle(
+    'window:saveBinaryFiles',
+    async (
+      _event,
+      files: { fileName: string; mimeType: string; dataBase64: string }[],
+      suggestedFolderName: string,
+    ) => {
+      if (!Array.isArray(files) || files.length === 0) {
+        return false
+      }
+
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        defaultPath: suggestedFolderName,
+        properties: ['openDirectory', 'createDirectory'],
+      })
+      if (canceled || filePaths.length === 0) return false
+
+      const targetDir = filePaths[0]
+      for (const file of files) {
+        const safeName = (file.fileName || 'attachment').replace(/[/\\?%*:|"<>]/g, '_')
+        await writeFile(join(targetDir, safeName), Buffer.from(file.dataBase64, 'base64'))
+      }
+      shell.showItemInFolder(join(targetDir, files[0].fileName.replace(/[/\\?%*:|"<>]/g, '_')))
+      return true
+    },
+  )
 }

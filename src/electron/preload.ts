@@ -77,6 +77,8 @@ const windowControls: WindowControlsBridge = {
   openTextFile: (filters) => ipcRenderer.invoke('window:openTextFile', filters),
   saveTextFile: (content, suggestedName, filters) =>
     ipcRenderer.invoke('window:saveTextFile', content, suggestedName, filters),
+  saveBinaryFiles: (files, suggestedFolderName) =>
+    ipcRenderer.invoke('window:saveBinaryFiles', files, suggestedFolderName),
   onCloseRequested: (callback) => {
     const listener = () => callback()
     ipcRenderer.on('window:closeRequested', listener)

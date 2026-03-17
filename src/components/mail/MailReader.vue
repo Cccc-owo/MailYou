@@ -210,6 +210,35 @@
 
       <div class="mail-reader__body text-body-1" v-html="sanitizedBody" @click="handleBodyClick" />
 
+      <div v-if="message.attachments.length" class="mail-reader__attachment-actions">
+        <v-btn
+          v-if="message.attachments.length > 1"
+          prepend-icon="mdi-download-multiple"
+          variant="tonal"
+          size="small"
+          :loading="isDownloadingAll"
+          @click="downloadAllAttachments"
+        >
+          {{ t('reader.downloadAll') }}
+        </v-btn>
+        <span v-if="downloadProgress.active" class="text-caption text-medium-emphasis">
+          {{ t('reader.downloadProgress', { current: downloadProgress.current, total: downloadProgress.total }) }}
+        </span>
+      </div>
+
+      <v-progress-linear
+        v-if="downloadProgress.active"
+        :model-value="downloadProgress.value"
+        color="primary"
+        height="6"
+        rounded
+        class="mb-3"
+      />
+
+      <v-alert v-if="downloadError" type="error" variant="tonal" density="comfortable" class="mb-3">
+        {{ downloadError }}
+      </v-alert>
+
       <v-list v-if="message.attachments.length" class="mail-reader__attachments">
         <v-list-item v-for="attachment in message.attachments" :key="attachment.id" rounded="xl">
           <template #prepend>
@@ -280,6 +309,9 @@ const hasSelection = ref(false)
 const targetHref = ref<string | null>(null)
 const targetImgSrc = ref<string | null>(null)
 const downloadingId = ref<string | null>(null)
+const isDownloadingAll = ref(false)
+const downloadError = ref<string | null>(null)
+const downloadProgress = ref({ active: false, value: 0, current: 0, total: 0 })
 
 // --- Collapsible subject ---
 const subjectEl = ref<HTMLElement | null>(null)
@@ -299,6 +331,7 @@ const checkSubjectOverflow = () => {
 
 const downloadAttachment = async (attachment: AttachmentMeta) => {
   if (!props.message) return
+  downloadError.value = null
   downloadingId.value = attachment.id
   try {
     const content = await mailRepository.getAttachmentContent(
@@ -322,8 +355,56 @@ const downloadAttachment = async (attachment: AttachmentMeta) => {
     URL.revokeObjectURL(url)
   } catch (err) {
     console.error('Failed to download attachment:', err)
+    downloadError.value = t('reader.downloadFailed')
   } finally {
     downloadingId.value = null
+  }
+}
+
+const downloadAllAttachments = async () => {
+  if (!props.message || props.message.attachments.length === 0 || !window.windowControls?.saveBinaryFiles) {
+    return
+  }
+
+  isDownloadingAll.value = true
+  downloadError.value = null
+  downloadProgress.value = {
+    active: true,
+    value: 0,
+    current: 0,
+    total: props.message.attachments.length,
+  }
+
+  try {
+    const files = []
+    for (const [index, attachment] of props.message.attachments.entries()) {
+      const content = await mailRepository.getAttachmentContent(
+        props.message.accountId,
+        props.message.id,
+        attachment.id,
+      )
+      files.push(content)
+      downloadProgress.value = {
+        active: true,
+        value: ((index + 1) / props.message.attachments.length) * 100,
+        current: index + 1,
+        total: props.message.attachments.length,
+      }
+    }
+
+    const ok = await window.windowControls?.saveBinaryFiles(
+      files,
+      `${props.message.subject || 'attachments'}-attachments`,
+    )
+    if (!ok) {
+      downloadError.value = t('reader.downloadCanceled')
+    }
+  } catch (error) {
+    console.error('Failed to download attachments:', error)
+    downloadError.value = t('reader.downloadFailed')
+  } finally {
+    isDownloadingAll.value = false
+    downloadProgress.value = { active: false, value: 0, current: 0, total: 0 }
   }
 }
 
@@ -804,6 +885,14 @@ const parseAddr = (addr: string): { name: string; email: string } => {
 .mail-reader__attachments {
   margin-top: 20px;
   padding: 0;
+}
+
+.mail-reader__attachment-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
 }
 
 .mail-reader__empty {

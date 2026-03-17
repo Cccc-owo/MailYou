@@ -103,6 +103,30 @@
           @update:model-value="$emit('update:draft', { ...draft, body: $event })"
         />
 
+        <div
+          class="composer-dialog__dropzone"
+          :class="{ 'composer-dialog__dropzone--active': isDragOver }"
+          @dragenter.prevent="isDragOver = true"
+          @dragover.prevent="isDragOver = true"
+          @dragleave.prevent="handleDragLeave"
+          @drop.prevent="handleDrop"
+        >
+          <div class="text-body-2">{{ t('composer.dropAttachments') }}</div>
+          <div class="text-caption text-medium-emphasis">{{ t('composer.dropAttachmentsHint') }}</div>
+        </div>
+
+        <v-progress-linear
+          v-if="attachmentProgress.active"
+          :model-value="attachmentProgress.value"
+          color="primary"
+          height="6"
+          rounded
+        />
+
+        <v-alert v-if="attachmentError" type="error" variant="tonal" density="comfortable">
+          {{ attachmentError }}
+        </v-alert>
+
         <div v-if="draft.attachments.length" class="d-flex flex-wrap align-center ga-2">
           <v-chip
             v-for="(att, index) in draft.attachments"
@@ -145,6 +169,9 @@ const accountsStore = useAccountsStore()
 const fileInput = ref<HTMLInputElement | null>(null)
 const suggestions = ref<(Contact & { email: string; displayLabel: string })[]>([])
 const isSearching = ref(false)
+const isDragOver = ref(false)
+const attachmentError = ref<string | null>(null)
+const attachmentProgress = ref({ active: false, value: 0 })
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const props = defineProps<{
@@ -244,40 +271,74 @@ const triggerFileInput = () => {
   fileInput.value?.click()
 }
 
-const onFilesSelected = (event: Event) => {
-  const input = event.target as HTMLInputElement
-  const files = input.files
-  if (!files || files.length === 0) return
+const readFiles = async (files: File[]) => {
+  if (files.length === 0) return
 
-  const readers: Promise<{ fileName: string; mimeType: string; dataBase64: string }>[] = []
-  for (const file of files) {
-    readers.push(
-      new Promise((resolve) => {
+  attachmentError.value = null
+  attachmentProgress.value = { active: true, value: 0 }
+
+  const totalBytes = files.reduce((sum, file) => sum + Math.max(file.size, 1), 0)
+  let loadedBytes = 0
+
+  try {
+    const newAttachments = await Promise.all(files.map((file) =>
+      new Promise<{ fileName: string; mimeType: string; dataBase64: string }>((resolve, reject) => {
         const reader = new FileReader()
+        reader.onprogress = (event) => {
+          if (!event.lengthComputable) return
+          const otherLoaded = loadedBytes + event.loaded
+          attachmentProgress.value = {
+            active: true,
+            value: Math.min(100, (otherLoaded / totalBytes) * 100),
+          }
+        }
         reader.onload = () => {
           const result = reader.result as string
-          // strip "data:...;base64," prefix
           const base64 = result.split(',')[1] || ''
+          loadedBytes += Math.max(file.size, 1)
+          attachmentProgress.value = {
+            active: true,
+            value: Math.min(100, (loadedBytes / totalBytes) * 100),
+          }
           resolve({
             fileName: file.name,
             mimeType: file.type || 'application/octet-stream',
             dataBase64: base64,
           })
         }
+        reader.onerror = () => reject(reader.error ?? new Error('read failed'))
         reader.readAsDataURL(file)
       }),
-    )
-  }
+    ))
 
-  Promise.all(readers).then((newAttachments) => {
     emit('update:draft', {
       ...props.draft,
       attachments: [...props.draft.attachments, ...newAttachments],
     })
-  })
+  } catch {
+    attachmentError.value = t('composer.attachmentReadFailed')
+  } finally {
+    attachmentProgress.value = { active: false, value: 0 }
+  }
+}
 
-  // Reset input so the same file can be re-selected
+const onFilesSelected = (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const files = input.files ? Array.from(input.files) : []
+  void readFiles(files)
   input.value = ''
+}
+
+const handleDrop = (event: DragEvent) => {
+  isDragOver.value = false
+  const files = event.dataTransfer?.files ? Array.from(event.dataTransfer.files) : []
+  void readFiles(files)
+}
+
+const handleDragLeave = (event: DragEvent) => {
+  if (event.currentTarget === event.target) {
+    isDragOver.value = false
+  }
 }
 
 const removeAttachment = (index: number) => {
@@ -291,5 +352,18 @@ const removeAttachment = (index: number) => {
 .composer-dialog__body {
   display: grid;
   gap: 12px;
+}
+
+.composer-dialog__dropzone {
+  border: 1px dashed rgba(var(--v-theme-outline), 0.5);
+  border-radius: 18px;
+  padding: 16px;
+  background: rgba(var(--v-theme-surface-variant), 0.2);
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.composer-dialog__dropzone--active {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.08);
 }
 </style>

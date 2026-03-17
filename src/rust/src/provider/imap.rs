@@ -27,6 +27,10 @@ use crate::storage::memory;
 use crate::storage::persisted;
 
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const DRAFT_HEADER_IDENTITY: &str = "X-MailYou-Draft-Identity";
+const DRAFT_HEADER_REPLY: &str = "X-MailYou-Draft-In-Reply-To";
+const DRAFT_HEADER_FORWARD: &str = "X-MailYou-Draft-Forward-From";
+const DRAFT_HEADER_BCC: &str = "X-MailYou-Draft-Bcc";
 
 /// A stream that supports both plain TCP and TLS connections.
 #[derive(Debug)]
@@ -271,7 +275,19 @@ impl MailProvider for ImapSmtpProvider {
         account_id: &str,
         draft_id: &str,
     ) -> Result<Option<DraftMessage>, BackendError> {
-        memory::get_draft(account_id, draft_id)
+        if let Some(draft) = memory::get_draft(account_id, draft_id)? {
+            return Ok(Some(draft));
+        }
+
+        let Some(message) = memory::get_message(account_id, draft_id)? else {
+            return Ok(None);
+        };
+        let folder = memory::get_folder(account_id, &message.folder_id)?;
+        if !matches!(folder.kind, MailFolderKind::Drafts) {
+            return Ok(None);
+        }
+
+        Ok(Some(materialize_remote_draft(account_id, &message).await?))
     }
 
     async fn search_messages(
@@ -360,7 +376,39 @@ impl MailProvider for ImapSmtpProvider {
     }
 
     async fn save_draft(&self, draft: DraftMessage) -> Result<DraftMessage, BackendError> {
-        memory::save_draft(draft)
+        if draft.account_id.trim().is_empty() {
+            return Err(BackendError::validation("Account is required"));
+        }
+
+        let account_state = memory::get_account_state(&draft.account_id)
+            .ok_or_else(|| BackendError::not_found("Account not found"))?;
+        let mailbox_name = get_drafts_mailbox_name(&draft.account_id)?;
+        let raw_email = build_rfc822_message(&account_state, &draft)?.formatted();
+
+        if let Some(existing_message) = memory::get_message(&draft.account_id, &draft.id)? {
+            let existing_folder = memory::get_folder(&draft.account_id, &existing_message.folder_id)?;
+            if matches!(existing_folder.kind, MailFolderKind::Drafts) {
+                if let Some(uid) = existing_message.imap_uid {
+                    imap_delete_message_by_uid(&draft.account_id, &existing_folder.id, uid).await?;
+                }
+            }
+        }
+
+        let mut session = imap_connect_by_account(&draft.account_id).await?;
+        session
+            .append(&mailbox_name, Some("(\\Draft)"), None, &raw_email)
+            .await
+            .map_err(|error| BackendError::internal(format!("IMAP APPEND draft failed: {error}")))?;
+        let _ = session.logout().await;
+
+        let _ = memory::remove_draft(&draft.account_id, &draft.id);
+        self.sync_account(&draft.account_id).await?;
+
+        if let Some(remote) = find_matching_remote_draft(&draft.account_id, &draft)? {
+            return materialize_remote_draft(&draft.account_id, &remote).await;
+        }
+
+        Ok(draft)
     }
 
     async fn send_message(&self, draft: DraftMessage) -> Result<String, BackendError> {
@@ -378,9 +426,11 @@ impl MailProvider for ImapSmtpProvider {
             draft.to, account_state.config.outgoing_host, account_state.config.outgoing_port
         );
         let start = Instant::now();
-        smtp_send(&account_state, &draft).await?;
+        let raw_email = smtp_send(&account_state, &draft).await?;
         eprintln!("[smtp] sent ok ({:.1?})", start.elapsed());
-        memory::record_sent_message(draft)
+        let (message_id, queued_at) = memory::record_sent_message(draft)?;
+        let _ = persisted::save_raw_email(&message_id, &raw_email);
+        Ok(queued_at)
     }
 
     async fn toggle_star(
@@ -603,7 +653,11 @@ impl MailProvider for ImapSmtpProvider {
         message_id: &str,
         attachment_id: &str,
     ) -> Result<AttachmentContent, BackendError> {
-        let _ = account_id; // message_id already encodes the account
+        if let Some(content) =
+            memory::get_local_attachment_content(account_id, message_id, attachment_id)?
+        {
+            return Ok(content);
+        }
         let raw = persisted::load_raw_email(message_id).map_err(|_| {
             BackendError::not_found("Raw email not found. Try syncing the account.")
         })?;
@@ -1036,6 +1090,219 @@ fn get_imap_folder_name(account_id: &str, folder_id: &str) -> Option<String> {
             .into_iter()
             .find(|f| f.id == folder_id)
             .and_then(|f| f.imap_name)
+    })
+}
+
+fn get_drafts_mailbox_name(account_id: &str) -> Result<String, BackendError> {
+    let folder = memory::list_folders(account_id)?
+        .into_iter()
+        .find(|folder| matches!(folder.kind, MailFolderKind::Drafts))
+        .ok_or_else(|| BackendError::not_found("Drafts folder not found"))?;
+    Ok(folder
+        .imap_name
+        .unwrap_or_else(|| encode_imap_utf7(&folder.name)))
+}
+
+fn normalize_recipient_list(value: &[String]) -> Vec<String> {
+    value
+        .iter()
+        .map(|recipient| recipient.trim().to_lowercase())
+        .filter(|recipient| !recipient.is_empty())
+        .collect()
+}
+
+fn split_recipients_for_match(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(|recipient| recipient.trim().to_string())
+        .filter(|recipient| !recipient.is_empty())
+        .collect()
+}
+
+fn find_matching_remote_draft(
+    account_id: &str,
+    draft: &DraftMessage,
+) -> Result<Option<MailMessage>, BackendError> {
+    let drafts_folder = memory::list_folders(account_id)?
+        .into_iter()
+        .find(|folder| matches!(folder.kind, MailFolderKind::Drafts))
+        .ok_or_else(|| BackendError::not_found("Drafts folder not found"))?;
+    let mut messages = memory::list_messages(account_id, &drafts_folder.id)?;
+    let target_to = normalize_recipient_list(&split_recipients_for_match(&draft.to));
+    let target_cc = normalize_recipient_list(&split_recipients_for_match(&draft.cc));
+    messages.sort_by(|left, right| right.received_at.cmp(&left.received_at));
+    Ok(messages.into_iter().find(|message| {
+        message.imap_uid.is_some()
+            && message.subject == draft.subject
+            && message.body == draft.body
+            && normalize_recipient_list(&message.to) == target_to
+            && normalize_recipient_list(&message.cc) == target_cc
+    }))
+}
+
+async fn materialize_remote_draft(
+    account_id: &str,
+    message: &MailMessage,
+) -> Result<DraftMessage, BackendError> {
+    let account = memory::get_account_state(account_id)
+        .ok_or_else(|| BackendError::not_found("Account not found"))?
+        .account;
+    let raw = persisted::load_raw_email(&message.id).ok();
+    let parsed = raw
+        .as_ref()
+        .and_then(|raw_email| mailparse::parse_mail(raw_email).ok());
+    let selected_identity_id = parsed
+        .as_ref()
+        .and_then(|mail| parse_text_header(mail, DRAFT_HEADER_IDENTITY))
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            account
+                .identities
+                .iter()
+                .find(|identity| identity.email.eq_ignore_ascii_case(&message.from_email))
+                .map(|identity| identity.id.clone())
+        });
+    let mut attachments = Vec::with_capacity(message.attachments.len());
+    for attachment in &message.attachments {
+        let content = get_attachment_content_from_storage(account_id, &message.id, &attachment.id)?;
+        attachments.push(crate::models::DraftAttachment {
+            file_name: content.file_name,
+            mime_type: content.mime_type,
+            data_base64: content.data_base64,
+        });
+    }
+    let bcc = parsed
+        .as_ref()
+        .and_then(|mail| {
+            parse_text_header(mail, DRAFT_HEADER_BCC)
+                .or_else(|| parse_address_header(mail, "bcc"))
+        })
+        .unwrap_or_default();
+    let in_reply_to_message_id = parsed
+        .as_ref()
+        .and_then(|mail| {
+            parse_text_header(mail, DRAFT_HEADER_REPLY)
+                .or_else(|| parse_text_header(mail, "in-reply-to"))
+        })
+        .filter(|value| !value.is_empty());
+    let forward_from_message_id = parsed
+        .as_ref()
+        .and_then(|mail| parse_text_header(mail, DRAFT_HEADER_FORWARD))
+        .filter(|value| !value.is_empty());
+
+    Ok(DraftMessage {
+        id: message.id.clone(),
+        account_id: account_id.to_string(),
+        selected_identity_id,
+        to: message.to.join(", "),
+        cc: message.cc.join(", "),
+        bcc,
+        subject: message.subject.clone(),
+        body: message.body.clone(),
+        in_reply_to_message_id,
+        forward_from_message_id,
+        attachments,
+    })
+}
+
+fn parse_text_header(mail: &mailparse::ParsedMail<'_>, header_name: &str) -> Option<String> {
+    mail.headers
+        .iter()
+        .find(|header| header.get_key().eq_ignore_ascii_case(header_name))
+        .map(|header| decode_header_value(header.get_value_raw()))
+        .map(|value| value.trim().to_string())
+}
+
+fn parse_address_header(mail: &mailparse::ParsedMail<'_>, header_name: &str) -> Option<String> {
+    let header = mail
+        .headers
+        .iter()
+        .find(|header| header.get_key().eq_ignore_ascii_case(header_name))?;
+    let address_list = mailparse::addrparse_header(header).ok()?;
+    let mut recipients = Vec::new();
+    for address in address_list.iter() {
+        flatten_mail_address(address, &mut recipients);
+    }
+    Some(recipients.join(", "))
+}
+
+fn flatten_mail_address(address: &mailparse::MailAddr, recipients: &mut Vec<String>) {
+    match address {
+        mailparse::MailAddr::Single(single) => {
+            if let Some(display_name) = single.display_name.as_ref().filter(|name| !name.is_empty()) {
+                recipients.push(format!("{display_name} <{}>", single.addr));
+            } else {
+                recipients.push(single.addr.clone());
+            }
+        }
+        mailparse::MailAddr::Group(group) => {
+            for single in &group.addrs {
+                if let Some(display_name) = single.display_name.as_ref().filter(|name| !name.is_empty()) {
+                    recipients.push(format!("{display_name} <{}>", single.addr));
+                } else {
+                    recipients.push(single.addr.clone());
+                }
+            }
+        }
+    }
+}
+
+async fn imap_delete_message_by_uid(
+    account_id: &str,
+    folder_id: &str,
+    uid: u32,
+) -> Result<(), BackendError> {
+    let mailbox_name = get_imap_folder_name(account_id, folder_id)
+        .ok_or_else(|| BackendError::not_found("IMAP folder not found"))?;
+    let mut session = imap_connect_by_account(account_id).await?;
+    session
+        .select(&mailbox_name)
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP SELECT failed: {error}")))?;
+    let uid_str = uid.to_string();
+    session
+        .uid_store(&uid_str, "+FLAGS (\\Deleted)")
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP STORE \\Deleted failed: {error}")))?
+        .try_collect::<Vec<_>>()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP STORE \\Deleted failed: {error}")))?;
+    session
+        .expunge()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP EXPUNGE failed: {error}")))?
+        .try_collect::<Vec<_>>()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP EXPUNGE failed: {error}")))?;
+    let _ = session.logout().await;
+    Ok(())
+}
+
+fn get_attachment_content_from_storage(
+    account_id: &str,
+    message_id: &str,
+    attachment_id: &str,
+) -> Result<AttachmentContent, BackendError> {
+    if let Some(content) = memory::get_local_attachment_content(account_id, message_id, attachment_id)?
+    {
+        return Ok(content);
+    }
+    let raw = persisted::load_raw_email(message_id).map_err(|_| {
+        BackendError::not_found("Raw email not found. Try syncing the account.")
+    })?;
+    let parsed = mailparse::parse_mail(&raw)
+        .map_err(|error| BackendError::internal(format!("Failed to parse email: {error}")))?;
+    let part = find_mime_part_by_path(&parsed, attachment_id)
+        .ok_or_else(|| BackendError::not_found("Attachment part not found"))?;
+    let file_name = get_attachment_filename(part).unwrap_or_else(|| "attachment".into());
+    let mime_type = part.ctype.mimetype.clone();
+    let raw_body = part
+        .get_body_raw()
+        .map_err(|error| BackendError::internal(format!("Failed to read attachment body: {error}")))?;
+    Ok(AttachmentContent {
+        file_name,
+        mime_type,
+        data_base64: base64_encode_bytes(&raw_body),
     })
 }
 
@@ -2524,11 +2791,60 @@ fn parse_envelope(
 pub async fn smtp_send(
     state: &StoredAccountState,
     draft: &DraftMessage,
-) -> Result<(), BackendError> {
-    use lettre::message::header::ContentType;
-    use lettre::message::{Attachment, Mailbox, MultiPart, SinglePart};
+) -> Result<Vec<u8>, BackendError> {
     use lettre::transport::smtp::authentication::{Credentials, Mechanism};
-    use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
+    use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
+
+    let email = build_rfc822_message(state, draft)?;
+    let raw_email = email.formatted();
+    let host = state.config.outgoing_host.trim();
+    let port = state.config.outgoing_port;
+    let (creds, mechanisms) = match state.config.auth_mode {
+        AccountAuthMode::Password => (
+            Credentials::new(state.config.username.clone(), state.config.password.clone()),
+            None,
+        ),
+        AccountAuthMode::Oauth => {
+            let token = ensure_account_access_token(state)
+                .await?
+                .ok_or_else(|| BackendError::validation("OAuth token is missing"))?;
+            (
+                Credentials::new(state.config.username.clone(), token.access_token),
+                Some(vec![Mechanism::Xoauth2]),
+            )
+        }
+    };
+
+    let transport_builder = if state.config.use_tls {
+        AsyncSmtpTransport::<Tokio1Executor>::relay(host)
+            .map_err(|e| BackendError::internal(format!("SMTP relay error: {e}")))?
+            .port(port)
+    } else {
+        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host).port(port)
+    };
+    let transport_builder = transport_builder.credentials(creds);
+    let transport = if let Some(mechanisms) = mechanisms {
+        transport_builder.authentication(mechanisms).build()
+    } else {
+        transport_builder.build()
+    };
+
+    transport
+        .send(email)
+        .await
+        .map_err(|e| BackendError::internal(format!("SMTP send failed: {e}")))?;
+
+    Ok(raw_email)
+}
+
+fn build_rfc822_message(
+    state: &StoredAccountState,
+    draft: &DraftMessage,
+) -> Result<lettre::Message, BackendError> {
+    use lettre::message::header::ContentType;
+    use lettre::message::header::{HeaderName, HeaderValue, InReplyTo};
+    use lettre::message::{Attachment, Mailbox, MultiPart, SinglePart};
+    use lettre::Message;
 
     let identity = resolve_sender_identity(&state.account, draft.selected_identity_id.as_deref());
     let from: Mailbox = format!("{} <{}>", identity.name, identity.email)
@@ -2536,6 +2852,44 @@ pub async fn smtp_send(
         .map_err(|e| BackendError::validation(format!("Invalid sender address: {e}")))?;
 
     let mut builder = Message::builder().from(from);
+    if let Some(identity_id) = draft
+        .selected_identity_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder = builder.raw_header(HeaderValue::new(
+            HeaderName::new_from_ascii_str(DRAFT_HEADER_IDENTITY),
+            identity_id.clone(),
+        ));
+    }
+    if let Some(reply_id) = draft
+        .in_reply_to_message_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder = builder
+            .header(InReplyTo::from(reply_id.clone()))
+            .raw_header(HeaderValue::new(
+                HeaderName::new_from_ascii_str(DRAFT_HEADER_REPLY),
+                reply_id.clone(),
+            ));
+    }
+    if let Some(forward_id) = draft
+        .forward_from_message_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        builder = builder.raw_header(HeaderValue::new(
+            HeaderName::new_from_ascii_str(DRAFT_HEADER_FORWARD),
+            forward_id.clone(),
+        ));
+    }
+    if !draft.bcc.trim().is_empty() {
+        builder = builder.raw_header(HeaderValue::new(
+            HeaderName::new_from_ascii_str(DRAFT_HEADER_BCC),
+            draft.bcc.clone(),
+        ));
+    }
     if let Some(reply_to) = identity
         .reply_to
         .as_ref()
@@ -2603,44 +2957,7 @@ pub async fn smtp_send(
             .map_err(|e| BackendError::internal(format!("Failed to build email: {e}")))?
     };
 
-    let host = state.config.outgoing_host.trim();
-    let port = state.config.outgoing_port;
-    let (creds, mechanisms) = match state.config.auth_mode {
-        AccountAuthMode::Password => (
-            Credentials::new(state.config.username.clone(), state.config.password.clone()),
-            None,
-        ),
-        AccountAuthMode::Oauth => {
-            let token = ensure_account_access_token(state)
-                .await?
-                .ok_or_else(|| BackendError::validation("OAuth token is missing"))?;
-            (
-                Credentials::new(state.config.username.clone(), token.access_token),
-                Some(vec![Mechanism::Xoauth2]),
-            )
-        }
-    };
-
-    let transport_builder = if state.config.use_tls {
-        AsyncSmtpTransport::<Tokio1Executor>::relay(host)
-            .map_err(|e| BackendError::internal(format!("SMTP relay error: {e}")))?
-            .port(port)
-    } else {
-        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(host).port(port)
-    };
-    let transport_builder = transport_builder.credentials(creds);
-    let transport = if let Some(mechanisms) = mechanisms {
-        transport_builder.authentication(mechanisms).build()
-    } else {
-        transport_builder.build()
-    };
-
-    transport
-        .send(email)
-        .await
-        .map_err(|e| BackendError::internal(format!("SMTP send failed: {e}")))?;
-
-    Ok(())
+    Ok(email)
 }
 
 fn resolve_sender_identity(account: &MailAccount, identity_id: Option<&str>) -> MailIdentity {
@@ -2668,4 +2985,156 @@ fn resolve_sender_identity(account: &MailAccount, identity_id: Option<&str>) -> 
             signature: None,
             is_default: true,
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_rfc822_message, parse_address_header, parse_text_header, DRAFT_HEADER_BCC,
+        DRAFT_HEADER_FORWARD, DRAFT_HEADER_IDENTITY, DRAFT_HEADER_REPLY,
+    };
+    use crate::models::{
+        AccountAuthMode, AccountConfig, AccountStatus, DraftAttachment, DraftMessage, MailAccount,
+        MailIdentity, StoredAccountState,
+    };
+
+    fn fixture_state() -> StoredAccountState {
+        StoredAccountState {
+            account: MailAccount {
+                id: "acc-1".into(),
+                name: "Primary".into(),
+                email: "primary@example.com".into(),
+                provider: "imap-smtp".into(),
+                incoming_protocol: "imap".into(),
+                auth_mode: AccountAuthMode::Password,
+                oauth_provider: None,
+                oauth_source: None,
+                color: "#5B8DEF".into(),
+                initials: "PR".into(),
+                unread_count: 0,
+                status: AccountStatus::Connected,
+                last_synced_at: "2026-03-17T00:00:00.000Z".into(),
+                identities: vec![
+                    MailIdentity {
+                        id: "identity-default".into(),
+                        name: "Primary".into(),
+                        email: "primary@example.com".into(),
+                        reply_to: None,
+                        signature: None,
+                        is_default: true,
+                    },
+                    MailIdentity {
+                        id: "identity-alt".into(),
+                        name: "Alt Sender".into(),
+                        email: "alias@example.com".into(),
+                        reply_to: Some("reply@example.com".into()),
+                        signature: Some("<p>sig</p>".into()),
+                        is_default: false,
+                    },
+                ],
+            },
+            config: AccountConfig {
+                auth_mode: AccountAuthMode::Password,
+                incoming_protocol: "imap".into(),
+                incoming_host: "imap.example.com".into(),
+                incoming_port: 993,
+                outgoing_host: "smtp.example.com".into(),
+                outgoing_port: 465,
+                username: "primary@example.com".into(),
+                password: "secret".into(),
+                use_tls: true,
+                oauth_provider: None,
+                oauth_source: None,
+                access_token: String::new(),
+                refresh_token: String::new(),
+                token_expires_at: String::new(),
+            },
+        }
+    }
+
+    fn fixture_draft() -> DraftMessage {
+        DraftMessage {
+            id: "draft-1".into(),
+            account_id: "acc-1".into(),
+            selected_identity_id: Some("identity-alt".into()),
+            to: "Alice <alice@example.com>".into(),
+            cc: "Bob <bob@example.com>".into(),
+            bcc: "Secret <secret@example.com>".into(),
+            subject: "Subject".into(),
+            body: "<p>Hello</p>".into(),
+            in_reply_to_message_id: Some("<reply-id@example.com>".into()),
+            forward_from_message_id: Some("forward-source-1".into()),
+            attachments: vec![DraftAttachment {
+                file_name: "hello.txt".into(),
+                mime_type: "text/plain".into(),
+                data_base64: "aGVsbG8=".into(),
+            }],
+        }
+    }
+
+    #[test]
+    fn build_rfc822_message_embeds_mailyou_draft_headers() {
+        let state = fixture_state();
+        let draft = fixture_draft();
+        let message = build_rfc822_message(&state, &draft).expect("message should build");
+        let raw = message.formatted();
+        let parsed = mailparse::parse_mail(&raw).expect("message should parse");
+
+        assert_eq!(
+            parse_text_header(&parsed, DRAFT_HEADER_IDENTITY).as_deref(),
+            Some("identity-alt")
+        );
+        assert_eq!(
+            parse_text_header(&parsed, DRAFT_HEADER_REPLY).as_deref(),
+            Some("<reply-id@example.com>")
+        );
+        assert_eq!(
+            parse_text_header(&parsed, DRAFT_HEADER_FORWARD).as_deref(),
+            Some("forward-source-1")
+        );
+        assert_eq!(
+            parse_text_header(&parsed, "in-reply-to").as_deref(),
+            Some("<reply-id@example.com>")
+        );
+    }
+
+    #[test]
+    fn build_rfc822_message_preserves_bcc_header_for_remote_draft_restore() {
+        let state = fixture_state();
+        let draft = fixture_draft();
+        let message = build_rfc822_message(&state, &draft).expect("message should build");
+        let raw = message.formatted();
+        let parsed = mailparse::parse_mail(&raw).expect("message should parse");
+
+        assert_eq!(
+            parse_text_header(&parsed, DRAFT_HEADER_BCC).as_deref(),
+            Some("Secret <secret@example.com>")
+        );
+        assert_eq!(
+            parse_address_header(&parsed, "to").as_deref(),
+            Some("Alice <alice@example.com>")
+        );
+        assert_eq!(
+            parse_address_header(&parsed, "cc").as_deref(),
+            Some("Bob <bob@example.com>")
+        );
+    }
+
+    #[test]
+    fn build_rfc822_message_uses_selected_identity_and_reply_to() {
+        let state = fixture_state();
+        let draft = fixture_draft();
+        let message = build_rfc822_message(&state, &draft).expect("message should build");
+        let raw = message.formatted();
+        let parsed = mailparse::parse_mail(&raw).expect("message should parse");
+
+        assert_eq!(
+            parse_address_header(&parsed, "from").as_deref(),
+            Some("Alt Sender <alias@example.com>")
+        );
+        assert_eq!(
+            parse_address_header(&parsed, "reply-to").as_deref(),
+            Some("reply@example.com")
+        );
+    }
 }

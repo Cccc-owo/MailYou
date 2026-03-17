@@ -134,6 +134,45 @@ pub fn get_draft(account_id: &str, draft_id: &str) -> Result<Option<DraftMessage
         .cloned())
 }
 
+pub fn remove_draft(account_id: &str, draft_id: &str) -> Result<(), BackendError> {
+    let mut state = lock_state();
+    state
+        .drafts
+        .retain(|draft| !(draft.account_id == account_id && draft.id == draft_id));
+    state
+        .messages
+        .retain(|message| !(message.account_id == account_id && message.id == draft_id));
+    state.recalculate_counts();
+    state.persist()
+}
+
+pub fn get_local_attachment_content(
+    account_id: &str,
+    message_id: &str,
+    attachment_id: &str,
+) -> Result<Option<AttachmentContent>, BackendError> {
+    let state = lock_state();
+
+    if let Some(draft) = state
+        .drafts
+        .iter()
+        .find(|draft| draft.account_id == account_id && draft.id == message_id)
+    {
+        let attachment = draft
+            .attachments
+            .iter()
+            .find(|attachment| attachment.file_name == attachment_id)
+            .ok_or_else(|| BackendError::not_found("Attachment not found"))?;
+        return Ok(Some(AttachmentContent {
+            file_name: attachment.file_name.clone(),
+            mime_type: attachment.mime_type.clone(),
+            data_base64: attachment.data_base64.clone(),
+        }));
+    }
+
+    Ok(None)
+}
+
 fn strip_html_tags(input: &str) -> String {
     let mut output = String::with_capacity(input.len());
     let mut inside_tag = false;
@@ -304,6 +343,8 @@ pub fn save_draft(draft: DraftMessage) -> Result<DraftMessage, BackendError> {
     if let Some(existing) = state.drafts.iter_mut().find(|item| item.id == draft.id) {
         *existing = draft.clone();
         let updated = existing.clone();
+        sync_draft_mailbox_message(&mut state, &updated);
+        state.recalculate_counts();
         state.persist()?;
         return Ok(updated);
     }
@@ -835,7 +876,7 @@ pub fn update_account_oauth_tokens(
     state.persist()
 }
 
-pub fn record_sent_message(draft: DraftMessage) -> Result<String, BackendError> {
+pub fn record_sent_message(draft: DraftMessage) -> Result<(String, String), BackendError> {
     let mut state = lock_state();
     state.drafts.retain(|item| item.id != draft.id);
     state.messages.retain(|message| message.id != draft.id);
@@ -859,8 +900,9 @@ pub fn record_sent_message(draft: DraftMessage) -> Result<String, BackendError> 
         .ok_or_else(|| BackendError::not_found("Account not found"))?;
     let identity = resolve_identity(&account, draft.selected_identity_id.as_deref());
 
+    let message_id = format!("sent-{}", state.messages.len() + 1);
     let message = MailMessage {
-        id: format!("sent-{}", state.messages.len() + 1),
+        id: message_id.clone(),
         account_id: draft.account_id.clone(),
         folder_id: sent_folder,
         thread_id: thread_id.clone(),
@@ -905,7 +947,7 @@ pub fn record_sent_message(draft: DraftMessage) -> Result<String, BackendError> 
     state.messages.insert(0, message);
     state.recalculate_counts();
     state.persist()?;
-    Ok(timestamp)
+    Ok((message_id, timestamp))
 }
 
 pub fn merge_remote_mailbox(
@@ -1283,6 +1325,16 @@ fn sync_draft_mailbox_message(state: &mut MemoryState, draft: &DraftMessage) {
     };
 
     let preview = preview_for(&draft.body);
+    let attachments = draft
+        .attachments
+        .iter()
+        .map(|attachment| AttachmentMeta {
+            id: attachment.file_name.clone(),
+            file_name: attachment.file_name.clone(),
+            mime_type: attachment.mime_type.clone(),
+            size_bytes: attachment.data_base64.len() as u64 * 3 / 4,
+        })
+        .collect::<Vec<_>>();
     let identity = state
         .account_states
         .iter()
@@ -1307,6 +1359,8 @@ fn sync_draft_mailbox_message(state: &mut MemoryState, draft: &DraftMessage) {
         message.cc = split_recipients(&draft.cc);
         message.from = identity.name.clone();
         message.from_email = identity.email.clone();
+        message.has_attachments = !attachments.is_empty();
+        message.attachments = attachments;
         message.received_at = current_timestamp();
         return;
     }
@@ -1329,8 +1383,8 @@ fn sync_draft_mailbox_message(state: &mut MemoryState, draft: &DraftMessage) {
             received_at: current_timestamp(),
             is_read: true,
             is_starred: false,
-            has_attachments: false,
-            attachments: vec![],
+            has_attachments: !attachments.is_empty(),
+            attachments,
             labels: vec!["Draft".into()],
             previous_folder_id: None,
             imap_uid: None,

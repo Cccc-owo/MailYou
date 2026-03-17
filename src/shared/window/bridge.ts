@@ -19,5 +19,9 @@ export interface WindowControlsBridge {
     suggestedName: string,
     filters: { name: string; extensions: string[] }[],
   ): Promise<boolean>
+  saveBinaryFiles(
+    files: { fileName: string; mimeType: string; dataBase64: string }[],
+    suggestedFolderName: string,
+  ): Promise<boolean>
   onCloseRequested(callback: () => void): () => void
 }
