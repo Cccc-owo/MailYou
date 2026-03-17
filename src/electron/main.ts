@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, Notification, Tray, nativeImage, protocol, session } from 'electron'
+import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, protocol, session } from 'electron'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -10,18 +10,37 @@ import {
 import { handleOAuthCallbackUrl } from './backend/oauth'
 import { ensureRustBackendReady, onRustBackendEvent, shutdownRustBackend } from './backend/rust/process'
 import { registerMailIpc } from './ipc/mail'
-import { registerWindowIpc, setWindowSyncIntervalHandler } from './ipc/window'
+import { registerWindowIpc, setWindowCloseBehaviorHandler, setWindowCloseResolveHandler, setWindowSyncIntervalHandler } from './ipc/window'
 import { mailBackend } from './backend/mailBackend'
+import type { CloseBehaviorPreference, CloseRequestAction } from '@/shared/window/bridge'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let pendingOAuthCallbackUrl: string | null = null
 let isQuitting = false
+let isClosePromptVisible = false
 let backgroundSyncIntervalMinutes = 5
 let backgroundSyncTimer: ReturnType<typeof setInterval> | null = null
 const knownUnreadIdsByAccount = new Map<string, Set<string>>()
 const isDev = isMailYouDevServerEnabled()
+let closeBehaviorPreference: CloseBehaviorPreference = 'ask'
+
+const MAIN_LOCALE_MESSAGES = {
+  zh: {
+    trayShow: '显示 MailYou',
+    trayQuit: '退出',
+  },
+  en: {
+    trayShow: 'Show MailYou',
+    trayQuit: 'Quit',
+  },
+} as const
+
+const getMainLocaleMessages = () => {
+  const locale = app.getLocale().toLowerCase()
+  return locale.startsWith('zh') ? MAIN_LOCALE_MESSAGES.zh : MAIN_LOCALE_MESSAGES.en
+}
 
 const configureLinuxWindowSystem = () => {
   if (process.platform !== 'linux') {
@@ -128,7 +147,7 @@ const createMainWindow = async () => {
     }
 
     event.preventDefault()
-    window.hide()
+    void handleWindowCloseRequest(window)
   })
 
   const devServerUrl = getMailYouDevServerUrl()
@@ -144,6 +163,55 @@ const createMainWindow = async () => {
   mainWindow = window
   consumePendingOAuthCallback()
   return window
+}
+
+const hideToBackground = (window: BrowserWindow) => {
+  window.hide()
+}
+
+const handleWindowCloseRequest = async (window: BrowserWindow) => {
+  if (closeBehaviorPreference === 'always_background') {
+    hideToBackground(window)
+    return
+  }
+
+  if (closeBehaviorPreference === 'always_quit') {
+    isQuitting = true
+    app.quit()
+    return
+  }
+
+  if (isClosePromptVisible) {
+    return
+  }
+
+  isClosePromptVisible = true
+  if (!window.isDestroyed()) {
+    window.webContents.send('window:closeRequested')
+  }
+}
+
+const resolveWindowCloseRequest = (
+  window: BrowserWindow | null,
+  action: CloseRequestAction,
+  rememberBackground: boolean,
+) => {
+  isClosePromptVisible = false
+  const targetWindow = window && !window.isDestroyed() ? window : mainWindow
+  if (!targetWindow || targetWindow.isDestroyed()) {
+    return
+  }
+
+  if (action === 'background') {
+    if (rememberBackground) {
+      closeBehaviorPreference = 'always_background'
+    }
+    hideToBackground(targetWindow)
+    return
+  }
+
+  isQuitting = true
+  app.quit()
 }
 
 const focusMainWindow = async () => {
@@ -235,18 +303,19 @@ const createTray = () => {
     return
   }
 
+  const messages = getMainLocaleMessages()
   const icon = nativeImage.createFromPath(join(__dirname, '../src/assets/logo.png'))
   tray = new Tray(icon)
   tray.setToolTip('MailYou')
   tray.setContextMenu(Menu.buildFromTemplate([
     {
-      label: 'Show MailYou',
+      label: messages.trayShow,
       click: () => {
         void focusMainWindow()
       },
     },
     {
-      label: 'Quit',
+      label: messages.trayQuit,
       click: () => {
         isQuitting = true
         app.quit()
@@ -301,6 +370,10 @@ app.whenReady().then(async () => {
 
   registerMailIpc()
   registerWindowIpc()
+  setWindowCloseBehaviorHandler((value) => {
+    closeBehaviorPreference = value
+  })
+  setWindowCloseResolveHandler(resolveWindowCloseRequest)
   setWindowSyncIntervalHandler((minutes) => {
     backgroundSyncIntervalMinutes = minutes
     restartBackgroundSyncTimer()

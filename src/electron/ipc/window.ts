@@ -2,14 +2,27 @@ import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { writeFile, readFile, unlink } from 'fs/promises'
 import { join, basename } from 'path'
 import { tmpdir } from 'os'
+import type { CloseBehaviorPreference, CloseRequestAction } from '@/shared/window/bridge'
 
 let registered = false
 let setBackgroundSyncIntervalHandler: ((minutes: number) => void) | null = null
+let setCloseBehaviorPreferenceHandler: ((value: CloseBehaviorPreference) => void) | null = null
+let resolveCloseRequestHandler: ((window: BrowserWindow | null, action: CloseRequestAction, rememberBackground: boolean) => void) | null = null
 
 const getWindowFromEvent = (event: Electron.IpcMainInvokeEvent) => BrowserWindow.fromWebContents(event.sender)
 
 export const setWindowSyncIntervalHandler = (handler: (minutes: number) => void) => {
   setBackgroundSyncIntervalHandler = handler
+}
+
+export const setWindowCloseBehaviorHandler = (handler: (value: CloseBehaviorPreference) => void) => {
+  setCloseBehaviorPreferenceHandler = handler
+}
+
+export const setWindowCloseResolveHandler = (
+  handler: (window: BrowserWindow | null, action: CloseRequestAction, rememberBackground: boolean) => void,
+) => {
+  resolveCloseRequestHandler = handler
 }
 
 export const registerWindowIpc = () => {
@@ -51,13 +64,24 @@ export const registerWindowIpc = () => {
     }
   })
 
-  ipcMain.handle('window:focus', (event) => {
-    const win = getWindowFromEvent(event)
-    if (win) {
-      if (win.isMinimized()) win.restore()
-      win.focus()
+  ipcMain.handle('window:setCloseBehaviorPreference', (_event, value: CloseBehaviorPreference) => {
+    if (value === 'ask' || value === 'always_background' || value === 'always_quit') {
+      setCloseBehaviorPreferenceHandler?.(value)
     }
   })
+
+  ipcMain.handle(
+    'window:resolveCloseRequest',
+    (event, action: CloseRequestAction, rememberBackground: boolean) => {
+      if (action === 'background' || action === 'quit') {
+        resolveCloseRequestHandler?.(
+          getWindowFromEvent(event) ?? null,
+          action,
+          Boolean(rememberBackground),
+        )
+      }
+    },
+  )
 
   ipcMain.handle('window:setBackgroundSyncInterval', (_event, minutes: number) => {
     if (typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0) {

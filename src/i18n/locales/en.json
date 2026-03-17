@@ -148,6 +148,13 @@
       "discard": "Discard"
     }
   },
+  "closePrompt": {
+    "title": "When closing MailYou",
+    "description": "Do you want MailYou to keep running in the background after the window closes? It will hide to the tray and continue syncing mail and notifications.",
+    "keepRunning": "Keep running",
+    "quit": "Quit MailYou",
+    "alwaysBackground": "Always keep running in the background"
+  },
   "settings": {
     "title": "Settings",
     "themeMode": "Theme mode",
@@ -174,6 +181,10 @@
     "fetchLimit50": "50 messages",
     "fetchLimit100": "100 messages",
     "fetchLimit200": "200 messages",
+    "closeBehavior": "When closing the window",
+    "closeBehaviorAsk": "Ask every time",
+    "closeBehaviorBackground": "Always keep running",
+    "closeBehaviorQuit": "Always quit the app",
     "language": "Language",
     "privacy": "Privacy",
     "imageLoadPolicy": "Image loading",

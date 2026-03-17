@@ -148,6 +148,13 @@
       "discard": "丢弃"
     }
   },
+  "closePrompt": {
+    "title": "关闭 MailYou 时",
+    "description": "你希望 MailYou 在关闭窗口后继续在后台运行吗？后台运行时会隐藏到托盘，并继续收信与通知。",
+    "keepRunning": "继续后台运行",
+    "quit": "退出 MailYou",
+    "alwaysBackground": "以后总是继续后台运行"
+  },
   "settings": {
     "title": "设置",
     "themeMode": "主题模式",
@@ -174,6 +181,10 @@
     "fetchLimit50": "50 封邮件",
     "fetchLimit100": "100 封邮件",
     "fetchLimit200": "200 封邮件",
+    "closeBehavior": "关闭窗口时",
+    "closeBehaviorAsk": "每次询问",
+    "closeBehaviorBackground": "始终后台运行",
+    "closeBehaviorQuit": "始终退出应用",
     "language": "语言",
     "privacy": "隐私",
     "imageLoadPolicy": "图片加载",

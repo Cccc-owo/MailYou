@@ -1,10 +1,14 @@
+export type CloseBehaviorPreference = 'ask' | 'always_background' | 'always_quit'
+export type CloseRequestAction = 'background' | 'quit'
+
 export interface WindowControlsBridge {
   minimize(): Promise<void>
   toggleMaximize(): Promise<boolean>
   close(): Promise<void>
   isMaximized(): Promise<boolean>
   openExternal(url: string): Promise<void>
-  focus(): Promise<void>
+  setCloseBehaviorPreference(value: CloseBehaviorPreference): Promise<void>
+  resolveCloseRequest(action: CloseRequestAction, rememberBackground: boolean): Promise<void>
   setBackgroundSyncInterval(minutes: number): Promise<void>
   exportPdf(html: string, fileName: string): Promise<boolean>
   openTextFile(
@@ -15,4 +19,5 @@ export interface WindowControlsBridge {
     suggestedName: string,
     filters: { name: string; extensions: string[] }[],
   ): Promise<boolean>
+  onCloseRequested(callback: () => void): () => void
 }

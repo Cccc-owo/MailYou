@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { i18n } from '@/i18n'
+import type { CloseBehaviorPreference } from '@/shared/window/bridge'
 
 export type AppearanceMode = 'light' | 'dark'
 export type LocaleMode = 'en' | 'zh'
@@ -12,6 +13,7 @@ const SYNC_INTERVAL_KEY = 'mailyou.syncIntervalMinutes'
 const FETCH_LIMIT_KEY = 'mailyou.fetchLimit'
 const LOCALE_KEY = 'mailyou.locale'
 const IMAGE_LOAD_POLICY_KEY = 'mailyou.imageLoadPolicy'
+const CLOSE_BEHAVIOR_KEY = 'mailyou.closeBehavior'
 
 const getDefaultLocale = (): LocaleMode => {
   const saved = localStorage.getItem(LOCALE_KEY) as LocaleMode | null
@@ -26,6 +28,7 @@ export const useUiStore = defineStore('ui', () => {
   const fetchLimit = ref(Number(localStorage.getItem(FETCH_LIMIT_KEY)) || 50)
   const locale = ref<LocaleMode>(getDefaultLocale())
   const imageLoadPolicy = ref<ImageLoadPolicy>((localStorage.getItem(IMAGE_LOAD_POLICY_KEY) as ImageLoadPolicy) || 'noRemote')
+  const closeBehavior = ref<CloseBehaviorPreference>((localStorage.getItem(CLOSE_BEHAVIOR_KEY) as CloseBehaviorPreference) || 'ask')
 
   const setAppearance = (value: AppearanceMode) => {
     appearance.value = value
@@ -62,6 +65,11 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(IMAGE_LOAD_POLICY_KEY, value)
   }
 
+  const setCloseBehavior = (value: CloseBehaviorPreference) => {
+    closeBehavior.value = value
+    localStorage.setItem(CLOSE_BEHAVIOR_KEY, value)
+  }
+
   return {
     appearance,
     themeSeed,
@@ -69,6 +77,7 @@ export const useUiStore = defineStore('ui', () => {
     fetchLimit,
     locale,
     imageLoadPolicy,
+    closeBehavior,
     setAppearance,
     toggleAppearance,
     setThemeSeed,
@@ -76,5 +85,6 @@ export const useUiStore = defineStore('ui', () => {
     setFetchLimit,
     setLocale,
     setImageLoadPolicy,
+    setCloseBehavior,
   }
 })

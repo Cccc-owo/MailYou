@@ -115,6 +115,26 @@
               @update:model-value="setFetchLimit"
             />
           </div>
+
+          <v-divider class="settings-page__divider" />
+
+          <div class="settings-page__item">
+            <v-icon icon="mdi-window-close" class="settings-page__item-icon" />
+            <div class="settings-page__item-body">
+              <div class="settings-page__item-label">{{ t('settings.closeBehavior') }}</div>
+            </div>
+            <v-select
+              :items="closeBehaviorOptions"
+              :model-value="uiStore.closeBehavior"
+              item-title="label"
+              item-value="value"
+              density="compact"
+              hide-details
+              variant="outlined"
+              class="settings-page__select"
+              @update:model-value="setCloseBehavior"
+            />
+          </div>
         </div>
       </div>
 
@@ -235,6 +255,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useUiStore, type AppearanceMode, type LocaleMode, type ImageLoadPolicy } from '@/stores/ui'
 import { useSecurityStore } from '@/stores/security'
+import type { CloseBehaviorPreference } from '@/shared/window/bridge'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -274,12 +295,19 @@ const imageLoadOptions = computed(() => [
   { label: t('settings.imageLoadAll'), value: 'all' },
 ] satisfies Array<{ label: string; value: string }>)
 
+const closeBehaviorOptions = computed(() => [
+  { label: t('settings.closeBehaviorAsk'), value: 'ask' },
+  { label: t('settings.closeBehaviorBackground'), value: 'always_background' },
+  { label: t('settings.closeBehaviorQuit'), value: 'always_quit' },
+] satisfies Array<{ label: string; value: CloseBehaviorPreference }>)
+
 const setThemeSeed = (value: string) => uiStore.setThemeSeed(value)
 const setAppearance = (value: AppearanceMode | null) => { if (value) uiStore.setAppearance(value) }
 const setLocale = (value: LocaleMode | null) => { if (value) uiStore.setLocale(value) }
 const setSyncInterval = (value: number | null) => { if (value) uiStore.setSyncIntervalMinutes(value) }
 const setFetchLimit = (value: number | null) => { if (value) uiStore.setFetchLimit(value) }
 const setImageLoadPolicy = (value: ImageLoadPolicy | null) => { if (value) uiStore.setImageLoadPolicy(value) }
+const setCloseBehavior = (value: CloseBehaviorPreference | null) => { if (value) uiStore.setCloseBehavior(value) }
 
 const securitySummary = computed(() =>
   !securityStore.status?.hasMasterPassword && securityStore.status && !securityStore.status.keyringAvailable

@@ -59,16 +59,40 @@
     </div>
 
     <router-view v-else />
+
+    <v-dialog v-model="closePromptOpen" max-width="460" persistent>
+      <v-card>
+        <v-card-title>{{ t('closePrompt.title') }}</v-card-title>
+        <v-card-text>
+          <div class="text-body-1 mb-4">{{ t('closePrompt.description') }}</div>
+          <v-checkbox
+            v-model="rememberCloseBehavior"
+            hide-details
+            :label="t('closePrompt.alwaysBackground')"
+          />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="resolveCloseRequest('quit')">
+            {{ t('closePrompt.quit') }}
+          </v-btn>
+          <v-btn color="primary" variant="flat" @click="resolveCloseRequest('background')">
+            {{ t('closePrompt.keepRunning') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-app>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useThemeController } from '@/composables/useThemeController'
 import { useSecurityStore } from '@/stores/security'
 import { useUiStore } from '@/stores/ui'
+import type { CloseRequestAction } from '@/shared/window/bridge'
 
 useThemeController()
 
@@ -77,6 +101,9 @@ const router = useRouter()
 const securityStore = useSecurityStore()
 const uiStore = useUiStore()
 const unlockPassword = ref('')
+const closePromptOpen = ref(false)
+const rememberCloseBehavior = ref(false)
+let closeRequestedUnsubscribe: (() => void) | undefined
 
 const retryInitialize = async () => {
   await securityStore.initialize()
@@ -92,9 +119,23 @@ const submitUnlock = async () => {
   unlockPassword.value = ''
 }
 
+const resolveCloseRequest = async (action: CloseRequestAction) => {
+  await window.windowControls?.resolveCloseRequest(action, rememberCloseBehavior.value)
+  if (action === 'background' && rememberCloseBehavior.value) {
+    uiStore.setCloseBehavior('always_background')
+  }
+  closePromptOpen.value = false
+  rememberCloseBehavior.value = false
+}
+
 onMounted(async () => {
   await securityStore.initialize()
   await window.windowControls?.setBackgroundSyncInterval(uiStore.syncIntervalMinutes)
+  await window.windowControls?.setCloseBehaviorPreference(uiStore.closeBehavior)
+  closeRequestedUnsubscribe = window.windowControls?.onCloseRequested(() => {
+    rememberCloseBehavior.value = false
+    closePromptOpen.value = true
+  })
 })
 
 watch(
@@ -103,6 +144,18 @@ watch(
     void window.windowControls?.setBackgroundSyncInterval(minutes)
   },
 )
+
+watch(
+  () => uiStore.closeBehavior,
+  (value) => {
+    void window.windowControls?.setCloseBehaviorPreference(value)
+  },
+)
+
+onUnmounted(() => {
+  closeRequestedUnsubscribe?.()
+  closeRequestedUnsubscribe = undefined
+})
 </script>
 
 <style>

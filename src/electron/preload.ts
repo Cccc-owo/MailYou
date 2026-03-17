@@ -64,12 +64,21 @@ const windowControls: WindowControlsBridge = {
   close: () => ipcRenderer.invoke('window:close'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   openExternal: (url) => ipcRenderer.invoke('window:openExternal', url),
-  focus: () => ipcRenderer.invoke('window:focus'),
+  setCloseBehaviorPreference: (value) => ipcRenderer.invoke('window:setCloseBehaviorPreference', value),
+  resolveCloseRequest: (action, rememberBackground) =>
+    ipcRenderer.invoke('window:resolveCloseRequest', action, rememberBackground),
   setBackgroundSyncInterval: (minutes) => ipcRenderer.invoke('window:setBackgroundSyncInterval', minutes),
   exportPdf: (html, fileName) => ipcRenderer.invoke('window:exportPdf', html, fileName),
   openTextFile: (filters) => ipcRenderer.invoke('window:openTextFile', filters),
   saveTextFile: (content, suggestedName, filters) =>
     ipcRenderer.invoke('window:saveTextFile', content, suggestedName, filters),
+  onCloseRequested: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('window:closeRequested', listener)
+    return () => {
+      ipcRenderer.removeListener('window:closeRequested', listener)
+    }
+  },
 }
 
 contextBridge.exposeInMainWorld('mailyou', mailyou)
