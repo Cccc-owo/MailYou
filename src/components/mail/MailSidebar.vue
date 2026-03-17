@@ -92,7 +92,7 @@
         {{ t('sidebar.pop3LimitedFeatures') }}
       </v-alert>
 
-      <div v-else class="mail-sidebar__empty">
+      <div v-else-if="!visibleFolders.length" class="mail-sidebar__empty">
         <v-icon icon="mdi-folder-outline" size="32" class="mb-2" />
         <div class="text-body-2 text-medium-emphasis">
           {{ accounts.length ? t('sidebar.selectAccountToView') : t('sidebar.addAccountToStart') }}
@@ -110,6 +110,26 @@
 
     <!-- Folder context menu -->
     <ContextMenu v-model="folderCtx.isOpen.value" :x="folderCtx.x.value" :y="folderCtx.y.value">
+      <v-list-item
+        v-if="canManageFolders"
+        prepend-icon="mdi-folder-plus-outline"
+        :title="t('sidebar.createFolder')"
+        @click="openFolderDialog('create')"
+      />
+      <v-list-item
+        v-if="canManageFolders && folderCtx.target.value && folderCtx.target.value.kind === 'custom'"
+        prepend-icon="mdi-pencil-outline"
+        :title="t('sidebar.renameFolder')"
+        @click="openFolderDialog('rename', folderCtx.target.value)"
+      />
+      <v-list-item
+        v-if="canManageFolders && folderCtx.target.value && folderCtx.target.value.kind === 'custom'"
+        prepend-icon="mdi-delete-outline"
+        :title="t('sidebar.deleteFolder')"
+        base-color="error"
+        @click="openFolderDialog('delete', folderCtx.target.value)"
+      />
+      <v-divider v-if="canManageFolders" />
       <v-list-item prepend-icon="mdi-email-check-outline" :title="t('mailList.markAllRead')" @click="$emit('mark-folder-read', folderCtx.target.value!.id)" />
     </ContextMenu>
   </div>
@@ -124,6 +144,36 @@
         <v-spacer />
         <v-btn @click="deleteDialog = false">{{ t('common.cancel') }}</v-btn>
         <v-btn color="error" variant="flat" @click="emitDelete">{{ t('common.delete') }}</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <v-dialog v-model="folderDialog.open" max-width="420" persistent>
+    <v-card>
+      <v-card-title>{{ folderDialogTitle }}</v-card-title>
+      <v-card-text>
+        <v-text-field
+          v-if="folderDialog.mode !== 'delete'"
+          v-model="folderDialog.name"
+          :label="t('sidebar.folderName')"
+          :hint="t('sidebar.folderNameHint')"
+          persistent-hint
+        />
+        <div v-else>
+          {{ t('sidebar.deleteFolderConfirmText', { name: folderDialog.target?.name ?? '' }) }}
+        </div>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn @click="closeFolderDialog">{{ t('common.cancel') }}</v-btn>
+        <v-btn
+          :color="folderDialog.mode === 'delete' ? 'error' : 'primary'"
+          variant="flat"
+          :disabled="folderDialog.mode !== 'delete' && !folderDialog.name.trim()"
+          @click="submitFolderDialog"
+        >
+          {{ folderDialogActionLabel }}
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -160,6 +210,7 @@ const visibleFolders = computed(() => {
   }
   return props.folders
 })
+const canManageFolders = computed(() => Boolean(props.currentAccount) && props.currentAccount?.incomingProtocol !== 'pop3')
 
 const emit = defineEmits<{
   'select-account': [accountId: string]
@@ -170,10 +221,36 @@ const emit = defineEmits<{
   'add-account': []
   'sync-account': [accountId: string]
   'mark-folder-read': [folderId: string]
+  'create-folder': [name: string]
+  'rename-folder': [folderId: string, name: string]
+  'delete-folder': [folderId: string]
 }>()
 
 const deleteDialog = ref(false)
 const pendingDeleteAccount = ref<MailAccount | null>(null)
+const folderDialog = ref<{
+  open: boolean
+  mode: 'create' | 'rename' | 'delete'
+  name: string
+  target: MailboxFolder | null
+}>({
+  open: false,
+  mode: 'create',
+  name: '',
+  target: null,
+})
+
+const folderDialogTitle = computed(() => {
+  if (folderDialog.value.mode === 'rename') return t('sidebar.renameFolder')
+  if (folderDialog.value.mode === 'delete') return t('sidebar.deleteFolder')
+  return t('sidebar.createFolder')
+})
+
+const folderDialogActionLabel = computed(() => {
+  if (folderDialog.value.mode === 'rename') return t('common.save')
+  if (folderDialog.value.mode === 'delete') return t('common.delete')
+  return t('sidebar.createFolder')
+})
 
 const confirmDelete = (account: MailAccount) => {
   pendingDeleteAccount.value = account
@@ -186,6 +263,35 @@ const emitDelete = () => {
   }
   deleteDialog.value = false
   pendingDeleteAccount.value = null
+}
+
+const openFolderDialog = (mode: 'create' | 'rename' | 'delete', folder: MailboxFolder | null = null) => {
+  folderCtx.isOpen.value = false
+  folderDialog.value = {
+    open: true,
+    mode,
+    name: folder?.name ?? '',
+    target: folder,
+  }
+}
+
+const closeFolderDialog = () => {
+  folderDialog.value.open = false
+  folderDialog.value.target = null
+  folderDialog.value.name = ''
+  folderDialog.value.mode = 'create'
+}
+
+const submitFolderDialog = () => {
+  const { mode, name, target } = folderDialog.value
+  if (mode === 'create') {
+    emit('create-folder', name.trim())
+  } else if (mode === 'rename' && target) {
+    emit('rename-folder', target.id, name.trim())
+  } else if (mode === 'delete' && target) {
+    emit('delete-folder', target.id)
+  }
+  closeFolderDialog()
 }
 </script>
 

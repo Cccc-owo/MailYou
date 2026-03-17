@@ -18,7 +18,11 @@ pub trait MailProvider: Send + Sync {
     async fn create_account(&self, draft: AccountSetupDraft) -> Result<MailAccount, BackendError>;
     async fn test_account_connection(&self, draft: AccountSetupDraft) -> Result<SyncStatus, BackendError>;
     async fn list_folders(&self, account_id: &str) -> Result<Vec<MailboxFolder>, BackendError>;
+    async fn create_folder(&self, account_id: &str, name: &str) -> Result<Vec<MailboxFolder>, BackendError>;
+    async fn rename_folder(&self, account_id: &str, folder_id: &str, name: &str) -> Result<Vec<MailboxFolder>, BackendError>;
+    async fn delete_folder(&self, account_id: &str, folder_id: &str) -> Result<Vec<MailboxFolder>, BackendError>;
     async fn list_messages(&self, account_id: &str, folder_id: &str) -> Result<Vec<MailMessage>, BackendError>;
+    async fn get_draft(&self, account_id: &str, draft_id: &str) -> Result<Option<DraftMessage>, BackendError>;
     async fn search_messages(&self, account_id: &str, query: &str) -> Result<Vec<MailMessage>, BackendError>;
     async fn get_message(&self, account_id: &str, message_id: &str) -> Result<Option<MailMessage>, BackendError>;
     async fn save_draft(&self, draft: DraftMessage) -> Result<DraftMessage, BackendError>;

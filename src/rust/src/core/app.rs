@@ -48,12 +48,32 @@ pub async fn handle_with_provider(
             let provider = provider_for_account(&account_id);
             serialize(provider.list_folders(&account_id).await?)
         }
+        BackendRequest::CreateFolder { account_id, name } => {
+            let provider = provider_for_account(&account_id);
+            serialize(provider.create_folder(&account_id, &name).await?)
+        }
+        BackendRequest::RenameFolder {
+            account_id,
+            folder_id,
+            name,
+        } => {
+            let provider = provider_for_account(&account_id);
+            serialize(provider.rename_folder(&account_id, &folder_id, &name).await?)
+        }
+        BackendRequest::DeleteFolder { account_id, folder_id } => {
+            let provider = provider_for_account(&account_id);
+            serialize(provider.delete_folder(&account_id, &folder_id).await?)
+        }
         BackendRequest::ListMessages {
             account_id,
             folder_id,
         } => {
             let provider = provider_for_account(&account_id);
             serialize(provider.list_messages(&account_id, &folder_id).await?)
+        }
+        BackendRequest::GetDraft { account_id, draft_id } => {
+            let provider = provider_for_account(&account_id);
+            serialize(provider.get_draft(&account_id, &draft_id).await?)
         }
         BackendRequest::SearchMessages { account_id, query } => {
             let provider = provider_for_account(&account_id);

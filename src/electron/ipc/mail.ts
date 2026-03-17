@@ -42,8 +42,20 @@ export const registerMailIpc = () => {
     mailBackend.testAccountConnection(draft as AccountSetupDraft),
   )
   handle('mail:listFolders', (accountId) => mailBackend.listFolders(accountId as string))
+  handle('mail:createFolder', (accountId, name) =>
+    mailBackend.createFolder(accountId as string, name as string),
+  )
+  handle('mail:renameFolder', (accountId, folderId, name) =>
+    mailBackend.renameFolder(accountId as string, folderId as string, name as string),
+  )
+  handle('mail:deleteFolder', (accountId, folderId) =>
+    mailBackend.deleteFolder(accountId as string, folderId as string),
+  )
   handle('mail:listMessages', (accountId, folderId) =>
     mailBackend.listMessages(accountId as string, folderId as string),
+  )
+  handle('mail:getDraft', (accountId, draftId) =>
+    mailBackend.getDraft(accountId as string, draftId as string),
   )
   handle('mail:searchMessages', (accountId, query) =>
     mailBackend.searchMessages(accountId as string, query as string),

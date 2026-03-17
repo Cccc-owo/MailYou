@@ -3,7 +3,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use crate::models::{
     AccountSetupDraft, AccountStatus, AttachmentContent, AttachmentMeta, Contact, ContactGroup, DraftMessage,
-    MailAccount, MailFolderKind, MailMessage, MailThread, MailboxBundle, MailboxFolder,
+    MailAccount, MailFolderKind, MailIdentity, MailMessage, MailThread, MailboxBundle, MailboxFolder,
     StoredAccountState, SyncStatus,
 };
 use crate::protocol::{BackendError, StorageSecurityStatus};
@@ -43,6 +43,7 @@ pub fn create_account_without_test(draft: AccountSetupDraft) -> Result<MailAccou
     let account_id = state.unique_account_id(&draft.email);
     let last_synced_at = current_timestamp();
     let config = accounts::config_from_draft(&draft);
+    let identities = normalize_identities(&account_id, &draft.identities, base_name, &draft.email);
     let account = MailAccount {
         id: account_id.clone(),
         name: base_name.to_string(),
@@ -61,6 +62,7 @@ pub fn create_account_without_test(draft: AccountSetupDraft) -> Result<MailAccou
         unread_count: 0,
         status: AccountStatus::Connected,
         last_synced_at: last_synced_at.clone(),
+        identities,
     };
 
     state.insert_account_state(StoredAccountState {
@@ -84,6 +86,15 @@ pub fn list_folders(account_id: &str) -> Result<Vec<MailboxFolder>, BackendError
         .filter(|folder| folder.account_id == account_id)
         .cloned()
         .collect())
+}
+
+pub fn get_folder(account_id: &str, folder_id: &str) -> Result<MailboxFolder, BackendError> {
+    lock_state()
+        .folders
+        .iter()
+        .find(|folder| folder.account_id == account_id && folder.id == folder_id)
+        .cloned()
+        .ok_or_else(|| BackendError::not_found("Folder not found"))
 }
 
 pub fn list_messages(account_id: &str, folder_id: &str) -> Result<Vec<MailMessage>, BackendError> {
@@ -111,6 +122,14 @@ pub fn list_messages(account_id: &str, folder_id: &str) -> Result<Vec<MailMessag
 
     messages.sort_by(|left, right| right.received_at.cmp(&left.received_at));
     Ok(messages)
+}
+
+pub fn get_draft(account_id: &str, draft_id: &str) -> Result<Option<DraftMessage>, BackendError> {
+    Ok(lock_state()
+        .drafts
+        .iter()
+        .find(|draft| draft.account_id == account_id && draft.id == draft_id)
+        .cloned())
 }
 
 fn strip_html_tags(input: &str) -> String {
@@ -605,6 +624,7 @@ pub fn get_account_config(account_id: &str) -> Result<AccountSetupDraft, Backend
         access_token: account_state.config.access_token.clone(),
         refresh_token: account_state.config.refresh_token.clone(),
         token_expires_at: account_state.config.token_expires_at.clone(),
+        identities: account_state.account.identities.clone(),
     })
 }
 
@@ -642,6 +662,8 @@ pub fn update_account(account_id: &str, draft: AccountSetupDraft) -> Result<Mail
     } else {
         initials
     };
+    account_state.account.identities =
+        normalize_identities(account_id, &draft.identities, base_name, &draft.email);
     account_state.config = accounts::config_from_draft(&draft);
 
     let updated = account_state.account.clone();
@@ -688,6 +710,7 @@ pub fn record_sent_message(draft: DraftMessage) -> Result<String, BackendError> 
         .find(|account_state| account_state.account.id == draft.account_id)
         .map(|s| s.account.clone())
         .ok_or_else(|| BackendError::not_found("Account not found"))?;
+    let identity = resolve_identity(&account, draft.selected_identity_id.as_deref());
 
     let message = MailMessage {
         id: format!("sent-{}", state.messages.len() + 1),
@@ -697,8 +720,8 @@ pub fn record_sent_message(draft: DraftMessage) -> Result<String, BackendError> 
         subject: draft.subject.clone(),
         preview: preview_for(&draft.body),
         body: draft.body.clone(),
-        from: account.name,
-        from_email: account.email,
+        from: identity.name,
+        from_email: identity.email,
         to: split_recipients(&draft.to),
         cc: split_recipients(&draft.cc),
         sent_at: timestamp.clone(),
@@ -1104,6 +1127,12 @@ fn sync_draft_mailbox_message(state: &mut MemoryState, draft: &DraftMessage) {
     };
 
     let preview = preview_for(&draft.body);
+    let identity = state
+        .account_states
+        .iter()
+        .find(|account_state| account_state.account.id == draft.account_id)
+        .map(|account_state| resolve_identity(&account_state.account, draft.selected_identity_id.as_deref()))
+        .unwrap_or_else(|| default_identity("draft", "Draft", "draft@local"));
     if let Some(message) = state.messages.iter_mut().find(|message| message.id == draft.id) {
         message.folder_id = folder_id;
         message.subject = draft.subject.clone();
@@ -1111,6 +1140,8 @@ fn sync_draft_mailbox_message(state: &mut MemoryState, draft: &DraftMessage) {
         message.body = draft.body.clone();
         message.to = split_recipients(&draft.to);
         message.cc = split_recipients(&draft.cc);
+        message.from = identity.name.clone();
+        message.from_email = identity.email.clone();
         message.received_at = current_timestamp();
         return;
     }
@@ -1125,8 +1156,8 @@ fn sync_draft_mailbox_message(state: &mut MemoryState, draft: &DraftMessage) {
             subject: draft.subject.clone(),
             preview,
             body: draft.body.clone(),
-            from: "Draft".into(),
-            from_email: "draft@local".into(),
+            from: identity.name,
+            from_email: identity.email,
             to: split_recipients(&draft.to),
             cc: split_recipients(&draft.cc),
             sent_at: current_timestamp(),
@@ -1149,6 +1180,99 @@ fn preview_for(body: &str) -> String {
     }
 
     trimmed.chars().take(96).collect()
+}
+
+fn default_identity(account_id: &str, name: &str, email: &str) -> MailIdentity {
+    MailIdentity {
+        id: format!("identity-{account_id}-default"),
+        name: name.into(),
+        email: email.into(),
+        reply_to: None,
+        signature: None,
+        is_default: true,
+    }
+}
+
+fn normalize_identities(
+    account_id: &str,
+    identities: &[MailIdentity],
+    fallback_name: &str,
+    fallback_email: &str,
+) -> Vec<MailIdentity> {
+    let mut seen_ids = std::collections::HashSet::new();
+    let mut normalized = identities
+        .iter()
+        .enumerate()
+        .filter_map(|(index, identity)| {
+            let email = identity.email.trim();
+            if email.is_empty() {
+                return None;
+            }
+
+            let name = identity.name.trim();
+            let mut id = if identity.id.trim().is_empty() {
+                format!("identity-{account_id}-{}", index + 1)
+            } else {
+                identity.id.trim().to_string()
+            };
+            if !seen_ids.insert(id.clone()) {
+                id = format!("identity-{account_id}-{}", index + 1);
+                seen_ids.insert(id.clone());
+            }
+            let reply_to = identity
+                .reply_to
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned);
+            let signature = identity
+                .signature
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned);
+
+            Some(MailIdentity {
+                id,
+                name: if name.is_empty() {
+                    fallback_name.to_string()
+                } else {
+                    name.to_string()
+                },
+                email: email.to_string(),
+                reply_to,
+                signature,
+                is_default: identity.is_default,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    if normalized.is_empty() {
+        return vec![default_identity(account_id, fallback_name, fallback_email)];
+    }
+
+    let default_index = normalized.iter().position(|identity| identity.is_default).unwrap_or(0);
+    for (index, identity) in normalized.iter_mut().enumerate() {
+        identity.is_default = index == default_index;
+    }
+
+    normalized
+}
+
+fn resolve_identity(account: &MailAccount, identity_id: Option<&str>) -> MailIdentity {
+    if let Some(identity_id) = identity_id {
+        if let Some(identity) = account.identities.iter().find(|identity| identity.id == identity_id) {
+            return identity.clone();
+        }
+    }
+
+    account
+        .identities
+        .iter()
+        .find(|identity| identity.is_default)
+        .cloned()
+        .or_else(|| account.identities.first().cloned())
+        .unwrap_or_else(|| default_identity(&account.id, &account.name, &account.email))
 }
 
 fn split_recipients(value: &str) -> Vec<String> {

@@ -17,7 +17,15 @@ pub enum BackendRequest {
     #[serde(rename_all = "camelCase")]
     ListFolders { account_id: String },
     #[serde(rename_all = "camelCase")]
+    CreateFolder { account_id: String, name: String },
+    #[serde(rename_all = "camelCase")]
+    RenameFolder { account_id: String, folder_id: String, name: String },
+    #[serde(rename_all = "camelCase")]
+    DeleteFolder { account_id: String, folder_id: String },
+    #[serde(rename_all = "camelCase")]
     ListMessages { account_id: String, folder_id: String },
+    #[serde(rename_all = "camelCase")]
+    GetDraft { account_id: String, draft_id: String },
     #[serde(rename_all = "camelCase")]
     SearchMessages { account_id: String, query: String },
     #[serde(rename_all = "camelCase")]
@@ -92,7 +100,11 @@ impl BackendRequest {
             Self::CreateAccount(_) => "createAccount",
             Self::TestAccountConnection(_) => "testAccountConnection",
             Self::ListFolders { .. } => "listFolders",
+            Self::CreateFolder { .. } => "createFolder",
+            Self::RenameFolder { .. } => "renameFolder",
+            Self::DeleteFolder { .. } => "deleteFolder",
             Self::ListMessages { .. } => "listMessages",
+            Self::GetDraft { .. } => "getDraft",
             Self::SearchMessages { .. } => "searchMessages",
             Self::GetMessage { .. } => "getMessage",
             Self::SaveDraft(_) => "saveDraft",

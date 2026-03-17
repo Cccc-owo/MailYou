@@ -1,6 +1,17 @@
 use crate::models::{
-    AccountAuthMode, AccountConfig, AccountSetupDraft, AccountStatus, MailAccount, StoredAccountState,
+    AccountAuthMode, AccountConfig, AccountSetupDraft, AccountStatus, MailAccount, MailIdentity, StoredAccountState,
 };
+
+fn default_identity(account_id: &str, name: &str, email: &str) -> MailIdentity {
+    MailIdentity {
+        id: format!("identity-{account_id}-default"),
+        name: name.into(),
+        email: email.into(),
+        reply_to: None,
+        signature: None,
+        is_default: true,
+    }
+}
 
 pub fn seeded_account_states() -> Vec<StoredAccountState> {
     vec![
@@ -19,6 +30,7 @@ pub fn seeded_account_states() -> Vec<StoredAccountState> {
                 unread_count: 6,
                 status: AccountStatus::Syncing,
                 last_synced_at: "2026-03-12T09:41:00.000Z".into(),
+                identities: vec![default_identity("acc-work", "MailYou Work", "hello@mailyou.dev")],
             },
             config: AccountConfig {
                 auth_mode: AccountAuthMode::Password,
@@ -52,6 +64,7 @@ pub fn seeded_account_states() -> Vec<StoredAccountState> {
                 unread_count: 3,
                 status: AccountStatus::Connected,
                 last_synced_at: "2026-03-12T09:27:00.000Z".into(),
+                identities: vec![default_identity("acc-personal", "Personal", "iscccc@example.com")],
             },
             config: AccountConfig {
                 auth_mode: AccountAuthMode::Password,

@@ -2,6 +2,17 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MailIdentity {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub reply_to: Option<String>,
+    pub signature: Option<String>,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum AccountStatus {
     Connected,
     Syncing,
@@ -20,6 +31,7 @@ pub struct MailAccount {
     pub unread_count: u32,
     pub status: AccountStatus,
     pub last_synced_at: String,
+    pub identities: Vec<MailIdentity>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -102,6 +114,7 @@ pub struct AccountSetupDraft {
     pub username: String,
     pub password: String,
     pub use_tls: bool,
+    pub identities: Vec<MailIdentity>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +122,7 @@ pub struct AccountSetupDraft {
 pub struct DraftMessage {
     pub id: String,
     pub account_id: String,
+    pub selected_identity_id: Option<String>,
     pub to: String,
     pub cc: String,
     pub bcc: String,

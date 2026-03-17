@@ -26,6 +26,86 @@
               persistent-hint
             />
 
+            <v-expansion-panels variant="accordion">
+              <v-expansion-panel>
+                <v-expansion-panel-title>
+                  <div>
+                    <div class="text-subtitle-1">{{ t('accountSetup.identitiesTitle') }}</div>
+                    <div class="text-body-2 text-medium-emphasis">
+                      {{ identitiesSummary }}
+                    </div>
+                  </div>
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <div class="d-flex align-center justify-space-between flex-wrap ga-3 mb-4">
+                    <div class="text-body-2 text-medium-emphasis">{{ t('accountSetup.identitiesHint') }}</div>
+                    <v-btn variant="text" prepend-icon="mdi-plus" @click="addIdentity">
+                      {{ t('accountSetup.addIdentity') }}
+                    </v-btn>
+                  </div>
+
+                  <div class="account-identity-list">
+                    <v-card
+                      v-for="identity in draft.identities"
+                      :key="identity.id"
+                      variant="outlined"
+                      class="pa-4"
+                    >
+                      <div class="d-flex align-center justify-space-between flex-wrap ga-3 mb-3">
+                        <div class="text-subtitle-2">{{ identityLabel(identity) }}</div>
+                        <div class="d-flex align-center ga-2 flex-wrap">
+                          <v-radio-group
+                            :model-value="selectedDefaultIdentityId"
+                            inline
+                            hide-details
+                            @update:model-value="setDefaultIdentity"
+                          >
+                            <v-radio :label="t('accountSetup.defaultIdentity')" :value="identity.id" />
+                          </v-radio-group>
+                          <v-btn
+                            variant="text"
+                            color="error"
+                            icon="mdi-delete-outline"
+                            :disabled="draft.identities.length === 1"
+                            @click="removeIdentity(identity.id)"
+                          />
+                        </div>
+                      </div>
+
+                      <v-row>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            :model-value="identity.name"
+                            :label="t('accountSetup.identityName')"
+                            @update:model-value="updateIdentityField(identity.id, 'name', String($event ?? ''))"
+                          />
+                        </v-col>
+                        <v-col cols="12" md="6">
+                          <v-text-field
+                            :model-value="identity.email"
+                            :label="t('accountSetup.identityEmail')"
+                            @update:model-value="updateIdentityField(identity.id, 'email', String($event ?? ''))"
+                          />
+                        </v-col>
+                      </v-row>
+                      <v-text-field
+                        :model-value="identity.replyTo ?? ''"
+                        :label="t('accountSetup.identityReplyTo')"
+                        @update:model-value="updateIdentityField(identity.id, 'replyTo', String($event ?? ''))"
+                      />
+                      <v-textarea
+                        :model-value="identity.signature ?? ''"
+                        :label="t('accountSetup.identitySignature')"
+                        rows="4"
+                        auto-grow
+                        @update:model-value="updateIdentityField(identity.id, 'signature', String($event ?? ''))"
+                      />
+                    </v-card>
+                  </div>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+
             <template v-if="showAuthSection">
               <v-select
                 v-if="authModeOptions.length > 1"
@@ -190,7 +270,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAccountsStore } from '@/stores/accounts'
-import type { AccountSetupDraft } from '@/types/account'
+import type { AccountSetupDraft, MailIdentity } from '@/types/account'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -223,7 +303,98 @@ const draft = reactive<AccountSetupDraft>({
   accessToken: '',
   refreshToken: '',
   tokenExpiresAt: '',
+  identities: [],
 })
+
+const createIdentityId = () => `identity-${crypto.randomUUID()}`
+
+const createIdentityDraft = (overrides: Partial<MailIdentity> = {}): MailIdentity => ({
+  id: createIdentityId(),
+  name: draft.displayName.trim() || draft.email.trim(),
+  email: draft.email.trim(),
+  replyTo: null,
+  signature: null,
+  isDefault: draft.identities.length === 0,
+  ...overrides,
+})
+
+const selectedDefaultIdentityId = computed(
+  () => draft.identities.find((identity) => identity.isDefault)?.id ?? draft.identities[0]?.id ?? null,
+)
+const identitiesSummary = computed(() => {
+  const defaultIdentity = draft.identities.find((identity) => identity.isDefault) ?? draft.identities[0]
+  if (!defaultIdentity) {
+    return t('accountSetup.identitiesHint')
+  }
+
+  if (draft.identities.length === 1) {
+    return identityLabel(defaultIdentity)
+  }
+
+  return t('accountSetup.identitiesSummary', {
+    identity: identityLabel(defaultIdentity),
+    count: draft.identities.length,
+  })
+})
+
+const identityLabel = (identity: MailIdentity) => {
+  const email = identity.email.trim()
+  const name = identity.name.trim()
+  return name && email ? `${name} <${email}>` : name || email || t('accountSetup.identityUnnamed')
+}
+
+const ensureDefaultIdentity = () => {
+  if (draft.identities.length === 0) {
+    draft.identities.push(createIdentityDraft({ isDefault: true }))
+    return
+  }
+
+  const fallbackId = selectedDefaultIdentityId.value ?? draft.identities[0].id
+  draft.identities = draft.identities.map((identity) => ({
+    ...identity,
+    isDefault: identity.id === fallbackId,
+  }))
+}
+
+const addIdentity = () => {
+  draft.identities.push(createIdentityDraft({ isDefault: false }))
+  ensureDefaultIdentity()
+}
+
+const removeIdentity = (identityId: string) => {
+  if (draft.identities.length === 1) {
+    return
+  }
+
+  draft.identities = draft.identities.filter((identity) => identity.id !== identityId)
+  ensureDefaultIdentity()
+}
+
+const setDefaultIdentity = (identityId: string | null) => {
+  if (!identityId) {
+    return
+  }
+
+  draft.identities = draft.identities.map((identity) => ({
+    ...identity,
+    isDefault: identity.id === identityId,
+  }))
+}
+
+const updateIdentityField = (
+  identityId: string,
+  field: 'name' | 'email' | 'replyTo' | 'signature',
+  value: string,
+) => {
+  draft.identities = draft.identities.map((identity) => (
+    identity.id === identityId
+      ? {
+          ...identity,
+          [field]: value.trim().length > 0 ? value : field === 'name' || field === 'email' ? value : null,
+        }
+      : identity
+  ))
+}
 
 const protocolOptions = computed(() => [
   { label: t('accountSetup.protocolImap'), value: 'imap' },
@@ -386,6 +557,33 @@ watch(
 )
 
 watch(
+  () => draft.displayName,
+  (displayName, previousDisplayName) => {
+    const defaultIdentity = draft.identities.find((identity) => identity.isDefault)
+    if (
+      defaultIdentity &&
+      (!defaultIdentity.name.trim() || defaultIdentity.name === (previousDisplayName?.trim() || draft.email.trim()))
+    ) {
+      defaultIdentity.name = displayName.trim() || draft.email.trim()
+    }
+  },
+)
+
+watch(
+  () => draft.email,
+  (email, previousEmail) => {
+    const normalized = email.trim()
+    const defaultIdentity = draft.identities.find((identity) => identity.isDefault)
+    if (
+      defaultIdentity &&
+      (!defaultIdentity.email.trim() || defaultIdentity.email === (previousEmail?.trim() ?? ''))
+    ) {
+      defaultIdentity.email = normalized
+    }
+  },
+)
+
+watch(
   () => draft.incomingProtocol,
   (protocol) => {
     if (isEditMode.value || hasProviderPreset.value || isOAuthMode.value) {
@@ -453,9 +651,13 @@ onMounted(async () => {
     try {
       const config = await accountsStore.getAccountConfig(editAccountId.value)
       Object.assign(draft, config)
+      draft.identities = config.identities?.length ? config.identities : [createIdentityDraft()]
+      ensureDefaultIdentity()
     } catch (loadError) {
       error.value = loadError instanceof Error ? loadError.message : 'Unable to load account config'
     }
+  } else if (draft.identities.length === 0) {
+    draft.identities = [createIdentityDraft()]
   }
 })
 
@@ -464,6 +666,7 @@ const canSaveBase = computed(
     Boolean(
       isEmailValid.value &&
         draft.displayName.trim() &&
+        draft.identities.some((identity) => identity.email.trim()) &&
         draft.username.trim() &&
         draft.incomingHost.trim() &&
         draft.outgoingHost.trim(),
@@ -525,7 +728,7 @@ const runConnectionTest = async () => {
   error.value = null
 
   try {
-    await accountsStore.testAccountConnection({ ...draft })
+    await accountsStore.testAccountConnection({ ...draft, identities: [...draft.identities] })
   } catch (testError) {
     error.value = testError instanceof Error ? testError.message : 'Unable to test account connection'
   }
@@ -540,10 +743,11 @@ const saveAccount = async () => {
   error.value = null
 
   try {
+    const payload = { ...draft, identities: [...draft.identities] }
     if (isEditMode.value) {
-      await accountsStore.updateAccount(editAccountId.value!, { ...draft })
+      await accountsStore.updateAccount(editAccountId.value!, payload)
     } else {
-      await accountsStore.createAccount({ ...draft })
+      await accountsStore.createAccount(payload)
     }
     await router.push('/')
   } catch (saveError) {
@@ -591,6 +795,11 @@ const saveAccount = async () => {
 }
 
 .account-setup__form {
+  display: grid;
+  gap: 12px;
+}
+
+.account-identity-list {
   display: grid;
   gap: 12px;
 }

@@ -3,6 +3,15 @@ export type AccountAuthMode = 'password' | 'oauth'
 export type OAuthProviderId = 'gmail' | 'outlook' | 'icloud'
 export type OAuthSource = 'direct' | 'proxy'
 
+export interface MailIdentity {
+  id: string
+  name: string
+  email: string
+  replyTo?: string | null
+  signature?: string | null
+  isDefault: boolean
+}
+
 export interface OAuthProviderAvailability {
   id: OAuthProviderId
   label: string
@@ -46,6 +55,7 @@ export interface MailAccount {
   unreadCount: number
   status: AccountStatus
   lastSyncedAt: string
+  identities: MailIdentity[]
 }
 
 export interface AccountSetupDraft {
@@ -66,4 +76,5 @@ export interface AccountSetupDraft {
   accessToken: string
   refreshToken: string
   tokenExpiresAt: string
+  identities: MailIdentity[]
 }

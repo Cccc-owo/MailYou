@@ -31,9 +31,25 @@ export interface RustBackendMethodMap {
     params: { accountId: string }
     result: MailboxFolder[]
   }
+  createFolder: {
+    params: { accountId: string; name: string }
+    result: MailboxFolder[]
+  }
+  renameFolder: {
+    params: { accountId: string; folderId: string; name: string }
+    result: MailboxFolder[]
+  }
+  deleteFolder: {
+    params: { accountId: string; folderId: string }
+    result: MailboxFolder[]
+  }
   listMessages: {
     params: { accountId: string; folderId: string }
     result: MailMessage[]
+  }
+  getDraft: {
+    params: { accountId: string; draftId: string }
+    result: DraftMessage | null
   }
   searchMessages: {
     params: { accountId: string; query: string }

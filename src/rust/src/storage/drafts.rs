@@ -4,6 +4,7 @@ pub fn seeded_drafts() -> Vec<DraftMessage> {
     vec![DraftMessage {
         id: "draft-1".into(),
         account_id: "acc-work".into(),
+        selected_identity_id: None,
         to: "infra@mailyou.dev".into(),
         cc: "".into(),
         bcc: "".into(),

@@ -12,7 +12,7 @@ use tokio_native_tls::TlsStream;
 
 use crate::models::{
     AccountAuthMode, AccountConfig, AccountSetupDraft, AttachmentContent, AttachmentMeta, DraftMessage, MailAccount,
-    MailFolderKind, MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
+    MailFolderKind, MailIdentity, MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
 };
 use crate::oauth::{ensure_account_access_token, ensure_config_access_token, xoauth2_payload};
 use crate::protocol::BackendError;
@@ -161,8 +161,71 @@ impl MailProvider for ImapSmtpProvider {
         memory::list_folders(account_id)
     }
 
+    async fn create_folder(&self, account_id: &str, name: &str) -> Result<Vec<MailboxFolder>, BackendError> {
+        let mailbox_name = encode_imap_utf7(name.trim());
+        let mut session = imap_connect_by_account(account_id).await?;
+        session
+            .create(&mailbox_name)
+            .await
+            .map_err(|e| BackendError::internal(format!("IMAP CREATE failed: {e}")))?;
+        let _ = session.logout().await;
+
+        self.sync_account(account_id).await?;
+        memory::list_folders(account_id)
+    }
+
+    async fn rename_folder(&self, account_id: &str, folder_id: &str, name: &str) -> Result<Vec<MailboxFolder>, BackendError> {
+        let folder = memory::get_folder(account_id, folder_id)?;
+        if !matches!(folder.kind, MailFolderKind::Custom) {
+            return Err(BackendError::validation("Only custom folders can be renamed"));
+        }
+
+        let current_name = folder
+            .imap_name
+            .clone()
+            .unwrap_or_else(|| encode_imap_utf7(&folder.name));
+        let next_name = encode_imap_utf7(name.trim());
+        let mut session = imap_connect_by_account(account_id).await?;
+        session
+            .rename(&current_name, &next_name)
+            .await
+            .map_err(|e| BackendError::internal(format!("IMAP RENAME failed: {e}")))?;
+        let _ = session.logout().await;
+
+        self.sync_account(account_id).await?;
+        memory::list_folders(account_id)
+    }
+
+    async fn delete_folder(&self, account_id: &str, folder_id: &str) -> Result<Vec<MailboxFolder>, BackendError> {
+        let folder = memory::get_folder(account_id, folder_id)?;
+        if !matches!(folder.kind, MailFolderKind::Custom) {
+            return Err(BackendError::validation("Only custom folders can be deleted"));
+        }
+        if folder.total_count > 0 {
+            return Err(BackendError::validation("Only empty folders can be deleted"));
+        }
+
+        let mailbox_name = folder
+            .imap_name
+            .clone()
+            .unwrap_or_else(|| encode_imap_utf7(&folder.name));
+        let mut session = imap_connect_by_account(account_id).await?;
+        session
+            .delete(&mailbox_name)
+            .await
+            .map_err(|e| BackendError::internal(format!("IMAP DELETE failed: {e}")))?;
+        let _ = session.logout().await;
+
+        self.sync_account(account_id).await?;
+        memory::list_folders(account_id)
+    }
+
     async fn list_messages(&self, account_id: &str, folder_id: &str) -> Result<Vec<MailMessage>, BackendError> {
         memory::list_messages(account_id, folder_id)
+    }
+
+    async fn get_draft(&self, account_id: &str, draft_id: &str) -> Result<Option<DraftMessage>, BackendError> {
+        memory::get_draft(account_id, draft_id)
     }
 
     async fn search_messages(&self, account_id: &str, query: &str) -> Result<Vec<MailMessage>, BackendError> {
@@ -1502,6 +1565,45 @@ fn decode_imap_utf7(input: &str) -> String {
     result
 }
 
+fn encode_imap_utf7(input: &str) -> String {
+    let mut result = String::new();
+    let mut non_ascii = String::new();
+
+    let flush_non_ascii = |result: &mut String, non_ascii: &mut String| {
+        if non_ascii.is_empty() {
+            return;
+        }
+
+        let utf16 = non_ascii.encode_utf16().collect::<Vec<_>>();
+        let mut bytes = Vec::with_capacity(utf16.len() * 2);
+        for code_unit in utf16 {
+            bytes.extend_from_slice(&code_unit.to_be_bytes());
+        }
+
+        let encoded = general_purpose::STANDARD.encode(bytes);
+        let encoded = encoded.trim_end_matches('=').replace('/', ",");
+        result.push('&');
+        result.push_str(&encoded);
+        result.push('-');
+        non_ascii.clear();
+    };
+
+    for character in input.chars() {
+        if character == '&' {
+            flush_non_ascii(&mut result, &mut non_ascii);
+            result.push_str("&-");
+        } else if character.is_ascii() && matches!(character, ' '..='~') {
+            flush_non_ascii(&mut result, &mut non_ascii);
+            result.push(character);
+        } else {
+            non_ascii.push(character);
+        }
+    }
+
+    flush_non_ascii(&mut result, &mut non_ascii);
+    result
+}
+
 fn decode_modified_base64(input: &[u8]) -> Vec<u16> {
     let mut input_str = String::from_utf8_lossy(input).to_string();
     input_str = input_str.replace(',', "/");
@@ -1644,11 +1746,18 @@ pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Resu
     use lettre::transport::smtp::authentication::{Credentials, Mechanism};
     use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
-    let from: Mailbox = format!("{} <{}>", state.account.name, state.account.email)
+    let identity = resolve_sender_identity(&state.account, draft.selected_identity_id.as_deref());
+    let from: Mailbox = format!("{} <{}>", identity.name, identity.email)
         .parse()
         .map_err(|e| BackendError::validation(format!("Invalid sender address: {e}")))?;
 
     let mut builder = Message::builder().from(from);
+    if let Some(reply_to) = identity.reply_to.as_ref().filter(|value| !value.trim().is_empty()) {
+        let reply_to_mailbox: Mailbox = reply_to
+            .parse()
+            .map_err(|e| BackendError::validation(format!("Invalid Reply-To address: {e}")))?;
+        builder = builder.reply_to(reply_to_mailbox);
+    }
 
     for recipient in draft.to.split(',').map(str::trim).filter(|s| !s.is_empty()) {
         let to: Mailbox = recipient
@@ -1740,4 +1849,27 @@ pub async fn smtp_send(state: &StoredAccountState, draft: &DraftMessage) -> Resu
         .map_err(|e| BackendError::internal(format!("SMTP send failed: {e}")))?;
 
     Ok(())
+}
+
+fn resolve_sender_identity(account: &MailAccount, identity_id: Option<&str>) -> MailIdentity {
+    if let Some(identity_id) = identity_id {
+        if let Some(identity) = account.identities.iter().find(|identity| identity.id == identity_id) {
+            return identity.clone();
+        }
+    }
+
+    account
+        .identities
+        .iter()
+        .find(|identity| identity.is_default)
+        .cloned()
+        .or_else(|| account.identities.first().cloned())
+        .unwrap_or(MailIdentity {
+            id: format!("identity-{}-default", account.id),
+            name: account.name.clone(),
+            email: account.email.clone(),
+            reply_to: None,
+            signature: None,
+            is_default: true,
+        })
 }

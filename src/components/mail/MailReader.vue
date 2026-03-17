@@ -3,9 +3,20 @@
     <!-- Toolbar: primary actions with labels -->
     <div class="mail-reader__toolbar">
       <div class="mail-reader__toolbar-primary">
-        <v-btn variant="text" size="small" prepend-icon="mdi-reply-outline" @click="$emit('reply')">{{ t('reader.reply') }}</v-btn>
-        <v-btn variant="text" size="small" prepend-icon="mdi-reply-all-outline" @click="$emit('reply-all')">{{ t('reader.replyAll') }}</v-btn>
-        <v-btn variant="text" size="small" prepend-icon="mdi-share-outline" @click="$emit('forward')">{{ t('reader.forward') }}</v-btn>
+        <v-btn
+          v-if="isDraftMessage"
+          variant="text"
+          size="small"
+          prepend-icon="mdi-file-document-edit-outline"
+          @click="$emit('edit-draft')"
+        >
+          {{ t('reader.editDraft') }}
+        </v-btn>
+        <template v-else>
+          <v-btn variant="text" size="small" prepend-icon="mdi-reply-outline" @click="$emit('reply')">{{ t('reader.reply') }}</v-btn>
+          <v-btn variant="text" size="small" prepend-icon="mdi-reply-all-outline" @click="$emit('reply-all')">{{ t('reader.replyAll') }}</v-btn>
+          <v-btn variant="text" size="small" prepend-icon="mdi-share-outline" @click="$emit('forward')">{{ t('reader.forward') }}</v-btn>
+        </template>
         <v-btn variant="text" size="small" prepend-icon="mdi-delete-outline" color="error" @click="$emit('delete')">{{ t('common.delete') }}</v-btn>
       </div>
       <div class="mail-reader__toolbar-secondary">
@@ -433,6 +444,7 @@ const props = withDefaults(
 )
 
 defineEmits<{
+  'edit-draft': []
   reply: []
   'reply-all': []
   forward: []
@@ -453,6 +465,7 @@ defineEmits<{
 const isTrashArchiveOrJunk = computed(() =>
   props.currentFolderKind === 'trash' || props.currentFolderKind === 'archive' || props.currentFolderKind === 'junk',
 )
+const isDraftMessage = computed(() => props.currentFolderKind === 'drafts')
 
 const moveTargetFolders = computed(() => {
   if (props.isPop3) return []

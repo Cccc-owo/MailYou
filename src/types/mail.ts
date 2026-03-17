@@ -85,6 +85,7 @@ export interface DraftAttachment {
 export interface DraftMessage {
   id: string
   accountId: string
+  selectedIdentityId?: string
   to: string
   cc: string
   bcc: string

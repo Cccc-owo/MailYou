@@ -21,7 +21,11 @@ export interface MailRepository {
   createAccount(draft: AccountSetupDraft): Promise<MailAccount>
   testAccountConnection(draft: AccountSetupDraft): Promise<SyncStatus>
   listFolders(accountId: string): Promise<MailboxFolder[]>
+  createFolder(accountId: string, name: string): Promise<MailboxFolder[]>
+  renameFolder(accountId: string, folderId: string, name: string): Promise<MailboxFolder[]>
+  deleteFolder(accountId: string, folderId: string): Promise<MailboxFolder[]>
   listMessages(accountId: string, folderId: string): Promise<MailMessage[]>
+  getDraft(accountId: string, draftId: string): Promise<DraftMessage | null>
   searchMessages(accountId: string, query: string): Promise<MailMessage[]>
   getMessage(accountId: string, messageId: string): Promise<MailMessage | null>
   saveDraft(draft: DraftMessage): Promise<DraftMessage>

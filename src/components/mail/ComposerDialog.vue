@@ -7,6 +7,17 @@
       </v-card-title>
 
       <v-card-text class="composer-dialog__body">
+        <v-select
+          v-if="identityOptions.length > 1"
+          :model-value="draft.selectedIdentityId"
+          :items="identityOptions"
+          :label="t('composer.from', 'From')"
+          item-title="label"
+          item-value="id"
+          density="compact"
+          @update:model-value="updateIdentity"
+        />
+
         <v-combobox
           :model-value="parseRecipients(draft.to)"
           :items="suggestions"
@@ -117,14 +128,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { DraftMessage } from '@/types/mail'
 import type { Contact } from '@/types/contact'
 import { mailRepository } from '@/services/mail'
+import { applyIdentitySignature as applyIdentitySignatureToBody } from '@/shared/mail/signature'
+import { useAccountsStore } from '@/stores/accounts'
 import RichTextEditor from '@/components/mail/RichTextEditor.vue'
 
 const { t } = useI18n()
+const accountsStore = useAccountsStore()
 const fileInput = ref<HTMLInputElement | null>(null)
 const suggestions = ref<(Contact & { email: string; displayLabel: string })[]>([])
 const isSearching = ref(false)
@@ -144,6 +158,14 @@ const emit = defineEmits<{
   send: []
   close: []
 }>()
+
+const identityOptions = computed(() => {
+  const account = accountsStore.accounts.find((account) => account.id === props.draft.accountId)
+  return (account?.identities ?? []).map((identity) => ({
+    id: identity.id,
+    label: identity.name ? `${identity.name} <${identity.email}>` : identity.email,
+  }))
+})
 
 // Parse comma-separated string into array for combobox
 const parseRecipients = (value: string): string[] => {
@@ -165,6 +187,17 @@ const serializeRecipients = (items: (string | (Contact & { email: string }))[]):
 
 const updateField = (field: 'to' | 'cc' | 'bcc', items: (string | (Contact & { email: string }))[]) => {
   emit('update:draft', { ...props.draft, [field]: serializeRecipients(items) })
+}
+
+const updateIdentity = (identityId: string | null) => {
+  const account = accountsStore.accounts.find((account) => account.id === props.draft.accountId)
+  const identity = (account?.identities ?? []).find((candidate) => candidate.id === identityId)
+  const currentBody = props.draft.body ?? ''
+  emit('update:draft', {
+    ...props.draft,
+    selectedIdentityId: identityId ?? undefined,
+    body: identityId ? applyIdentitySignatureToBody(currentBody, identityId, identity?.signature, true) : currentBody,
+  })
 }
 
 const chipLabel = (item: string | (Contact & { email: string })) => {

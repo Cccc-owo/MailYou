@@ -41,6 +41,9 @@
         @select-folder="handleFolderChange"
         @sync-account="handleSyncAccount"
         @mark-folder-read="handleMarkFolderRead"
+        @create-folder="handleCreateFolder"
+        @rename-folder="handleRenameFolder"
+        @delete-folder="handleDeleteFolder"
       />
     </template>
 
@@ -98,6 +101,7 @@
         @forward="forwardCurrentMessage"
         @reply="replyToCurrentMessage"
         @reply-all="replyAllToCurrentMessage"
+        @edit-draft="editCurrentDraft"
         @toggle-read="toggleReadCurrentMessage"
         @move="moveCurrentMessage"
         @save-contact="handleSaveContact"
@@ -184,6 +188,19 @@
     <template #actions>
       <v-btn variant="text" @click="retryLastAction">{{ t('common.retry') }}</v-btn>
       <v-btn variant="text" @click="messagesStore.clearError()">{{ t('common.dismiss') }}</v-btn>
+    </template>
+  </v-snackbar>
+
+  <v-snackbar
+    :model-value="Boolean(mailboxesStore.error)"
+    class="mail-shell__snackbar mail-shell__snackbar--error"
+    location="bottom right"
+    @update:model-value="!$event && (mailboxesStore.error = null)"
+    @contextmenu="openSnackbarMenu"
+  >
+    <span class="mail-shell__snackbar-text">{{ mailboxesStore.error }}</span>
+    <template #actions>
+      <v-btn variant="text" @click="mailboxesStore.error = null">{{ t('common.dismiss') }}</v-btn>
     </template>
   </v-snackbar>
 
@@ -470,6 +487,21 @@ const sendDraft = async () => {
   await refreshMailbox()
 }
 
+const editCurrentDraft = async () => {
+  const message = messagesStore.selectedMessage
+  if (!message || !accountsStore.currentAccountId) {
+    return
+  }
+
+  const draft = await mailRepository.getDraft(accountsStore.currentAccountId, message.id)
+  if (!draft) {
+    messagesStore.error = 'Draft no longer exists'
+    return
+  }
+
+  composerStore.openExistingDraft(draft)
+}
+
 const retrySend = async () => {
   composerStore.clearFeedback()
   await sendDraft()
@@ -631,6 +663,45 @@ const handleMarkAllRead = async () => {
 
   await messagesStore.markAllRead(accountsStore.currentAccountId, mailboxesStore.currentFolderId)
   await refreshMailbox()
+}
+
+const handleCreateFolder = async (name: string) => {
+  if (!accountsStore.currentAccountId) {
+    return
+  }
+
+  try {
+    await mailboxesStore.createFolder(accountsStore.currentAccountId, name)
+    await refreshMailbox()
+  } catch (error) {
+    mailboxesStore.error = error instanceof Error ? error.message : 'Unable to create folder'
+  }
+}
+
+const handleRenameFolder = async (folderId: string, name: string) => {
+  if (!accountsStore.currentAccountId) {
+    return
+  }
+
+  try {
+    await mailboxesStore.renameFolder(accountsStore.currentAccountId, folderId, name)
+    await refreshMailbox()
+  } catch (error) {
+    mailboxesStore.error = error instanceof Error ? error.message : 'Unable to rename folder'
+  }
+}
+
+const handleDeleteFolder = async (folderId: string) => {
+  if (!accountsStore.currentAccountId) {
+    return
+  }
+
+  try {
+    await mailboxesStore.deleteFolder(accountsStore.currentAccountId, folderId)
+    await refreshMailbox()
+  } catch (error) {
+    mailboxesStore.error = error instanceof Error ? error.message : 'Unable to delete folder'
+  }
 }
 
 // --- Batch operation handlers ---

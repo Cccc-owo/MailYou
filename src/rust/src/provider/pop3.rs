@@ -64,8 +64,24 @@ impl MailProvider for Pop3SmtpProvider {
         memory::list_folders(account_id)
     }
 
+    async fn create_folder(&self, _account_id: &str, _name: &str) -> Result<Vec<MailboxFolder>, BackendError> {
+        Err(BackendError::validation("POP3 accounts do not support server folders"))
+    }
+
+    async fn rename_folder(&self, _account_id: &str, _folder_id: &str, _name: &str) -> Result<Vec<MailboxFolder>, BackendError> {
+        Err(BackendError::validation("POP3 accounts do not support server folders"))
+    }
+
+    async fn delete_folder(&self, _account_id: &str, _folder_id: &str) -> Result<Vec<MailboxFolder>, BackendError> {
+        Err(BackendError::validation("POP3 accounts do not support server folders"))
+    }
+
     async fn list_messages(&self, account_id: &str, folder_id: &str) -> Result<Vec<MailMessage>, BackendError> {
         memory::list_messages(account_id, folder_id)
+    }
+
+    async fn get_draft(&self, account_id: &str, draft_id: &str) -> Result<Option<DraftMessage>, BackendError> {
+        memory::get_draft(account_id, draft_id)
     }
 
     async fn search_messages(&self, account_id: &str, query: &str) -> Result<Vec<MailMessage>, BackendError> {

@@ -24,6 +24,20 @@ pub enum OAuthSource {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MailIdentity {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    #[serde(default)]
+    pub reply_to: Option<String>,
+    #[serde(default)]
+    pub signature: Option<String>,
+    #[serde(default)]
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MailAccount {
     pub id: String,
     pub name: String,
@@ -41,6 +55,8 @@ pub struct MailAccount {
     pub unread_count: u32,
     pub status: AccountStatus,
     pub last_synced_at: String,
+    #[serde(default)]
+    pub identities: Vec<MailIdentity>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,6 +166,8 @@ pub struct AccountSetupDraft {
     pub refresh_token: String,
     #[serde(default)]
     pub token_expires_at: String,
+    #[serde(default)]
+    pub identities: Vec<MailIdentity>,
 }
 
 fn default_incoming_protocol() -> String {
@@ -207,6 +225,8 @@ pub struct StoredAccountState {
 pub struct DraftMessage {
     pub id: String,
     pub account_id: String,
+    #[serde(default)]
+    pub selected_identity_id: Option<String>,
     pub to: String,
     pub cc: String,
     pub bcc: String,

@@ -1,6 +1,8 @@
 import { ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { mailRepository } from '@/services/mail'
+import { applyIdentitySignature as applyIdentitySignatureToBody } from '@/shared/mail/signature'
+import { useAccountsStore } from '@/stores/accounts'
 import type { DraftAttachment, DraftMessage, MailMessage } from '@/types/mail'
 
 const DRAFT_STORAGE_KEY = 'mailyou:auto-saved-draft'
@@ -71,6 +73,7 @@ async function clearAttachmentsIDB(): Promise<void> {
 const createEmptyDraft = (): DraftMessage => ({
   id: `draft-${crypto.randomUUID()}`,
   accountId: '',
+  selectedIdentityId: undefined,
   to: '',
   cc: '',
   bcc: '',
@@ -107,6 +110,12 @@ const clearLS = () => {
   localStorage.removeItem(DRAFT_STORAGE_KEY)
 }
 
+const parseAddress = (value: string) => {
+  const trimmed = value.trim().toLowerCase()
+  const match = trimmed.match(/<([^>]+)>/)
+  return (match?.[1] ?? trimmed).trim()
+}
+
 // Combined save / clear (fire-and-forget for IndexedDB)
 const saveDraftToLocal = (d: DraftMessage) => {
   saveTextToLS(d)
@@ -123,6 +132,7 @@ const clearLocalDraft = () => {
 // ---------------------------------------------------------------------------
 
 export const useComposerStore = defineStore('composer', () => {
+  const accountsStore = useAccountsStore()
   const isOpen = ref(false)
   const isSending = ref(false)
   const isSaving = ref(false)
@@ -135,6 +145,25 @@ export const useComposerStore = defineStore('composer', () => {
   const pendingOpenAction = ref<(() => void) | null>(null)
 
   let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+  const applyIdentitySignature = (nextDraft: DraftMessage, force = false) => {
+    const account = accountsStore.accounts.find((account) => account.id === nextDraft.accountId)
+    const identity = account?.identities.find((candidate) =>
+      nextDraft.selectedIdentityId
+        ? candidate.id === nextDraft.selectedIdentityId
+        : candidate.isDefault,
+    ) ?? account?.identities[0]
+
+    if (!identity?.signature) {
+      return nextDraft
+    }
+
+    return {
+      ...nextDraft,
+      selectedIdentityId: identity.id,
+      body: applyIdentitySignatureToBody(nextDraft.body || '', identity.id, identity.signature, force),
+    }
+  }
 
   // -- Auto-save helpers ------------------------------------------------
 
@@ -182,7 +211,7 @@ export const useComposerStore = defineStore('composer', () => {
     tryOpen(() => {
       error.value = null
       successMessage.value = null
-      draft.value = { ...createEmptyDraft(), accountId }
+      draft.value = applyIdentitySignature({ ...createEmptyDraft(), accountId }, true)
       isOpen.value = true
     })
   }
@@ -191,14 +220,14 @@ export const useComposerStore = defineStore('composer', () => {
     tryOpen(() => {
       error.value = null
       successMessage.value = null
-      draft.value = {
+      draft.value = applyIdentitySignature({
         ...createEmptyDraft(),
         accountId,
         to: message.fromEmail,
         subject: message.subject.startsWith('Re:') ? message.subject : `Re: ${message.subject}`,
         body: `<br><br><blockquote>${message.body}</blockquote>`,
         inReplyToMessageId: message.id,
-      }
+      }, true)
       isOpen.value = true
     })
   }
@@ -208,20 +237,29 @@ export const useComposerStore = defineStore('composer', () => {
       error.value = null
       successMessage.value = null
 
-      const self = selfEmail.toLowerCase()
+      const account = accountsStore.accounts.find((candidate) => candidate.id === accountId)
+      const selfAddresses = new Set(
+        [
+          selfEmail,
+          account?.email,
+          ...(account?.identities ?? []).map((identity) => identity.email),
+        ]
+          .filter(Boolean)
+          .map((value) => parseAddress(String(value))),
+      )
       const allRecipients = [message.fromEmail, ...message.to, ...message.cc]
         .map((addr) => addr.trim())
-        .filter((addr) => addr.length > 0 && addr.toLowerCase() !== self)
+        .filter((addr) => addr.length > 0 && !selfAddresses.has(parseAddress(addr)))
       const uniqueRecipients = [...new Set(allRecipients)]
 
-      draft.value = {
+      draft.value = applyIdentitySignature({
         ...createEmptyDraft(),
         accountId,
         to: uniqueRecipients.join(', '),
         subject: message.subject.startsWith('Re:') ? message.subject : `Re: ${message.subject}`,
         body: `<br><br><blockquote>${message.body}</blockquote>`,
         inReplyToMessageId: message.id,
-      }
+      }, true)
       isOpen.value = true
     })
   }
@@ -230,15 +268,36 @@ export const useComposerStore = defineStore('composer', () => {
     tryOpen(() => {
       error.value = null
       successMessage.value = null
-      draft.value = {
+      draft.value = applyIdentitySignature({
         ...createEmptyDraft(),
         accountId,
         subject: message.subject.startsWith('Fwd:') ? message.subject : `Fwd: ${message.subject}`,
         body: `<br><br><p>--- Forwarded message ---</p><blockquote>${message.body}</blockquote>`,
         forwardFromMessageId: message.id,
-      }
+      }, true)
       isOpen.value = true
     })
+  }
+
+  const openExistingDraft = (nextDraft: DraftMessage) => {
+    error.value = null
+    successMessage.value = null
+    const saved = loadTextFromLS()
+    if (saved && saved.id === nextDraft.id && !isDraftEmpty(saved)) {
+      void loadAttachmentsIDB()
+        .then((attachments) => {
+          draft.value = { ...saved, attachments }
+          isOpen.value = true
+        })
+        .catch(() => {
+          draft.value = { ...saved, attachments: [] }
+          isOpen.value = true
+        })
+      return
+    }
+
+    draft.value = { ...nextDraft, attachments: [...nextDraft.attachments] }
+    isOpen.value = true
   }
 
   // -- Draft save / send ------------------------------------------------
@@ -332,6 +391,7 @@ export const useComposerStore = defineStore('composer', () => {
     openReply,
     openReplyAll,
     openForward,
+    openExistingDraft,
     recoverDraft,
     discardAndProceed,
     cancelRecovery,
