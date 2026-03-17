@@ -287,10 +287,10 @@ async fn pop3_fetch_mailbox(
             .and_then(|d| mailparse::dateparse(&d).ok())
             .map(|ts| {
                 chrono::DateTime::from_timestamp(ts, 0)
-                    .unwrap_or_else(|| chrono::Utc::now())
+                    .unwrap_or_else(chrono::Utc::now)
                     .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
             })
-            .unwrap_or_else(|| memory::current_timestamp());
+            .unwrap_or_else(memory::current_timestamp);
 
         let body = extract_body_from_mime(&raw);
         let preview = make_preview(&body);

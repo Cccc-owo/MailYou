@@ -10,7 +10,6 @@ export type ImageLoadPolicy = 'noRemote' | 'noHttp' | 'all'
 const APPEARANCE_KEY = 'mailyou.appearance'
 const THEME_SEED_KEY = 'mailyou.themeSeed'
 const SYNC_INTERVAL_KEY = 'mailyou.syncIntervalMinutes'
-const FETCH_LIMIT_KEY = 'mailyou.fetchLimit'
 const LOCALE_KEY = 'mailyou.locale'
 const IMAGE_LOAD_POLICY_KEY = 'mailyou.imageLoadPolicy'
 const CLOSE_BEHAVIOR_KEY = 'mailyou.closeBehavior'
@@ -25,7 +24,6 @@ export const useUiStore = defineStore('ui', () => {
   const appearance = ref<AppearanceMode>((localStorage.getItem(APPEARANCE_KEY) as AppearanceMode) || 'light')
   const themeSeed = ref(localStorage.getItem(THEME_SEED_KEY) || '#6750A4')
   const syncIntervalMinutes = ref(Number(localStorage.getItem(SYNC_INTERVAL_KEY)) || 5)
-  const fetchLimit = ref(Number(localStorage.getItem(FETCH_LIMIT_KEY)) || 50)
   const locale = ref<LocaleMode>(getDefaultLocale())
   const imageLoadPolicy = ref<ImageLoadPolicy>((localStorage.getItem(IMAGE_LOAD_POLICY_KEY) as ImageLoadPolicy) || 'noRemote')
   const closeBehavior = ref<CloseBehaviorPreference>((localStorage.getItem(CLOSE_BEHAVIOR_KEY) as CloseBehaviorPreference) || 'ask')
@@ -49,11 +47,6 @@ export const useUiStore = defineStore('ui', () => {
     localStorage.setItem(SYNC_INTERVAL_KEY, String(value))
   }
 
-  const setFetchLimit = (value: number) => {
-    fetchLimit.value = value
-    localStorage.setItem(FETCH_LIMIT_KEY, String(value))
-  }
-
   const setLocale = (value: LocaleMode) => {
     locale.value = value
     localStorage.setItem(LOCALE_KEY, value)
@@ -74,7 +67,6 @@ export const useUiStore = defineStore('ui', () => {
     appearance,
     themeSeed,
     syncIntervalMinutes,
-    fetchLimit,
     locale,
     imageLoadPolicy,
     closeBehavior,
@@ -82,7 +74,6 @@ export const useUiStore = defineStore('ui', () => {
     toggleAppearance,
     setThemeSeed,
     setSyncIntervalMinutes,
-    setFetchLimit,
     setLocale,
     setImageLoadPolicy,
     setCloseBehavior,

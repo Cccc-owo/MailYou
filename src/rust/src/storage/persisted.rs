@@ -559,19 +559,19 @@ fn migrate_legacy_json_files(connection: &Connection) -> io::Result<()> {
         connection,
         LEGACY_DRAFTS_FILE,
         STATE_DRAFTS,
-        |path| legacy_load_json(path),
+        legacy_load_json,
     )?;
     migrate_legacy_state_file::<PersistedMailbox, _>(
         connection,
         LEGACY_MAILBOX_FILE,
         STATE_MAILBOX,
-        |path| legacy_load_json(path),
+        legacy_load_json,
     )?;
     migrate_legacy_state_file::<Vec<SyncStatus>, _>(
         connection,
         LEGACY_SYNC_FILE,
         STATE_SYNC,
-        |path| legacy_load_json(path),
+        legacy_load_json,
     )?;
     migrate_legacy_state_file::<PersistedContacts, _>(
         connection,

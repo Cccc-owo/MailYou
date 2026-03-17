@@ -1433,11 +1433,11 @@ async fn qresync_select_mailbox(
                     }
                 }
             }
-            imap_proto::Response::Data { status, code, .. } => {
-                if let imap_proto::Status::Ok = status {
-                    apply_mailbox_code(&mut mailbox, code.as_ref());
-                }
-            }
+            imap_proto::Response::Data {
+                status: imap_proto::Status::Ok,
+                code,
+                ..
+            } => apply_mailbox_code(&mut mailbox, code.as_ref()),
             imap_proto::Response::MailboxData(data) => match data {
                 imap_proto::MailboxDatum::Exists(exists) => mailbox.exists = *exists,
                 imap_proto::MailboxDatum::Recent(recent) => mailbox.recent = *recent,
@@ -1609,7 +1609,7 @@ fn decode_modified_base64(input: &[u8]) -> Vec<u16> {
     input_str = input_str.replace(',', "/");
 
     // Pad to multiple of 4
-    while input_str.len() % 4 != 0 {
+    while !input_str.len().is_multiple_of(4) {
         input_str.push('=');
     }
 
@@ -1639,13 +1639,10 @@ fn extract_date_from_body(raw: &[u8], _uid: u32) -> String {
                 .map(|h| h.get_value());
 
             if let Some(date_str) = date_header {
-                match mailparse::dateparse(&date_str) {
-                    Ok(ts) => {
-                        let dt = chrono::DateTime::from_timestamp(ts, 0)
-                            .unwrap_or_else(|| chrono::Utc::now());
-                        return dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-                    }
-                    Err(_) => {}
+                if let Ok(ts) = mailparse::dateparse(&date_str) {
+                    let dt = chrono::DateTime::from_timestamp(ts, 0)
+                        .unwrap_or_else(chrono::Utc::now);
+                    return dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
                 }
             }
 
@@ -1656,15 +1653,12 @@ fn extract_date_from_body(raw: &[u8], _uid: u32) -> String {
 
             if let Some(received_str) = received_header {
                 // Received header format: "... ; date"
-                if let Some(date_part) = received_str.split(';').last() {
+                if let Some(date_part) = received_str.split(';').next_back() {
                     let date_part = date_part.trim();
-                    match mailparse::dateparse(date_part) {
-                        Ok(ts) => {
-                            let dt = chrono::DateTime::from_timestamp(ts, 0)
-                                .unwrap_or_else(|| chrono::Utc::now());
-                            return dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-                        }
-                        Err(_) => {}
+                    if let Ok(ts) = mailparse::dateparse(date_part) {
+                        let dt = chrono::DateTime::from_timestamp(ts, 0)
+                            .unwrap_or_else(chrono::Utc::now);
+                        return dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
                     }
                 }
             }
@@ -1724,7 +1718,7 @@ fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String,
                 .map(|ts| {
                     let secs = ts;
                     let dt = chrono::DateTime::from_timestamp(secs, 0)
-                        .unwrap_or_else(|| chrono::Utc::now());
+                        .unwrap_or_else(chrono::Utc::now);
                     dt.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
                 })
                 .unwrap_or_else(|e| {
@@ -1732,7 +1726,7 @@ fn parse_envelope(env: &imap_proto::types::Envelope) -> (String, String, String,
                     String::new()  // Return empty string instead of current time
                 })
         })
-        .unwrap_or_else(|| String::new());  // Return empty string if no date field
+        .unwrap_or_default();  // Return empty string if no date field
 
     (subject, from, from_email, to, cc, date)
 }

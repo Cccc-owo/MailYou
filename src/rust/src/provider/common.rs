@@ -288,7 +288,7 @@ fn html_escape(text: &str) -> String {
 
 pub fn base64_encode_bytes(input: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity((input.len() + 2) / 3 * 4);
+    let mut result = String::with_capacity(input.len().div_ceil(3) * 4);
 
     for chunk in input.chunks(3) {
         let b0 = chunk[0] as u32;
@@ -341,7 +341,7 @@ fn decode_rfc2047(input: &str) -> String {
                         pos += consumed;
 
                         let after = &input[pos..];
-                        let trimmed = after.trim_start_matches(|c: char| c == ' ' || c == '\t' || c == '\r' || c == '\n');
+                        let trimmed = after.trim_start_matches([' ', '\t', '\r', '\n']);
                         if trimmed.starts_with("=?") {
                             pos = input.len() - trimmed.len();
                         }
@@ -405,7 +405,7 @@ pub fn base64_decode(input: &str) -> Option<Vec<u8>> {
 
     for chunk in bytes.chunks(4) {
         let vals: Vec<u8> = chunk.iter().map(|&b| table[b as usize]).collect();
-        if vals.iter().any(|&v| v == 0xFF) {
+        if vals.contains(&0xFF) {
             return None;
         }
         if vals.len() >= 2 {

@@ -1,9 +1,7 @@
-export const MAILYOU_RUNTIME_TARGET_ENV = 'MAILYOU_TARGET'
 export const MAILYOU_DEV_SERVER_URL_ENV = 'VITE_DEV_SERVER_URL'
 export const MAILYOU_OZONE_PLATFORM_HINT_ENV = 'MAILYOU_OZONE_PLATFORM_HINT'
 export const MAILYOU_ENABLE_DEV_PROTOCOL_CLIENT_ENV = 'MAILYOU_ENABLE_DEV_PROTOCOL_CLIENT'
 
-export const MAILYOU_DEFAULT_RUNTIME_TARGET = 'electron'
 export const MAILYOU_DEFAULT_OZONE_PLATFORM_HINT = 'auto'
 
 export const isMailYouDevServerEnabled = (env = process.env) =>
@@ -16,4 +14,3 @@ export const getMailYouOzonePlatformHint = (env = process.env) =>
 
 export const isMailYouDevProtocolClientEnabled = (env = process.env) =>
   env[MAILYOU_ENABLE_DEV_PROTOCOL_CLIENT_ENV] === 'true'
-

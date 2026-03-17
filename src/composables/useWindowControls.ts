@@ -46,7 +46,6 @@ export const useWindowControls = () => {
     isMaximized,
     isSupported,
     minimize,
-    refreshMaximizedState,
     toggleMaximize,
   }
 }

@@ -99,26 +99,6 @@
           <v-divider class="settings-page__divider" />
 
           <div class="settings-page__item">
-            <v-icon icon="mdi-email-multiple-outline" class="settings-page__item-icon" />
-            <div class="settings-page__item-body">
-              <div class="settings-page__item-label">{{ t('settings.fetchLimit') }}</div>
-            </div>
-            <v-select
-              :items="fetchLimitOptions"
-              :model-value="uiStore.fetchLimit"
-              item-title="label"
-              item-value="value"
-              density="compact"
-              hide-details
-              variant="outlined"
-              class="settings-page__select"
-              @update:model-value="setFetchLimit"
-            />
-          </div>
-
-          <v-divider class="settings-page__divider" />
-
-          <div class="settings-page__item">
             <v-icon icon="mdi-window-close" class="settings-page__item-icon" />
             <div class="settings-page__item-body">
               <div class="settings-page__item-label">{{ t('settings.closeBehavior') }}</div>
@@ -282,13 +262,6 @@ const syncIntervalOptions = computed(() => [
   { label: t('settings.syncInterval30'), value: 30 },
 ] satisfies Array<{ label: string; value: number }>)
 
-const fetchLimitOptions = computed(() => [
-  { label: t('settings.fetchLimit25'), value: 25 },
-  { label: t('settings.fetchLimit50'), value: 50 },
-  { label: t('settings.fetchLimit100'), value: 100 },
-  { label: t('settings.fetchLimit200'), value: 200 },
-] satisfies Array<{ label: string; value: number }>)
-
 const imageLoadOptions = computed(() => [
   { label: t('settings.imageLoadNoRemote'), value: 'noRemote' },
   { label: t('settings.imageLoadNoHttp'), value: 'noHttp' },
@@ -305,7 +278,6 @@ const setThemeSeed = (value: string) => uiStore.setThemeSeed(value)
 const setAppearance = (value: AppearanceMode | null) => { if (value) uiStore.setAppearance(value) }
 const setLocale = (value: LocaleMode | null) => { if (value) uiStore.setLocale(value) }
 const setSyncInterval = (value: number | null) => { if (value) uiStore.setSyncIntervalMinutes(value) }
-const setFetchLimit = (value: number | null) => { if (value) uiStore.setFetchLimit(value) }
 const setImageLoadPolicy = (value: ImageLoadPolicy | null) => { if (value) uiStore.setImageLoadPolicy(value) }
 const setCloseBehavior = (value: CloseBehaviorPreference | null) => { if (value) uiStore.setCloseBehavior(value) }
 

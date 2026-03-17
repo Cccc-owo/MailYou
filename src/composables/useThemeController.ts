@@ -1,4 +1,4 @@
-import { computed, watch } from 'vue'
+import { watch } from 'vue'
 import { useTheme } from 'vuetify'
 import { storeToRefs } from 'pinia'
 import { useUiStore } from '@/stores/ui'
@@ -56,9 +56,4 @@ export const useThemeController = () => {
   }
 
   watch([appearance, themeSeed], applyTheme, { immediate: true })
-
-  return {
-    currentThemeName: computed(() => theme.global.name.value),
-    applyTheme,
-  }
 }
