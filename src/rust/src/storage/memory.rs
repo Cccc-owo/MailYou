@@ -7,7 +7,7 @@ use crate::models::{
     StoredAccountState, SyncStatus,
 };
 use crate::protocol::{BackendError, StorageSecurityStatus};
-use crate::storage::{accounts, drafts, mailbox, persisted, sync};
+use crate::storage::{accounts, mailbox, persisted, sync};
 
 /// Lock the global state, recovering from a poisoned Mutex if necessary.
 /// A poisoned Mutex means a previous thread panicked while holding the lock.
@@ -1042,39 +1042,32 @@ fn state() -> &'static Mutex<MemoryState> {
 
 fn initial_state() -> MemoryState {
     eprintln!("[store] loading initial state...");
-    let seeded_accounts = accounts::seeded_account_states();
     let has_persisted = persisted::has_accounts_file();
     let account_states = if has_persisted {
         let loaded = persisted::load_accounts();
         eprintln!("[store] loaded {} accounts from disk", loaded.len());
         loaded
     } else {
-        eprintln!("[store] no persisted data, using {} seed accounts", seeded_accounts.len());
-        seeded_accounts
+        eprintln!("[store] no persisted account data found");
+        Vec::new()
     };
 
-    let seeded_mailbox = persisted::PersistedMailbox {
-        folders: mailbox::seeded_folders(),
-        messages: mailbox::seeded_messages(),
-        threads: mailbox::seeded_threads(),
-    };
     let mailbox_state = if persisted::has_mailbox_file() {
         persisted::load_mailbox()
     } else {
-        seeded_mailbox
+        persisted::PersistedMailbox::default()
     };
 
-    let seeded_drafts = drafts::seeded_drafts();
     let drafts = if persisted::has_drafts_file() {
         persisted::load_drafts()
     } else {
-        seeded_drafts
+        Vec::new()
     };
 
     let sync_statuses = {
         let loaded = persisted::load_sync_statuses();
         if loaded.is_empty() {
-            sync::seeded_sync_statuses()
+            HashMap::new()
         } else {
             loaded
                 .into_iter()
