@@ -2,7 +2,10 @@
   <v-dialog :model-value="modelValue" max-width="820" @update:model-value="$emit('update:modelValue', $event)">
     <v-card>
       <v-card-title class="d-flex align-center justify-space-between">
-        <span>{{ t('composer.compose') }}</span>
+        <div class="d-flex align-center ga-3">
+          <span>{{ t('composer.compose') }}</span>
+          <v-chip size="small" variant="tonal" color="secondary">{{ statusLabel }}</v-chip>
+        </div>
         <v-btn icon="mdi-close" variant="text" @click="$emit('close')" />
       </v-card-title>
 
@@ -146,6 +149,7 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 const props = defineProps<{
   draft: DraftMessage
+  draftStatus: 'local-only' | 'server-saved' | 'server-saved-with-local-changes'
   isSaving: boolean
   isSending: boolean
   modelValue: boolean
@@ -165,6 +169,16 @@ const identityOptions = computed(() => {
     id: identity.id,
     label: identity.name ? `${identity.name} <${identity.email}>` : identity.email,
   }))
+})
+
+const statusLabel = computed(() => {
+  if (props.draftStatus === 'server-saved') {
+    return t('composer.status.serverSaved')
+  }
+  if (props.draftStatus === 'server-saved-with-local-changes') {
+    return t('composer.status.serverSavedWithLocalChanges')
+  }
+  return t('composer.status.localOnly')
 })
 
 // Parse comma-separated string into array for combobox

@@ -117,6 +117,11 @@
     "send": "发送",
     "attach": "添加附件",
     "removeAttachment": "移除附件",
+    "status": {
+      "localOnly": "仅本地暂存",
+      "serverSaved": "已保存到草稿箱",
+      "serverSavedWithLocalChanges": "有未同步的本地修改"
+    },
     "toolbar": {
       "bold": "粗体",
       "italic": "斜体",
@@ -145,7 +150,11 @@
       "title": "发现未保存的草稿",
       "message": "您有一封未保存的草稿，是否要恢复它？",
       "restore": "恢复草稿",
-      "discard": "丢弃"
+      "discard": "丢弃",
+      "existingTitle": "发现较新的本地修改",
+      "existingMessage": "这封草稿在本地有比草稿箱更新的修改。要恢复本地版本，还是继续打开已保存的版本？",
+      "restoreLocal": "恢复本地版本",
+      "useSaved": "使用已保存版本"
     }
   },
   "closePrompt": {

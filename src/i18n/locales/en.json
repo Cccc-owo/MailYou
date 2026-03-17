@@ -117,6 +117,11 @@
     "send": "Send",
     "attach": "Attach",
     "removeAttachment": "Remove attachment",
+    "status": {
+      "localOnly": "Local only",
+      "serverSaved": "Saved to Drafts",
+      "serverSavedWithLocalChanges": "Local changes not saved to server"
+    },
     "toolbar": {
       "bold": "Bold",
       "italic": "Italic",
@@ -145,7 +150,11 @@
       "title": "Unsaved draft found",
       "message": "You have an unsaved draft from a previous session. Would you like to restore it or start fresh?",
       "restore": "Restore draft",
-      "discard": "Discard"
+      "discard": "Discard",
+      "existingTitle": "Newer local changes found",
+      "existingMessage": "This draft has newer local edits than the copy saved in Drafts. Do you want to restore the local version or open the saved version?",
+      "restoreLocal": "Restore local version",
+      "useSaved": "Use saved version"
     }
   },
   "closePrompt": {

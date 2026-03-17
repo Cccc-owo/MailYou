@@ -128,6 +128,7 @@
 
   <ComposerDialog
     :draft="composerStore.draft"
+    :draft-status="composerStore.draftStatus"
     :is-saving="composerStore.isSaving"
     :is-sending="composerStore.isSending"
     :model-value="composerStore.isOpen"
@@ -141,13 +142,17 @@
   <!-- Draft recovery dialog -->
   <v-dialog v-model="composerStore.showRecoveryDialog" max-width="420" persistent>
     <v-card>
-      <v-card-title>{{ t('composer.recovery.title') }}</v-card-title>
-      <v-card-text>{{ t('composer.recovery.message') }}</v-card-text>
+      <v-card-title>{{ t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.existingTitle' : 'composer.recovery.title') }}</v-card-title>
+      <v-card-text>{{ t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.existingMessage' : 'composer.recovery.message') }}</v-card-text>
       <v-card-actions>
         <v-btn variant="text" @click="composerStore.cancelRecovery()">{{ t('common.cancel') }}</v-btn>
         <v-spacer />
-        <v-btn variant="text" @click="composerStore.discardAndProceed()">{{ t('composer.recovery.discard') }}</v-btn>
-        <v-btn color="primary" variant="tonal" @click="composerStore.recoverDraft()">{{ t('composer.recovery.restore') }}</v-btn>
+        <v-btn variant="text" @click="composerStore.discardAndProceed()">
+          {{ t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.useSaved' : 'composer.recovery.discard') }}
+        </v-btn>
+        <v-btn color="primary" variant="tonal" @click="composerStore.recoverDraft()">
+          {{ t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.restoreLocal' : 'composer.recovery.restore') }}
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>

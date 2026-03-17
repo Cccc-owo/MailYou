@@ -99,6 +99,9 @@ export interface DraftMessage {
   inReplyToMessageId?: string
   forwardFromMessageId?: string
   attachments: DraftAttachment[]
+  persistenceState?: 'local-only' | 'server-saved' | 'server-saved-with-local-changes'
+  savedAt?: string
+  localAutosaveAt?: string
 }
 
 export interface SyncStatus {
