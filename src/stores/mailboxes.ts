@@ -105,6 +105,21 @@ export const useMailboxesStore = defineStore('mailboxes', () => {
     }
   }
 
+  const adjustCounts = (folderId: string, deltas: { unreadDelta?: number; totalDelta?: number }) => {
+    const folder = folders.value.find((f) => f.id === folderId)
+    if (!folder) {
+      return
+    }
+
+    if (deltas.unreadDelta) {
+      folder.unreadCount = Math.max(0, folder.unreadCount + deltas.unreadDelta)
+    }
+
+    if (deltas.totalDelta) {
+      folder.totalCount = Math.max(0, folder.totalCount + deltas.totalDelta)
+    }
+  }
+
   return {
     folders,
     currentFolder,
@@ -120,5 +135,6 @@ export const useMailboxesStore = defineStore('mailboxes', () => {
     decrementUnread,
     incrementUnread,
     adjustUnread,
+    adjustCounts,
   }
 })

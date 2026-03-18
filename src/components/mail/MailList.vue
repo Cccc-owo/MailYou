@@ -1,7 +1,7 @@
 <template>
   <div class="mail-list">
     <div class="mail-list__header">
-      <div class="d-flex align-center ga-2">
+      <div class="mail-list__header-primary">
         <v-checkbox
           v-if="threads.length > 0"
           :model-value="allSelected"
@@ -12,9 +12,9 @@
           class="mail-list__select-all"
           @update:model-value="onToggleSelectAll"
         />
-        <div class="text-subtitle-2">{{ title }}</div>
+        <div class="mail-list__title text-subtitle-1">{{ title }}</div>
       </div>
-      <div class="d-flex align-center ga-2">
+      <div class="mail-list__header-meta">
         <v-btn
           v-if="hasUnread"
           size="small"
@@ -26,56 +26,63 @@
           {{ t('mailList.markAllRead') }}
         </v-btn>
         <v-chip v-if="unreadCount > 0" size="x-small" color="primary" variant="tonal">{{ unreadCount }}</v-chip>
-        <span class="text-caption text-medium-emphasis">{{ t('mailList.totalCount', { count: threads.length }) }}</span>
+        <span class="mail-list__total text-caption text-medium-emphasis">{{ t('mailList.totalCount', { count: threads.length }) }}</span>
       </div>
     </div>
 
     <!-- Batch toolbar -->
     <div
       v-if="selectedIds.size > 0"
-      class="mail-list__batch-toolbar d-flex align-center ga-2 flex-wrap mb-3"
+      class="mail-list__batch-toolbar mb-3"
       :class="{ 'mail-list__batch-toolbar--busy': batchBusy }"
     >
-      <v-chip size="small" color="primary">{{ t('mailList.selectedCount', { count: selectedIds.size }) }}</v-chip>
-      <v-btn size="small" variant="tonal" prepend-icon="mdi-delete-outline" color="error" :disabled="batchBusy" @click="$emit('batch-delete')">
-        {{ t('common.delete') }}
-      </v-btn>
-      <v-btn size="small" variant="tonal" prepend-icon="mdi-archive-outline" :disabled="batchBusy" @click="$emit('batch-archive')">
-        {{ t('mailList.archive') }}
-      </v-btn>
-      <v-btn size="small" variant="tonal" prepend-icon="mdi-email-open-outline" :disabled="batchBusy" @click="$emit('batch-mark-read')">
-        {{ t('mailList.markRead') }}
-      </v-btn>
-      <v-btn size="small" variant="tonal" prepend-icon="mdi-email-outline" :disabled="batchBusy" @click="$emit('batch-mark-unread')">
-        {{ t('mailList.markUnread') }}
-      </v-btn>
-      <v-menu v-if="moveTargetFolders.length > 0">
-        <template #activator="{ props: menuProps }">
-          <v-btn size="small" variant="tonal" prepend-icon="mdi-folder-move-outline" :disabled="batchBusy" v-bind="menuProps">
-            {{ t('mailList.moveTo') }}
-          </v-btn>
-        </template>
-        <v-list density="compact">
-          <v-list-item
-            v-for="folder in moveTargetFolders"
-            :key="folder.id"
-            :prepend-icon="folder.icon"
-            :title="folderDisplayName(folder)"
-            @click="$emit('batch-move', folder.id)"
-          />
-        </v-list>
-      </v-menu>
-      <v-btn
-        v-if="!props.isPop3"
-        size="small"
-        variant="tonal"
-        prepend-icon="mdi-label-multiple-outline"
-        :disabled="batchBusy"
-        @click="$emit('batch-manage-labels')"
-      >
-        {{ t('labels.manageTitle') }}
-      </v-btn>
-      <v-btn size="small" variant="text" @click="$emit('clear-selection')">{{ t('common.cancel') }}</v-btn>
+      <div class="mail-list__batch-toolbar-header">
+        <v-chip size="small" color="primary">{{ t('mailList.selectedCount', { count: selectedIds.size }) }}</v-chip>
+        <v-btn size="small" variant="text" class="mail-list__batch-cancel" @click="$emit('clear-selection')">
+          {{ t('common.cancel') }}
+        </v-btn>
+      </div>
+
+      <div class="mail-list__batch-actions">
+        <v-btn size="small" variant="tonal" prepend-icon="mdi-delete-outline" color="error" :disabled="batchBusy" @click="$emit('batch-delete')">
+          {{ t('common.delete') }}
+        </v-btn>
+        <v-btn size="small" variant="tonal" prepend-icon="mdi-archive-outline" :disabled="batchBusy" @click="$emit('batch-archive')">
+          {{ t('mailList.archive') }}
+        </v-btn>
+        <v-btn size="small" variant="tonal" prepend-icon="mdi-email-open-outline" :disabled="batchBusy" @click="$emit('batch-mark-read')">
+          {{ t('mailList.markRead') }}
+        </v-btn>
+        <v-btn size="small" variant="tonal" prepend-icon="mdi-email-outline" :disabled="batchBusy" @click="$emit('batch-mark-unread')">
+          {{ t('mailList.markUnread') }}
+        </v-btn>
+        <v-menu v-if="moveTargetFolders.length > 0">
+          <template #activator="{ props: menuProps }">
+            <v-btn size="small" variant="tonal" prepend-icon="mdi-folder-move-outline" :disabled="batchBusy" v-bind="menuProps">
+              {{ t('mailList.moveTo') }}
+            </v-btn>
+          </template>
+          <v-list density="compact">
+            <v-list-item
+              v-for="folder in moveTargetFolders"
+              :key="folder.id"
+              :prepend-icon="folder.icon"
+              :title="folderDisplayName(folder)"
+              @click="$emit('batch-move', folder.id)"
+            />
+          </v-list>
+        </v-menu>
+        <v-btn
+          v-if="!props.isPop3"
+          size="small"
+          variant="tonal"
+          prepend-icon="mdi-label-multiple-outline"
+          :disabled="batchBusy"
+          @click="$emit('batch-manage-labels')"
+        >
+          {{ t('labels.manageTitle') }}
+        </v-btn>
+      </div>
     </div>
 
     <div v-if="showInlineError" class="mail-list__error" @click="errorDismissed = true">
@@ -92,9 +99,15 @@
       :description="isSearchResult ? t('mailList.noSearchResultsHint') : t('mailList.emptyFolder')"
     />
 
-    <v-virtual-scroll v-else :items="flatItems" class="mail-list__items">
+    <v-virtual-scroll
+      v-else
+      :items="flatItems"
+      item-key="key"
+      :item-height="106"
+      class="mail-list__items"
+    >
       <template #default="{ item }">
-        <div v-if="item.type === 'header'" class="mail-list__date-header">
+        <div v-if="item.type === 'header'" :key="item.key" class="mail-list__date-header">
           {{ item.label }}
         </div>
         <v-list-item
@@ -105,59 +118,80 @@
             'mail-list__item',
             { 'mail-list__item--unread': item.thread.unreadCount > 0 },
             { 'mail-list__item--checked': selectedIds.has(item.thread.message.id) },
+            { 'mail-list__item--pending': item.thread.message.pendingRead },
           ]"
           @mousedown="onItemPointerDown($event)"
           @click="onSelectMessage(item.thread.message.id, $event)"
           @contextmenu="ctxMenu.open($event, item.thread.message)"
         >
           <template #prepend>
-            <v-checkbox
-              :model-value="selectedIds.has(item.thread.message.id)"
-              :disabled="batchBusy"
-              hide-details
-              density="compact"
-              class="mail-list__checkbox"
-              @mousedown.stop="onItemPointerDown($event)"
-              @click.stop.prevent="onToggleSelection(item.thread.message.id, $event)"
-            />
+            <div class="mail-list__lead">
+              <v-icon
+                :icon="item.thread.message.hasAttachments ? 'mdi-paperclip' : 'mdi-paperclip-off'"
+                size="15"
+                class="mail-list__lead-icon text-medium-emphasis"
+              />
+              <v-checkbox
+                :model-value="selectedIds.has(item.thread.message.id)"
+                :disabled="batchBusy"
+                hide-details
+                density="compact"
+                class="mail-list__checkbox"
+                @mousedown.stop="onItemPointerDown($event)"
+                @click.stop.prevent="onToggleSelection(item.thread.message.id, $event)"
+              />
+              <v-tooltip :text="item.thread.message.isStarred ? t('common.unstar') : t('common.star')" location="bottom">
+                <template #activator="{ props: tip }">
+                  <v-icon
+                    v-bind="tip"
+                    :icon="item.thread.message.isStarred ? 'mdi-star' : 'mdi-star-outline'"
+                    :color="item.thread.message.isStarred ? 'warning' : undefined"
+                    size="18"
+                    :class="['mail-list__star', { 'mail-list__star--pending': item.thread.message.pendingStar }]"
+                    @click.stop="$emit('toggle-star', item.thread.message.id)"
+                  />
+                </template>
+              </v-tooltip>
+            </div>
           </template>
 
-          <div class="mail-list__row1">
-            <span class="mail-list__from" :class="{ 'font-weight-bold': item.thread.unreadCount > 0 }">
-              {{ item.thread.participants.join(', ') }}
-            </span>
-            <v-chip
-              v-if="item.thread.messageCount > 1"
-              size="x-small"
-              variant="tonal"
-              color="secondary"
-            >
-              {{ item.thread.messageCount }}
-            </v-chip>
-            <span class="mail-list__date text-caption text-medium-emphasis">{{ formatDate(item.thread.message.receivedAt) }}</span>
-            <v-tooltip :text="item.thread.message.isStarred ? t('common.unstar') : t('common.star')" location="bottom">
-              <template #activator="{ props: tip }">
-                <v-icon
-                  v-bind="tip"
-                  :icon="item.thread.message.isStarred ? 'mdi-star' : 'mdi-star-outline'"
-                  :color="item.thread.message.isStarred ? 'warning' : undefined"
-                  size="18"
-                  class="mail-list__star"
-                  @click.stop="$emit('toggle-star', item.thread.message.id)"
-                />
-              </template>
-            </v-tooltip>
-          </div>
-          <div class="mail-list__row2" :class="{ 'font-weight-medium': item.thread.unreadCount > 0 }">{{ item.thread.message.subject }}</div>
-          <div class="mail-list__row3 text-medium-emphasis">{{ item.thread.message.preview }}</div>
-
-          <template #append>
-            <div class="d-flex align-center ga-2">
-              <v-icon v-if="item.thread.message.hasAttachments" icon="mdi-paperclip" size="16" class="text-medium-emphasis" />
-              <v-chip v-if="item.thread.unreadCount > 0" size="x-small" color="primary" variant="tonal">
-                {{ item.thread.unreadCount }}
-              </v-chip>
+          <div class="mail-list__content">
+            <div class="mail-list__row1">
+              <div class="mail-list__from-group">
+                <span class="mail-list__from" :class="{ 'font-weight-bold': item.thread.unreadCount > 0 }">
+                  {{ item.thread.participants.join(', ') }}
+                </span>
+                <v-chip
+                  v-if="item.thread.messageCount > 1"
+                  size="x-small"
+                  variant="tonal"
+                  color="secondary"
+                >
+                  {{ item.thread.messageCount }}
+                </v-chip>
+              </div>
+              <span
+                class="mail-list__date text-caption text-medium-emphasis"
+                :title="formatDate(item.thread.message.receivedAt, 'full')"
+              >
+                <span class="mail-list__date-full">{{ formatDate(item.thread.message.receivedAt, 'full') }}</span>
+                <span class="mail-list__date-compact">{{ formatDate(item.thread.message.receivedAt, 'compact') }}</span>
+              </span>
             </div>
+            <div class="mail-list__row2" :class="{ 'font-weight-medium': item.thread.unreadCount > 0 }">{{ item.thread.message.subject }}</div>
+            <div class="mail-list__row3 text-medium-emphasis">{{ item.thread.message.preview }}</div>
+          </div>
+          <template #append>
+            <v-progress-circular
+              v-if="item.thread.message.pendingRead"
+              indeterminate
+              size="14"
+              width="2"
+              color="primary"
+            />
+            <v-chip v-else-if="item.thread.unreadCount > 0" size="x-small" color="primary" variant="tonal">
+              {{ item.thread.unreadCount }}
+            </v-chip>
           </template>
         </v-list-item>
       </template>
@@ -355,10 +389,27 @@ const flatItems = computed<ListItem[]>(() => {
   return result
 })
 
-const formatDate = (value: string) =>
-  new Intl.DateTimeFormat(locale.value, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(
-    new Date(value),
-  )
+const formatDate = (value: string, mode: 'full' | 'compact' = 'full') => {
+  const date = new Date(value)
+  const full = new Intl.DateTimeFormat(locale.value, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date)
+
+  if (mode === 'full') {
+    return full
+  }
+
+  const compact = new Intl.DateTimeFormat(locale.value, {
+    month: 'numeric',
+    day: 'numeric',
+  }).format(date)
+
+  return compact
+}
 </script>
 
 <style scoped>
@@ -368,15 +419,44 @@ const formatDate = (value: string) =>
   height: 100%;
   overflow: hidden;
   padding: 12px 12px 0;
+  container-type: inline-size;
 }
 
 .mail-list__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 14px;
+  margin-bottom: 12px;
   flex-shrink: 0;
+}
+
+.mail-list__header-primary,
+.mail-list__header-meta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mail-list__header-primary {
+  gap: 10px;
+  flex: 1;
+}
+
+.mail-list__header-meta {
+  gap: 8px;
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
+.mail-list__title {
+  min-width: 0;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.mail-list__total {
+  white-space: nowrap;
 }
 
 .mail-list__error {
@@ -413,9 +493,34 @@ const formatDate = (value: string) =>
 
 .mail-list__batch-toolbar {
   flex-shrink: 0;
-  padding: 8px 12px;
-  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 18px;
   background: rgba(var(--v-theme-primary), 0.08);
+  border: 1px solid rgba(var(--v-theme-primary), 0.08);
+}
+
+.mail-list__batch-toolbar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mail-list__batch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mail-list__batch-actions :deep(.v-btn) {
+  min-width: 0;
+}
+
+.mail-list__batch-cancel {
+  flex-shrink: 0;
+  margin-right: -6px;
 }
 
 .mail-list__batch-toolbar--busy {
@@ -438,12 +543,40 @@ const formatDate = (value: string) =>
 }
 
 .mail-list__item {
-  margin-bottom: 1px;
+  margin-bottom: 3px;
+  padding-block: 4px;
+  border-radius: 16px;
+}
+
+.mail-list__item :deep(.v-list-item__prepend) {
+  align-self: center;
+  margin-inline-end: 12px;
 }
 
 .mail-list__item :deep(.v-list-item__content) {
   min-width: 0;
-  padding: 4px 0;
+  padding: 6px 0;
+}
+
+.mail-list__item :deep(.v-list-item__append) {
+  align-self: center;
+  padding-left: 6px;
+}
+
+.mail-list__lead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 28px;
+  min-width: 28px;
+}
+
+.mail-list__lead-icon,
+.mail-list__lead-spacer {
+  width: 18px;
+  height: 18px;
 }
 
 .mail-list__item--unread {
@@ -459,46 +592,79 @@ const formatDate = (value: string) =>
   background: rgba(var(--v-theme-primary), 0.12);
 }
 
+.mail-list__item--pending {
+  opacity: 0.72;
+}
+
 .mail-list__row1 {
   display: flex;
   align-items: center;
   gap: 8px;
-  line-height: 1.4;
+  line-height: 1.35;
+  margin-bottom: 3px;
+}
+
+.mail-list__content {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mail-list__from-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
 }
 
 .mail-list__from {
-  flex-shrink: 0;
-  font-size: 0.8125rem;
-  max-width: 50%;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.875rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .mail-list__date {
-  flex-shrink: 0;
+  display: inline-block;
+  flex: none;
   margin-left: auto;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 0.75rem;
+  line-height: 1.25;
 }
 
+.mail-list__date-compact { display: none; }
+
 .mail-list__star {
-  flex-shrink: 0;
+  flex: none;
   cursor: pointer;
+}
+
+.mail-list__star--pending {
+  opacity: 0.45;
 }
 
 .mail-list__row2 {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 0.8125rem;
-  line-height: 1.4;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: rgba(var(--v-theme-on-surface), 0.92);
 }
 
 .mail-list__row3 {
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: 0.75rem;
-  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  word-break: break-word;
 }
 
 .mail-list__checkbox {
@@ -513,6 +679,43 @@ const formatDate = (value: string) =>
   .mail-list__header {
     flex-wrap: wrap;
     align-items: flex-start;
+    gap: 10px;
+  }
+
+  .mail-list__header-primary,
+  .mail-list__header-meta {
+    width: 100%;
+  }
+
+  .mail-list__header-meta {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    padding-left: 2px;
+  }
+
+  .mail-list__batch-toolbar {
+    padding: 12px;
+  }
+
+  .mail-list__batch-toolbar-header {
+    align-items: flex-start;
+  }
+
+  .mail-list__date {
+    max-width: 112px;
+    white-space: nowrap;
+    line-height: 1.3;
+  }
+
+}
+
+@container (max-width: 440px) {
+  .mail-list__date-full {
+    display: none;
+  }
+
+  .mail-list__date-compact {
+    display: inline;
   }
 }
 </style>

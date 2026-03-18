@@ -4,6 +4,9 @@
     :subtitle="isEditMode ? t('accountSetup.editSubtitle') : t('accountSetup.subtitle')"
     :max-width="720"
     content-class="account-setup-page__content"
+    :loading-active="progressActive"
+    :loading-progress="progressValue"
+    :loading-label="progressLabel"
   >
     <template #actions>
       <BackActionButton :label="t('common.backToMail')" @click="router.push('/')" />
@@ -285,6 +288,7 @@ const isSaving = ref(false)
 const isAuthorizingOAuth = ref(false)
 const advancedMode = ref(false)
 const error = ref<string | null>(null)
+const serverOperationStage = ref<'idle' | 'testing' | 'saving' | 'syncing'>('idle')
 
 const editAccountId = computed(() => route.params.accountId as string | undefined)
 const isEditMode = computed(() => Boolean(editAccountId.value))
@@ -729,6 +733,44 @@ const canTestConnection = computed(() =>
   canSaveBase.value && (!isOAuthMode.value || isOAuthAuthorized.value),
 )
 
+const progressActive = computed(() =>
+  isAuthorizingOAuth.value || accountsStore.isTestingConnection || isSaving.value || serverOperationStage.value !== 'idle',
+)
+
+const progressValue = computed(() => {
+  if (isAuthorizingOAuth.value) {
+    return null
+  }
+
+  switch (serverOperationStage.value) {
+    case 'testing':
+      return 34
+    case 'saving':
+      return 68
+    case 'syncing':
+      return 92
+    default:
+      return accountsStore.isTestingConnection ? 34 : null
+  }
+})
+
+const progressLabel = computed(() => {
+  if (isAuthorizingOAuth.value) {
+    return t('accountSetup.authorizeOAuth')
+  }
+
+  switch (serverOperationStage.value) {
+    case 'testing':
+      return t('accountSetup.testConnection')
+    case 'saving':
+      return isEditMode.value ? t('accountSetup.updateAccount') : t('accountSetup.saveAccount')
+    case 'syncing':
+      return t('shell.syncInProgress')
+    default:
+      return accountsStore.isTestingConnection ? t('accountSetup.testConnection') : ''
+  }
+})
+
 const runOAuthAuthorization = async () => {
   if (!canAuthorizeOAuth.value || isAuthorizingOAuth.value) {
     return
@@ -759,11 +801,14 @@ const runConnectionTest = async () => {
   }
 
   error.value = null
+  serverOperationStage.value = 'testing'
 
   try {
     await accountsStore.testAccountConnection(buildDraftPayload())
   } catch (testError) {
     error.value = testError instanceof Error ? testError.message : 'Unable to test account connection'
+  } finally {
+    serverOperationStage.value = 'idle'
   }
 }
 
@@ -774,18 +819,26 @@ const saveAccount = async () => {
 
   isSaving.value = true
   error.value = null
+  serverOperationStage.value = 'saving'
 
   try {
     const payload = buildDraftPayload()
     if (isEditMode.value) {
       await accountsStore.updateAccount(editAccountId.value!, payload)
     } else {
-      await accountsStore.createAccount(payload)
+      const account = await accountsStore.createAccount(payload)
+      serverOperationStage.value = 'syncing'
+      try {
+        await accountsStore.syncAccount(account.id)
+      } catch (syncError) {
+        error.value = syncError instanceof Error ? syncError.message : 'Unable to sync mailbox'
+      }
     }
     await router.push('/')
   } catch (saveError) {
     error.value = saveError instanceof Error ? saveError.message : 'Unable to save account'
   } finally {
+    serverOperationStage.value = 'idle'
     isSaving.value = false
   }
 }

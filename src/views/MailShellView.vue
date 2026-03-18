@@ -275,6 +275,7 @@
 
   <v-snackbar
     :model-value="Boolean(composerStore.successMessage)"
+    class="mail-shell__snackbar mail-shell__snackbar--surface"
     color="surface-variant"
     location="bottom right"
     @update:model-value="!$event && composerStore.clearFeedback()"
@@ -318,6 +319,7 @@
 
   <v-snackbar
     :model-value="Boolean(undoableAction)"
+    class="mail-shell__snackbar mail-shell__snackbar--surface"
     :timeout="-1"
     location="bottom right"
   >
@@ -397,6 +399,7 @@ const {
   loadingBarActive,
   loadingBarLabel,
   loadingBarProgress,
+  prewarmMailboxCaches,
   refreshMailbox: refreshMailboxState,
   setLoadingStage,
   sidebarLabels,
@@ -442,8 +445,42 @@ const patchCachedMessages = (messageIds: Iterable<string>, updater: (message: im
   }
 }
 
+const applyCachedFolderMove = (messageIds: Iterable<string>, folderId: string) => {
+  patchCachedMessages(messageIds, (message) => ({ ...message, folderId }))
+}
+
 const applyCachedReadState = (messageIds: Iterable<string>, isRead: boolean) => {
   patchCachedMessages(messageIds, (message) => ({ ...message, isRead }))
+}
+
+const adjustCachedFolderCounts = (changes: Array<{ folderId: string; unreadDelta?: number; totalDelta?: number }>) => {
+  if (!currentMailboxBundle.value || changes.length === 0) {
+    return
+  }
+
+  const deltas = new Map<string, { unreadDelta: number; totalDelta: number }>()
+  for (const change of changes) {
+    const current = deltas.get(change.folderId) ?? { unreadDelta: 0, totalDelta: 0 }
+    current.unreadDelta += change.unreadDelta ?? 0
+    current.totalDelta += change.totalDelta ?? 0
+    deltas.set(change.folderId, current)
+  }
+
+  currentMailboxBundle.value = {
+    ...currentMailboxBundle.value,
+    folders: currentMailboxBundle.value.folders.map((folder) => {
+      const delta = deltas.get(folder.id)
+      if (!delta) {
+        return folder
+      }
+
+      return {
+        ...folder,
+        unreadCount: Math.max(0, folder.unreadCount + delta.unreadDelta),
+        totalCount: Math.max(0, folder.totalCount + delta.totalDelta),
+      }
+    }),
+  }
 }
 
 const adjustUnreadCountsForMessages = (
@@ -546,9 +583,14 @@ const handleSelectMessage = async ({
 
   const message = messagesStore.messages.find((m) => m.id === messageId)
   if (message && !message.isRead) {
-    await messagesStore.toggleRead(accountsStore.currentAccountId, messageId)
     mailboxesStore.decrementUnread(message.folderId)
     patchCachedMessage(messageId, (cached) => ({ ...cached, isRead: true }))
+    try {
+      await messagesStore.toggleRead(accountsStore.currentAccountId, messageId)
+    } catch {
+      mailboxesStore.adjustUnread(message.folderId, 1)
+      patchCachedMessage(messageId, (cached) => ({ ...cached, isRead: false }))
+    }
   }
 }
 
@@ -711,10 +753,21 @@ const toggleStar = async (messageId: string) => {
     return
   }
 
-  await messagesStore.toggleStar(accountsStore.currentAccountId, messageId)
-  const updated = messagesStore.messages.find((message) => message.id === messageId)
-  if (updated) {
-    patchCachedMessage(messageId, () => updated)
+  const before = messagesStore.messages.find((message) => message.id === messageId)
+  if (before) {
+    patchCachedMessage(messageId, (message) => ({ ...message, isStarred: !before.isStarred }))
+  }
+
+  try {
+    await messagesStore.toggleStar(accountsStore.currentAccountId, messageId)
+    const updated = messagesStore.messages.find((message) => message.id === messageId)
+    if (updated) {
+      patchCachedMessage(messageId, () => updated)
+    }
+  } catch {
+    if (before) {
+      patchCachedMessage(messageId, (message) => ({ ...message, isStarred: before.isStarred }))
+    }
   }
 }
 
@@ -724,11 +777,24 @@ const toggleReadCurrentMessage = async () => {
   }
 
   const before = messagesStore.messages.find((message) => message.id === messagesStore.selectedMessageId)
-  await messagesStore.toggleRead(accountsStore.currentAccountId, messagesStore.selectedMessageId)
-  const after = messagesStore.messages.find((message) => message.id === messagesStore.selectedMessageId)
-  if (before && after) {
-    mailboxesStore.adjustUnread(before.folderId, after.isRead === before.isRead ? 0 : (after.isRead ? -1 : 1))
-    patchCachedMessage(after.id, () => after)
+  let optimisticUnreadDelta = 0
+  if (before) {
+    const optimisticRead = !before.isRead
+    optimisticUnreadDelta = optimisticRead === before.isRead ? 0 : (optimisticRead ? -1 : 1)
+    mailboxesStore.adjustUnread(before.folderId, optimisticUnreadDelta)
+    patchCachedMessage(before.id, (message) => ({ ...message, isRead: optimisticRead }))
+  }
+  try {
+    await messagesStore.toggleRead(accountsStore.currentAccountId, messagesStore.selectedMessageId)
+    const after = messagesStore.messages.find((message) => message.id === messagesStore.selectedMessageId)
+    if (after) {
+      patchCachedMessage(after.id, () => after)
+    }
+  } catch {
+    if (before) {
+      mailboxesStore.adjustUnread(before.folderId, -optimisticUnreadDelta)
+      patchCachedMessage(before.id, (message) => ({ ...message, isRead: before.isRead }))
+    }
   }
 }
 
@@ -830,6 +896,8 @@ const {
   refreshMailbox,
   performUndoable,
   applyCachedReadState,
+  applyCachedFolderMove,
+  adjustCachedFolderCounts,
   adjustUnreadCountsForMessages,
   patchCachedMessage,
 })
@@ -979,6 +1047,11 @@ onMounted(async () => {
   if (accountsStore.currentAccountId) {
     await loadMailbox(accountsStore.currentAccountId)
   }
+
+  void prewarmMailboxCaches(
+    accountsStore.accounts.map((account) => account.id),
+    accountsStore.currentAccountId,
+  )
 })
 
 const handleKeyboard = (event: KeyboardEvent) => {
@@ -1079,6 +1152,16 @@ onUnmounted(() => {
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(
+  () => accountsStore.accounts.map((account) => account.id).join(','),
+  () => {
+    void prewarmMailboxCaches(
+      accountsStore.accounts.map((account) => account.id),
+      accountsStore.currentAccountId,
+    )
+  },
+)
+
+watch(
   () => [messagesStore.query, accountsStore.currentAccountId, mailboxesStore.currentFolderId, selectedLabel.value] as const,
   ([query, accountId, folderId, label]) => {
     if (searchTimer) {
@@ -1131,6 +1214,12 @@ watch(
 <style>
 .mail-shell__snackbar .v-snackbar__wrapper {
   max-width: min(480px, calc(100vw - 48px));
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.mail-shell__snackbar .v-btn,
+.mail-shell__snackbar .v-icon {
+  color: inherit;
 }
 
 .mail-shell__snackbar .v-snackbar__content {
@@ -1141,11 +1230,19 @@ watch(
   -webkit-user-select: text;
 }
 
+.mail-shell__snackbar--surface .v-snackbar__wrapper {
+  background:
+    linear-gradient(rgba(var(--v-theme-surface-variant), 0.82), rgba(var(--v-theme-surface-variant), 0.82)),
+    rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+}
+
 .mail-shell__snackbar--error .v-snackbar__wrapper {
   background:
-    linear-gradient(rgba(var(--v-theme-error), 0.1), rgba(var(--v-theme-error), 0.1)),
-    rgb(var(--v-theme-background));
-  color: rgb(var(--v-theme-error));
+    linear-gradient(rgba(var(--v-theme-error), 0.12), rgba(var(--v-theme-error), 0.12)),
+    rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+  box-shadow: inset 3px 0 0 rgb(var(--v-theme-error));
 }
 
 .mail-shell__snackbar-text {

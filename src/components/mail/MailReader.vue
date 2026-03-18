@@ -124,7 +124,7 @@
           variant="text"
           size="small"
           density="compact"
-          class="ml-1 flex-shrink-0"
+          :class="['ml-1 flex-shrink-0', { 'mail-reader__star-button--pending': message.pendingStar }]"
           @click="$emit('toggle-star')"
         />
       </div>
@@ -609,8 +609,9 @@ const formattedDate = computed(() => {
   }
 
   return new Intl.DateTimeFormat(locale.value, {
+    year: 'numeric',
     weekday: 'short',
-    month: 'short',
+    month: 'long',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
@@ -948,6 +949,10 @@ const parseAddr = (addr: string): { name: string; email: string } => {
   flex-shrink: 0;
   white-space: nowrap;
   font-size: 0.8125rem;
+}
+
+.mail-reader__star-button--pending {
+  opacity: 0.45;
 }
 
 .mail-reader__recipients {

@@ -50,6 +50,8 @@ export interface MailMessage {
   labels: string[]
   imapUid?: number
   previousFolderId?: string
+  pendingRead?: boolean
+  pendingStar?: boolean
 }
 
 export interface MailLabel {

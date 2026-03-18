@@ -30,7 +30,10 @@ interface UseMailMailboxViewOptions {
   }
 }
 
-const MAILBOX_CACHE_WINDOW_MS = 1200
+const MAILBOX_CACHE_WINDOW_MS = 12_000
+const MAILBOX_CACHE_MAX_AGE_MS = 10 * 60_000
+const MAILBOX_BACKGROUND_REFRESH_COOLDOWN_MS = 45_000
+const MAILBOX_PREWARM_CONCURRENCY = 2
 export const useMailMailboxView = ({
   t,
   isSyncing,
@@ -47,11 +50,12 @@ export const useMailMailboxView = ({
   const loadingStage = ref<LoadingStage>('idle')
   const mailboxRequestGeneration = ref(0)
 
-  let mailboxLoadPromise: Promise<MailboxBundle> | null = null
-  let mailboxLoadAccountId: string | null = null
-  let labelsLoadPromise: Promise<MailLabel[]> | null = null
-  let labelsLoadAccountId: string | null = null
-  let lastMailboxLoadedAt = 0
+  const mailboxBundleCache = new Map<string, MailboxBundle>()
+  const mailboxLoadPromises = new Map<string, Promise<MailboxBundle>>()
+  const mailboxLoadedAt = new Map<string, number>()
+  const labelsCache = new Map<string, MailLabel[]>()
+  const labelsLoadPromises = new Map<string, Promise<MailLabel[]>>()
+  const mailboxBackgroundRefreshAt = new Map<string, number>()
   let refreshMailboxPromise: Promise<void> | null = null
   let refreshMailboxPending = false
   let refreshMailboxNeedsLabels = false
@@ -136,63 +140,107 @@ export const useMailMailboxView = ({
       .filter((message) => message.labels.some((item) => item.toLowerCase() === label.toLowerCase()))
       .sort((left, right) => new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime())
 
-  const fetchMailboxBundle = async (accountId: string, options?: { force?: boolean }) => {
+  const isMailboxCacheFresh = (accountId: string) =>
+    Date.now() - (mailboxLoadedAt.get(accountId) ?? 0) < MAILBOX_CACHE_WINDOW_MS
+
+  const hasUsableMailboxCache = (accountId: string) =>
+    Date.now() - (mailboxLoadedAt.get(accountId) ?? 0) < MAILBOX_CACHE_MAX_AGE_MS
+
+  const shouldRunBackgroundRefresh = (accountId: string) =>
+    Date.now() - (mailboxBackgroundRefreshAt.get(accountId) ?? 0) >= MAILBOX_BACKGROUND_REFRESH_COOLDOWN_MS
+
+  const fetchMailboxBundle = async (accountId: string, options?: { force?: boolean; silent?: boolean }) => {
     const force = options?.force ?? false
-    const now = Date.now()
+    const silent = options?.silent ?? false
+    const cachedBundle = mailboxBundleCache.get(accountId)
 
-    if (
-      !force
-      && currentMailboxBundle.value
-      && mailboxLoadAccountId === accountId
-      && now - lastMailboxLoadedAt < MAILBOX_CACHE_WINDOW_MS
-    ) {
-      return currentMailboxBundle.value
+    if (!force && cachedBundle) {
+      if (!silent) {
+        currentMailboxBundle.value = cachedBundle
+      }
+      return cachedBundle
     }
 
-    if (!force && mailboxLoadPromise && mailboxLoadAccountId === accountId) {
-      return mailboxLoadPromise
+    const inFlightRequest = mailboxLoadPromises.get(accountId)
+    if (!force && inFlightRequest) {
+      return inFlightRequest
     }
 
-    mailboxLoadAccountId = accountId
-    mailboxLoadPromise = mailRepository.getMailboxBundle(accountId)
+    const request = mailRepository.getMailboxBundle(accountId)
       .then((bundle) => {
-        currentMailboxBundle.value = bundle
-        lastMailboxLoadedAt = Date.now()
+        mailboxBundleCache.set(accountId, bundle)
+        mailboxLoadedAt.set(accountId, Date.now())
+        if (!silent) {
+          currentMailboxBundle.value = bundle
+        }
         return bundle
       })
       .finally(() => {
-        mailboxLoadPromise = null
+        mailboxLoadPromises.delete(accountId)
       })
 
-    return mailboxLoadPromise
+    mailboxLoadPromises.set(accountId, request)
+    return request
   }
 
-  const fetchAccountLabels = async (accountId: string, options?: { force?: boolean }) => {
+  const refreshMailboxCacheSilently = async (accountId: string) => {
+    if (!shouldRunBackgroundRefresh(accountId)) {
+      return
+    }
+
+    mailboxBackgroundRefreshAt.set(accountId, Date.now())
+
+    try {
+      const [bundle, labels] = await Promise.all([
+        fetchMailboxBundle(accountId, { force: true, silent: true }),
+        fetchAccountLabels(accountId, { force: true, silent: true }),
+      ])
+
+      if (currentMailboxBundle.value?.accountId === accountId) {
+        currentMailboxBundle.value = bundle
+        sidebarLabels.value = labels
+        await applyMailboxView(accountId, bundle)
+      }
+    } catch {
+      // Ignore background refresh failures to preserve instant account switching.
+    }
+  }
+
+  const fetchAccountLabels = async (accountId: string, options?: { force?: boolean; silent?: boolean }) => {
     const force = options?.force ?? false
+    const silent = options?.silent ?? false
+    const hasCachedLabels = labelsCache.has(accountId)
+    const cachedLabels = labelsCache.get(accountId) ?? []
 
     if (
       !force
-      && sidebarLabels.value.length > 0
-      && labelsLoadAccountId === accountId
+      && hasCachedLabels
     ) {
-      return sidebarLabels.value
+      if (!silent) {
+        sidebarLabels.value = cachedLabels
+      }
+      return cachedLabels
     }
 
-    if (!force && labelsLoadPromise && labelsLoadAccountId === accountId) {
-      return labelsLoadPromise
+    const inFlightRequest = labelsLoadPromises.get(accountId)
+    if (!force && inFlightRequest) {
+      return inFlightRequest
     }
 
-    labelsLoadAccountId = accountId
-    labelsLoadPromise = mailRepository.listLabels(accountId)
+    const request = mailRepository.listLabels(accountId)
       .then((labels) => {
-        sidebarLabels.value = labels
+        labelsCache.set(accountId, labels)
+        if (!silent) {
+          sidebarLabels.value = labels
+        }
         return labels
       })
       .finally(() => {
-        labelsLoadPromise = null
+        labelsLoadPromises.delete(accountId)
       })
 
-    return labelsLoadPromise
+    labelsLoadPromises.set(accountId, request)
+    return request
   }
 
   const applyMailboxView = async (accountId: string, bundle?: MailboxBundle) => {
@@ -225,14 +273,25 @@ export const useMailMailboxView = ({
     messagesStore.setMailboxBundle(mailboxBundle, mailboxesStore.currentFolderId)
   }
 
-  const loadMailbox = async (accountId: string) => {
+  const loadMailbox = async (accountId: string, options?: { force?: boolean; reloadLabels?: boolean }) => {
     messagesStore.isLoading = true
 
     try {
       setLoadingStage('fetching')
-      const bundle = await fetchMailboxBundle(accountId, { force: true })
+      const shouldRefreshStaleCache =
+        !options?.force
+        && mailboxBundleCache.has(accountId)
+        && !isMailboxCacheFresh(accountId)
+        && shouldRunBackgroundRefresh(accountId)
+      const bundle = await fetchMailboxBundle(accountId, { force: options?.force ?? false })
+      if (options?.reloadLabels) {
+        await fetchAccountLabels(accountId, { force: true })
+      }
       await applyMailboxView(accountId, bundle)
       setLoadingStage('finalizing')
+      if (shouldRefreshStaleCache) {
+        void refreshMailboxCacheSilently(accountId)
+      }
     } finally {
       messagesStore.isLoading = false
       setLoadingStage('idle')
@@ -258,13 +317,17 @@ export const useMailMailboxView = ({
           break
         }
         refreshMailboxPending = false
-        mailboxLoadPromise = null
-        lastMailboxLoadedAt = 0
+        mailboxLoadPromises.delete(accountId)
+        mailboxLoadedAt.delete(accountId)
+        mailboxBundleCache.delete(accountId)
         if (refreshMailboxNeedsLabels) {
-          labelsLoadPromise = null
-          labelsLoadAccountId = null
+          labelsLoadPromises.delete(accountId)
+          labelsCache.delete(accountId)
         }
-        await loadMailbox(accountId)
+        await loadMailbox(accountId, {
+          force: true,
+          reloadLabels: refreshMailboxNeedsLabels,
+        })
         refreshMailboxNeedsLabels = false
       } while (refreshMailboxPending)
     })().finally(() => {
@@ -275,12 +338,56 @@ export const useMailMailboxView = ({
     return refreshMailboxPromise
   }
 
-  const clearMailboxCaches = () => {
-    mailboxLoadPromise = null
-    mailboxLoadAccountId = null
-    labelsLoadPromise = null
-    labelsLoadAccountId = null
-    lastMailboxLoadedAt = 0
+  const clearMailboxCaches = (accountId?: string) => {
+    if (accountId) {
+      mailboxLoadPromises.delete(accountId)
+      mailboxLoadedAt.delete(accountId)
+      mailboxBackgroundRefreshAt.delete(accountId)
+      mailboxBundleCache.delete(accountId)
+      labelsLoadPromises.delete(accountId)
+      labelsCache.delete(accountId)
+      return
+    }
+
+    mailboxLoadPromises.clear()
+    mailboxLoadedAt.clear()
+    mailboxBackgroundRefreshAt.clear()
+    mailboxBundleCache.clear()
+    labelsLoadPromises.clear()
+    labelsCache.clear()
+  }
+
+  const prewarmMailboxCaches = async (accountIds: string[], currentAccountId?: string | null) => {
+    const targets = accountIds.filter((accountId) =>
+      accountId
+      && accountId !== currentAccountId
+      && (!hasUsableMailboxCache(accountId) || !labelsCache.has(accountId)),
+    )
+    if (targets.length === 0) {
+      return
+    }
+
+    const queue = targets.slice()
+    const concurrency = Math.min(MAILBOX_PREWARM_CONCURRENCY, queue.length)
+    await Promise.all(
+      Array.from({ length: concurrency }, async () => {
+        while (queue.length > 0) {
+          const accountId = queue.shift()
+          if (!accountId) {
+            return
+          }
+
+          try {
+            await Promise.all([
+              fetchMailboxBundle(accountId, { silent: true }),
+              fetchAccountLabels(accountId, { silent: true }),
+            ])
+          } catch {
+            // Ignore background prewarm failures and keep the active mailbox responsive.
+          }
+        }
+      }),
+    )
   }
 
   return {
@@ -294,6 +401,7 @@ export const useMailMailboxView = ({
     loadingBarLabel,
     loadingBarProgress,
     loadingStage,
+    prewarmMailboxCaches,
     refreshMailbox,
     setLoadingStage,
     sidebarLabels,

@@ -22,6 +22,7 @@ interface MailboxStoreLike {
   currentFolder: MailboxFolder | null
   folders: MailboxFolder[]
   adjustUnread: (folderId: string, delta: number) => void
+  adjustCounts: (folderId: string, deltas: { unreadDelta?: number; totalDelta?: number }) => void
   error: string | null
   createFolder: (accountId: string, name: string) => Promise<unknown>
   renameFolder: (accountId: string, folderId: string, name: string) => Promise<unknown>
@@ -36,6 +37,8 @@ interface UseMailMessageActionsOptions {
   refreshMailbox: (options?: { reloadLabels?: boolean }) => Promise<void>
   performUndoable: (label: string, undoFn: () => Promise<void>) => void
   applyCachedReadState: (messageIds: Iterable<string>, isRead: boolean) => void
+  applyCachedFolderMove: (messageIds: Iterable<string>, folderId: string) => void
+  adjustCachedFolderCounts: (changes: Array<{ folderId: string; unreadDelta?: number; totalDelta?: number }>) => void
   adjustUnreadCountsForMessages: (
     messages: Array<Pick<MailMessage, 'folderId' | 'isRead'>>,
     nextIsRead: boolean,
@@ -51,14 +54,28 @@ export const useMailMessageActions = ({
   refreshMailbox,
   performUndoable,
   applyCachedReadState,
+  applyCachedFolderMove,
+  adjustCachedFolderCounts,
   adjustUnreadCountsForMessages,
   patchCachedMessage,
 }: UseMailMessageActionsOptions) => {
   const findMessage = (messageId: string) =>
     messagesStore.messages.find((message) => message.id === messageId)
 
-  const getFolderIdByKind = (kind: 'inbox' | 'junk') =>
+  const getFolderIdByKind = (kind: 'inbox' | 'junk' | 'archive') =>
     mailboxesStore.folders.find((folder) => folder.kind === kind)?.id ?? null
+
+  const applyFolderCountChanges = (
+    changes: Array<{ folderId: string; unreadDelta?: number; totalDelta?: number }>,
+  ) => {
+    for (const change of changes) {
+      mailboxesStore.adjustCounts(change.folderId, {
+        unreadDelta: change.unreadDelta,
+        totalDelta: change.totalDelta,
+      })
+    }
+    adjustCachedFolderCounts(changes)
+  }
 
   const restoreMessageFromJunk = async (messageId: string) => {
     if (!currentAccountId.value) return
@@ -149,9 +166,18 @@ export const useMailMessageActions = ({
     const unreadMessages = messagesStore.messages
       .filter((message) => !message.isRead)
       .map((message) => ({ folderId: message.folderId, isRead: message.isRead }))
-    await messagesStore.markAllRead(currentAccountId.value, mailboxesStore.currentFolderId)
+    const affectedIds = messagesStore.messages
+      .filter((message) => !message.isRead)
+      .map((message) => message.id)
     adjustUnreadCountsForMessages(unreadMessages, true)
-    applyCachedReadState(messagesStore.messages.map((message) => message.id), true)
+    applyCachedReadState(affectedIds, true)
+    try {
+      await messagesStore.markAllRead(currentAccountId.value, mailboxesStore.currentFolderId)
+    } catch (error) {
+      adjustUnreadCountsForMessages(unreadMessages, false)
+      applyCachedReadState(affectedIds, false)
+      throw error
+    }
   }
 
   const handleCreateFolder = async (name: string) => {
@@ -203,8 +229,26 @@ export const useMailMessageActions = ({
     if (!currentAccountId.value) return
     const accountId = currentAccountId.value
     const ids = [...messagesStore.selectedIds]
-    await messagesStore.batchArchive(accountId)
-    await refreshMailbox()
+    const affectedMessages = ids
+      .map((id) => messagesStore.messages.find((message) => message.id === id))
+      .filter((message): message is NonNullable<typeof message> => Boolean(message))
+    const archiveFolderId = getFolderIdByKind('archive')
+    if (!archiveFolderId || mailboxesStore.currentFolder?.kind === 'archive') {
+      await messagesStore.batchArchive(accountId)
+      await refreshMailbox()
+    } else {
+      await messagesStore.batchMove(accountId, archiveFolderId)
+      const unreadMoved = affectedMessages.filter((message) => !message.isRead).length
+      const sourceFolderId = mailboxesStore.currentFolderId
+      applyCachedFolderMove(ids, archiveFolderId)
+      const changes = [
+        sourceFolderId
+          ? { folderId: sourceFolderId, totalDelta: -affectedMessages.length, unreadDelta: -unreadMoved }
+          : null,
+        { folderId: archiveFolderId, totalDelta: affectedMessages.length, unreadDelta: unreadMoved },
+      ].filter((change): change is NonNullable<typeof change> => Boolean(change))
+      applyFolderCountChanges(changes)
+    }
     performUndoable(t('shell.messagesArchived', { count: ids.length }), async () => {
       for (const id of ids) await messagesStore.restoreMessage(accountId, id)
       await refreshMailbox()
@@ -217,9 +261,15 @@ export const useMailMessageActions = ({
     const affectedMessages = selectedIds
       .map((id) => messagesStore.messages.find((message) => message.id === id))
       .filter((message): message is NonNullable<typeof message> => Boolean(message))
-    await messagesStore.batchToggleRead(currentAccountId.value, true)
     adjustUnreadCountsForMessages(affectedMessages, true)
     applyCachedReadState(selectedIds, true)
+    try {
+      await messagesStore.batchToggleRead(currentAccountId.value, true)
+    } catch (error) {
+      adjustUnreadCountsForMessages(affectedMessages, false)
+      applyCachedReadState(selectedIds, false)
+      throw error
+    }
   }
 
   const handleBatchMarkUnread = async () => {
@@ -228,9 +278,15 @@ export const useMailMessageActions = ({
     const affectedMessages = selectedIds
       .map((id) => messagesStore.messages.find((message) => message.id === id))
       .filter((message): message is NonNullable<typeof message> => Boolean(message))
-    await messagesStore.batchToggleRead(currentAccountId.value, false)
     adjustUnreadCountsForMessages(affectedMessages, false)
     applyCachedReadState(selectedIds, false)
+    try {
+      await messagesStore.batchToggleRead(currentAccountId.value, false)
+    } catch (error) {
+      adjustUnreadCountsForMessages(affectedMessages, true)
+      applyCachedReadState(selectedIds, true)
+      throw error
+    }
   }
 
   const handleBatchMove = async (folderId: string) => {
@@ -238,8 +294,19 @@ export const useMailMessageActions = ({
     const accountId = currentAccountId.value
     const ids = [...messagesStore.selectedIds]
     const originalFolderId = mailboxesStore.currentFolderId
+    const affectedMessages = ids
+      .map((id) => messagesStore.messages.find((message) => message.id === id))
+      .filter((message): message is NonNullable<typeof message> => Boolean(message))
     await messagesStore.batchMove(accountId, folderId)
-    await refreshMailbox()
+    applyCachedFolderMove(ids, folderId)
+    const unreadMoved = affectedMessages.filter((message) => !message.isRead).length
+    const changes = [
+      originalFolderId
+        ? { folderId: originalFolderId, totalDelta: -affectedMessages.length, unreadDelta: -unreadMoved }
+        : null,
+      { folderId, totalDelta: affectedMessages.length, unreadDelta: unreadMoved },
+    ].filter((change): change is NonNullable<typeof change> => Boolean(change))
+    applyFolderCountChanges(changes)
     if (originalFolderId) {
       performUndoable(t('shell.messagesMoved', { count: ids.length }), async () => {
         for (const id of ids) await messagesStore.moveMessage(accountId, id, originalFolderId)
@@ -251,11 +318,25 @@ export const useMailMessageActions = ({
   const handleContextToggleRead = async (messageId: string) => {
     if (!currentAccountId.value) return
     const before = messagesStore.messages.find((message) => message.id === messageId)
-    await messagesStore.toggleRead(currentAccountId.value, messageId)
-    const after = messagesStore.messages.find((message) => message.id === messageId)
-    if (before && after) {
-      mailboxesStore.adjustUnread(before.folderId, after.isRead === before.isRead ? 0 : (after.isRead ? -1 : 1))
-      patchCachedMessage(messageId, () => after)
+    let optimisticUnreadDelta = 0
+    if (before) {
+      const optimisticRead = !before.isRead
+      optimisticUnreadDelta = optimisticRead === before.isRead ? 0 : (optimisticRead ? -1 : 1)
+      mailboxesStore.adjustUnread(before.folderId, optimisticUnreadDelta)
+      patchCachedMessage(messageId, (message) => ({ ...message, isRead: optimisticRead }))
+    }
+    try {
+      await messagesStore.toggleRead(currentAccountId.value, messageId)
+      const after = messagesStore.messages.find((message) => message.id === messageId)
+      if (after) {
+        patchCachedMessage(messageId, () => after)
+      }
+    } catch (error) {
+      if (before) {
+        mailboxesStore.adjustUnread(before.folderId, -optimisticUnreadDelta)
+        patchCachedMessage(messageId, (message) => ({ ...message, isRead: before.isRead }))
+      }
+      throw error
     }
   }
 

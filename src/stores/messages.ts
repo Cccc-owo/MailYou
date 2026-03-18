@@ -67,6 +67,66 @@ export const useMessagesStore = defineStore('messages', () => {
   const sortByDate = (list: MailMessage[]) =>
     list.slice().sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
 
+  const mergeTransientState = (nextMessages: MailMessage[]) => {
+    const currentById = new Map(messages.value.map((message) => [message.id, message]))
+    return nextMessages.map((message) => {
+      const current = currentById.get(message.id)
+      if (!current?.pendingRead && !current?.pendingStar) {
+        return message
+      }
+
+      return {
+        ...message,
+        pendingRead: current.pendingRead,
+        pendingStar: current.pendingStar,
+      }
+    })
+  }
+
+  const setPendingRead = (messageIds: Iterable<string>, pendingRead: boolean) => {
+    const ids = new Set(messageIds)
+    if (ids.size === 0) {
+      return
+    }
+
+    messages.value = messages.value.map((message) => {
+      if (!ids.has(message.id)) {
+        return message
+      }
+
+      if (!pendingRead && !message.pendingRead) {
+        return message
+      }
+
+      return {
+        ...message,
+        pendingRead,
+      }
+    })
+  }
+
+  const setPendingStar = (messageIds: Iterable<string>, pendingStar: boolean) => {
+    const ids = new Set(messageIds)
+    if (ids.size === 0) {
+      return
+    }
+
+    messages.value = messages.value.map((message) => {
+      if (!ids.has(message.id)) {
+        return message
+      }
+
+      if (!pendingStar && !message.pendingStar) {
+        return message
+      }
+
+      return {
+        ...message,
+        pendingStar,
+      }
+    })
+  }
+
   const runWithConcurrency = async <T>(
     items: T[],
     limit: number,
@@ -200,7 +260,7 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const setMessages = (nextMessages: MailMessage[]) => {
-    messages.value = nextMessages
+    messages.value = mergeTransientState(nextMessages)
 
     // Preserve current selection if the message still exists in the new list
     if (selectedMessageId.value && nextMessages.some((m) => m.id === selectedMessageId.value)) {
@@ -315,15 +375,23 @@ export const useMessagesStore = defineStore('messages', () => {
     const original = messages.value.find((m) => m.id === messageId)
     if (!original) return
     const optimisticStar = !original.isStarred
-    messages.value = messages.value.map((m) => (m.id === messageId ? { ...m, isStarred: optimisticStar } : m))
+    messages.value = messages.value.map((m) =>
+      (m.id === messageId ? { ...m, isStarred: optimisticStar, pendingStar: true } : m),
+    )
 
     try {
       const updated = await mailRepository.toggleStar(accountId, messageId)
       if (updated) {
-        messages.value = messages.value.map((m) => (m.id === messageId ? updated : m))
+        messages.value = messages.value.map((m) =>
+          (m.id === messageId ? { ...updated, pendingStar: false } : m),
+        )
       }
-    } catch {
-      messages.value = messages.value.map((m) => (m.id === messageId ? { ...m, isStarred: !optimisticStar } : m))
+    } catch (loadError) {
+      messages.value = messages.value.map((m) =>
+        (m.id === messageId ? { ...m, isStarred: !optimisticStar, pendingStar: false } : m),
+      )
+      error.value = loadError instanceof Error ? loadError.message : 'Toggle star failed'
+      throw loadError
     }
   }
 
@@ -332,50 +400,133 @@ export const useMessagesStore = defineStore('messages', () => {
     const original = messages.value.find((m) => m.id === messageId)
     if (!original) return
     const optimisticRead = !original.isRead
-    messages.value = messages.value.map((m) => (m.id === messageId ? { ...m, isRead: optimisticRead } : m))
+    messages.value = messages.value.map((m) =>
+      m.id === messageId ? { ...m, isRead: optimisticRead, pendingRead: true } : m,
+    )
 
     try {
       const updated = await mailRepository.toggleRead(accountId, messageId)
       if (updated) {
-        messages.value = messages.value.map((m) => (m.id === messageId ? updated : m))
+        messages.value = messages.value.map((m) =>
+          (m.id === messageId ? { ...updated, pendingRead: false } : m),
+        )
       }
-    } catch {
+    } catch (loadError) {
       // Rollback on failure
-      messages.value = messages.value.map((m) => (m.id === messageId ? { ...m, isRead: !optimisticRead } : m))
+      messages.value = messages.value.map((m) =>
+        (m.id === messageId ? { ...m, isRead: !optimisticRead, pendingRead: false } : m),
+      )
+      error.value = loadError instanceof Error ? loadError.message : 'Toggle read failed'
+      throw loadError
     }
   }
 
   const deleteMessage = async (accountId: string, messageId: string) => {
+    const snapshot = messages.value.find((message) => message.id === messageId)
+    if (!snapshot) {
+      return
+    }
+    const previousSelectedId = selectedMessageId.value
     const nextId = computeNextSelectedId(messageId)
-    await mailRepository.deleteMessage(accountId, messageId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
     selectedMessageId.value = nextId
+    try {
+      await mailRepository.deleteMessage(accountId, messageId)
+    } catch (loadError) {
+      messages.value = sortByDate([...messages.value, snapshot])
+      selectedMessageId.value = previousSelectedId
+      error.value = loadError instanceof Error ? loadError.message : 'Delete message failed'
+      throw loadError
+    }
   }
 
   const archiveMessage = async (accountId: string, messageId: string) => {
+    const snapshot = messages.value.find((message) => message.id === messageId)
+    if (!snapshot) {
+      return
+    }
+    const previousSelectedId = selectedMessageId.value
     const nextId = computeNextSelectedId(messageId)
-    await mailRepository.archiveMessage(accountId, messageId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
     selectedMessageId.value = nextId
+    try {
+      await mailRepository.archiveMessage(accountId, messageId)
+    } catch (loadError) {
+      messages.value = sortByDate([...messages.value, snapshot])
+      selectedMessageId.value = previousSelectedId
+      error.value = loadError instanceof Error ? loadError.message : 'Archive message failed'
+      throw loadError
+    }
   }
 
   const restoreMessage = async (accountId: string, messageId: string) => {
+    const snapshot = messages.value.find((message) => message.id === messageId)
+    if (!snapshot) {
+      return
+    }
+    const previousSelectedId = selectedMessageId.value
     const nextId = computeNextSelectedId(messageId)
-    await mailRepository.restoreMessage(accountId, messageId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
     selectedMessageId.value = nextId
+    try {
+      await mailRepository.restoreMessage(accountId, messageId)
+    } catch (loadError) {
+      messages.value = sortByDate([...messages.value, snapshot])
+      selectedMessageId.value = previousSelectedId
+      error.value = loadError instanceof Error ? loadError.message : 'Restore message failed'
+      throw loadError
+    }
   }
 
   const moveMessage = async (accountId: string, messageId: string, folderId: string) => {
+    const snapshot = messages.value.find((message) => message.id === messageId)
+    if (!snapshot) {
+      return
+    }
+    const previousSelectedId = selectedMessageId.value
     const nextId = computeNextSelectedId(messageId)
-    await mailRepository.moveMessage(accountId, messageId, folderId)
     messages.value = messages.value.filter((message) => message.id !== messageId)
     selectedMessageId.value = nextId
+    try {
+      await mailRepository.moveMessage(accountId, messageId, folderId)
+    } catch (loadError) {
+      messages.value = sortByDate([...messages.value, snapshot])
+      selectedMessageId.value = previousSelectedId
+      error.value = loadError instanceof Error ? loadError.message : 'Move message failed'
+      throw loadError
+    }
   }
 
   const markAllRead = async (accountId: string, folderId: string) => {
-    await mailRepository.markAllRead(accountId, folderId)
-    messages.value = messages.value.map((message) => ({ ...message, isRead: true }))
+    const affected = messages.value.filter((message) => !message.isRead)
+    const affectedIds = affected.map((message) => message.id)
+    if (affectedIds.length === 0) {
+      return
+    }
+
+    const previousById = new Map(affected.map((message) => [message.id, message.isRead]))
+    messages.value = messages.value.map((message) =>
+      previousById.has(message.id) ? { ...message, isRead: true, pendingRead: true } : message,
+    )
+
+    try {
+      await mailRepository.markAllRead(accountId, folderId)
+      setPendingRead(affectedIds, false)
+    } catch (markError) {
+      messages.value = messages.value.map((message) => {
+        if (!previousById.has(message.id)) {
+          return message
+        }
+
+        return {
+          ...message,
+          isRead: previousById.get(message.id) ?? message.isRead,
+          pendingRead: false,
+        }
+      })
+      error.value = markError instanceof Error ? markError.message : 'Mark all read failed'
+      throw markError
+    }
   }
 
   // --- Batch selection ---
@@ -507,7 +658,7 @@ export const useMessagesStore = defineStore('messages', () => {
     )
     startBatchAction(markRead ? 'markRead' : 'markUnread', ids.length)
     messages.value = messages.value.map((message) =>
-      selectedIds.has(message.id) ? { ...message, isRead: markRead } : message,
+      selectedIds.has(message.id) ? { ...message, isRead: markRead, pendingRead: true } : message,
     )
     selectedIds.clear()
     const failures: unknown[] = []
@@ -533,14 +684,17 @@ export const useMessagesStore = defineStore('messages', () => {
       error.value = firstFailure instanceof Error ? firstFailure.message : 'Batch mark read failed'
       messages.value = messages.value.map((message) => {
         if (!originalStates.has(message.id) || succeeded.has(message.id)) {
-          return message
+          return succeeded.has(message.id) ? { ...message, pendingRead: false } : message
         }
 
         return {
           ...message,
           isRead: originalStates.get(message.id) ?? message.isRead,
+          pendingRead: false,
         }
       })
+    } else {
+      setPendingRead(ids, false)
     }
     finishBatchAction()
   }

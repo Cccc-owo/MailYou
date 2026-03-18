@@ -84,6 +84,18 @@ export const useAccountsStore = defineStore('accounts', () => {
     return account
   }
 
+  const syncAccount = async (accountId: string) => {
+    error.value = null
+
+    try {
+      connectionStatus.value = await mailRepository.syncAccount(accountId)
+      return connectionStatus.value
+    } catch (syncError) {
+      error.value = syncError instanceof Error ? syncError.message : 'Unable to sync mailbox'
+      throw syncError
+    }
+  }
+
   const deleteAccount = async (accountId: string) => {
     await mailRepository.deleteAccount(accountId)
     accounts.value = accounts.value.filter((a) => a.id !== accountId)
@@ -140,6 +152,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     loadOAuthProviders,
     authorizeOAuth,
     selectAccount,
+    syncAccount,
     testAccountConnection,
   }
 })
