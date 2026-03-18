@@ -306,6 +306,7 @@ async fn fetch_folder_contents_incremental(
         .await
         .map_err(|error| BackendError::internal(format!("IMAP CAPABILITY failed: {error}")))?;
     let has_gmail_labels = capabilities.has_str("X-GM-EXT-1");
+    let has_condstore = capabilities.has_str("QRESYNC") || capabilities.has_str("CONDSTORE");
 
     let start = if total > recent_limit {
         total - (recent_limit - 1)
@@ -314,17 +315,16 @@ async fn fetch_folder_contents_incremental(
     };
     let range = format!("{start}:{total}");
 
+    let header_attrs = match (has_gmail_labels, has_condstore) {
+        (true, true) => "UID FLAGS ENVELOPE RFC822.SIZE MODSEQ X-GM-LABELS",
+        (true, false) => "UID FLAGS ENVELOPE RFC822.SIZE X-GM-LABELS",
+        (false, true) => "UID FLAGS ENVELOPE RFC822.SIZE MODSEQ",
+        (false, false) => "UID FLAGS ENVELOPE RFC822.SIZE",
+    };
     let recent_query = if let Some(modseq) = previous_highest_modseq.filter(|_| use_changedsince) {
-        let attrs = if has_gmail_labels {
-            "UID FLAGS ENVELOPE RFC822.SIZE MODSEQ X-GM-LABELS"
-        } else {
-            "UID FLAGS ENVELOPE RFC822.SIZE MODSEQ"
-        };
-        format!("({attrs}) (CHANGEDSINCE {modseq})")
-    } else if has_gmail_labels {
-        "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ X-GM-LABELS)".into()
+        format!("({header_attrs}) (CHANGEDSINCE {modseq})")
     } else {
-        "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ)".into()
+        format!("({header_attrs})")
     };
     let recent_fetches: Vec<_> = session
         .fetch(&range, &recent_query)
@@ -335,14 +335,16 @@ async fn fetch_folder_contents_incremental(
         .map_err(|e| BackendError::internal(format!("IMAP FETCH headers failed: {e}")))?;
 
     let mut fetches = recent_fetches;
+    if total > 0 && fetches.is_empty() {
+        eprintln!(
+            "[imap] WARNING: header fetch returned 0 rows for non-empty mailbox={} total={} query={}",
+            mailbox_name, total, recent_query
+        );
+    }
     if let Some(max_uid) = known_max_uid {
         let next_uid = max_uid.saturating_add(1);
         let uid_range = format!("{next_uid}:*");
-        let uid_query = if has_gmail_labels {
-            "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ X-GM-LABELS)"
-        } else {
-            "(UID FLAGS ENVELOPE RFC822.SIZE MODSEQ)"
-        };
+        let uid_query = format!("({header_attrs})");
         if let Ok(stream) = session.uid_fetch(&uid_range, uid_query).await {
             if let Ok(new_fetches) = stream.try_collect::<Vec<_>>().await {
                 let mut seen_uids: std::collections::HashSet<u32> = fetches
