@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, protocol, session } from 'electron'
+import { existsSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -42,6 +43,68 @@ const MAIN_LOCALE_MESSAGES = {
 const getMainLocaleMessages = () => {
   const locale = app.getLocale().toLowerCase()
   return locale.startsWith('zh') ? MAIN_LOCALE_MESSAGES.zh : MAIN_LOCALE_MESSAGES.en
+}
+
+const findBundledIconPath = (preferPng = false) => {
+  const assetsDir = join(__dirname, '../assets')
+  if (!existsSync(assetsDir)) {
+    return null
+  }
+
+  const files = readdirSync(assetsDir)
+  const pngLogo = files.find((file) => /^logo-.*\.png$/i.test(file))
+  if (preferPng && pngLogo) {
+    return join(assetsDir, pngLogo)
+  }
+
+  const svgLogo = files.find((file) => /^logo-.*\.svg$/i.test(file))
+  if (svgLogo) {
+    return join(assetsDir, svgLogo)
+  }
+
+  if (pngLogo) {
+    return join(assetsDir, pngLogo)
+  }
+
+  return null
+}
+
+const resolveAppIconPath = () => {
+  const candidates = [
+    findBundledIconPath(),
+    join(process.cwd(), 'src/assets/logo.svg'),
+    join(__dirname, '../src/assets/logo.svg'),
+    join(process.cwd(), 'src/assets/logo.png'),
+    join(__dirname, '../src/assets/logo.png'),
+  ].filter((candidate): candidate is string => Boolean(candidate))
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0] ?? null
+}
+
+const resolveTrayIconPath = () => {
+  const candidates = [
+    join(process.cwd(), 'src/assets/logo.png'),
+    join(__dirname, '../src/assets/logo.png'),
+    findBundledIconPath(true),
+    join(process.cwd(), 'src/assets/logo.svg'),
+    join(__dirname, '../src/assets/logo.svg'),
+  ].filter((candidate): candidate is string => Boolean(candidate))
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0] ?? null
+}
+
+const createTrayIconImage = () => {
+  const iconPath = resolveTrayIconPath()
+  if (!iconPath) {
+    return nativeImage.createEmpty()
+  }
+
+  const image = nativeImage.createFromPath(iconPath)
+  if (image.isEmpty()) {
+    return image
+  }
+
+  return image.resize({ width: 22, height: 22 })
 }
 
 const configureLinuxWindowSystem = () => {
@@ -128,6 +191,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 const createMainWindow = async () => {
+  const appIconPath = resolveAppIconPath() ?? undefined
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -136,7 +200,7 @@ const createMainWindow = async () => {
     titleBarStyle: 'hidden',
     titleBarOverlay: false,
     backgroundColor: '#10131c',
-    icon: join(__dirname, '../src/assets/logo.png'),
+    icon: appIconPath,
     webPreferences: {
       preload: join(__dirname, 'preload.mjs'),
       contextIsolation: true,
@@ -337,7 +401,7 @@ const createTray = () => {
   }
 
   const messages = getMainLocaleMessages()
-  const icon = nativeImage.createFromPath(join(__dirname, '../src/assets/logo.png'))
+  const icon = createTrayIconImage()
   tray = new Tray(icon)
   tray.setToolTip('MailYou')
   tray.setContextMenu(Menu.buildFromTemplate([
