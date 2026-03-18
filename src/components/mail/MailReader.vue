@@ -746,6 +746,45 @@ const preserveEmailStyleBlocks = (html: string) => {
   return doc.body.innerHTML
 }
 
+const hasExplicitBackground = (html: string) => {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  return [...doc.body.querySelectorAll('*')].some((node) => {
+    const style = node.getAttribute('style')?.toLowerCase() ?? ''
+    const bgcolor = node.getAttribute('bgcolor')?.trim()
+    if (bgcolor) {
+      return true
+    }
+
+    return /background(?:-color)?\s*:/.test(style) && !/background(?:-color)?\s*:\s*transparent/.test(style)
+  })
+}
+
+const applyDarkModeAutoContrast = (html: string) => {
+  if (hasExplicitBackground(html)) {
+    return html
+  }
+
+  return `
+    <style>
+      ${EMAIL_BODY_SCOPE} .mail-reader__auto-contrast,
+      ${EMAIL_BODY_SCOPE} .mail-reader__auto-contrast * {
+        color: rgba(var(--v-theme-on-surface), 0.92) !important;
+      }
+
+      ${EMAIL_BODY_SCOPE} .mail-reader__auto-contrast a {
+        color: rgb(var(--v-theme-primary)) !important;
+      }
+
+      ${EMAIL_BODY_SCOPE} .mail-reader__auto-contrast blockquote {
+        color: rgba(var(--v-theme-on-surface), 0.8) !important;
+        border-inline-start: 3px solid rgba(var(--v-theme-on-surface), 0.18);
+        padding-inline-start: 12px;
+      }
+    </style>
+    <div class="mail-reader__auto-contrast">${html}</div>
+  `
+}
+
 const sanitizedBody = computed(() => {
   if (!props.message) {
     return ''
@@ -789,6 +828,10 @@ const sanitizedBody = computed(() => {
       }
       return `<img${attrs}>`
     })
+  }
+
+  if (uiStore.appearance === 'dark') {
+    html = applyDarkModeAutoContrast(html)
   }
 
   return html
