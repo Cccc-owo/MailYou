@@ -9,6 +9,11 @@ pub(crate) fn merge_remote_mailbox(
     remote_threads: Vec<MailThread>,
 ) -> Result<(), BackendError> {
     let mut state = memory::lock_state();
+    let pending_deleted_ids = state
+        .pending_deleted_message_ids
+        .get(account_id)
+        .cloned()
+        .unwrap_or_default();
 
     state.folders.retain(|f| f.account_id != account_id);
     state.folders.extend(folders);
@@ -37,7 +42,7 @@ pub(crate) fn merge_remote_mailbox(
     }
 
     for local in state.messages.iter().filter(|m| m.account_id == account_id) {
-        if !seen_ids.contains(&local.id) {
+        if !seen_ids.contains(&local.id) && !pending_deleted_ids.contains(&local.id) {
             merged_messages.push(local.clone());
         }
     }
@@ -61,6 +66,11 @@ pub(crate) fn merge_remote_folder(
 ) -> Result<(), BackendError> {
     let mut state = memory::lock_state();
     let folder_id = folder.id.clone();
+    let pending_deleted_ids = state
+        .pending_deleted_message_ids
+        .get(account_id)
+        .cloned()
+        .unwrap_or_default();
 
     if let Some(existing_folder) = state
         .folders
@@ -100,7 +110,7 @@ pub(crate) fn merge_remote_folder(
         }
 
         if !remote_ids.contains(&message.id) {
-            return true;
+            return !pending_deleted_ids.contains(&message.id);
         }
 
         if message.folder_id != folder_id {

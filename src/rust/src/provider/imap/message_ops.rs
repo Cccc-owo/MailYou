@@ -169,12 +169,14 @@ pub(super) async fn delete_message(
     message_id: &str,
 ) -> Result<(), BackendError> {
     let mail = memory::store().mail();
+    let pending_ids = vec![message_id.to_string()];
     let original = mail.get_message(account_id, message_id)?;
     let original_folder = original
         .as_ref()
         .map(|message| mail.get_folder(account_id, &message.folder_id))
         .transpose()?;
     mail.delete_message(account_id, message_id)?;
+    mail.mark_pending_deleted_messages(account_id, &pending_ids);
 
     if let Some(msg) = original {
         if let Some(uid) = msg.imap_uid {
@@ -197,6 +199,7 @@ pub(super) async fn delete_message(
             }
         }
     }
+    mail.clear_pending_deleted_messages(account_id, &pending_ids);
     Ok(())
 }
 
@@ -214,6 +217,7 @@ pub(super) async fn batch_delete_messages(
         .filter_map(|message_id| mail.get_message(account_id, message_id).ok().flatten())
         .collect::<Vec<_>>();
     memory::store().mail().batch_delete_messages(account_id, message_ids)?;
+    mail.mark_pending_deleted_messages(account_id, message_ids);
 
     let folders = mail.list_folders(account_id).unwrap_or_default();
     let trash_folder = folders
@@ -264,6 +268,7 @@ pub(super) async fn batch_delete_messages(
         }
     }
 
+    mail.clear_pending_deleted_messages(account_id, message_ids);
     Ok(())
 }
 

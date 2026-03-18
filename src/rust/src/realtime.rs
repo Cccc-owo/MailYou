@@ -20,6 +20,7 @@ pub struct RealtimeController {
 struct RealtimeProfile {
     watch_junk: bool,
     idle_timeout: Duration,
+    poll_interval: Duration,
     base_backoff: Duration,
     max_backoff: Duration,
 }
@@ -105,13 +106,14 @@ async fn run_realtime_loop(
             .lock()
             .unwrap()
             .contains(&account_id);
+        if uses_poll_fallback && !mailbox_name.eq_ignore_ascii_case("INBOX") {
+            tokio::time::sleep(profile.poll_interval).await;
+            backoff = profile.base_backoff;
+            continue;
+        }
+
         let change_result = if uses_poll_fallback {
-            poll_until_mailbox_changes(
-                &account_id,
-                &mailbox_name,
-                std::cmp::max(profile.base_backoff, Duration::from_secs(20)),
-            )
-            .await
+            poll_until_mailbox_changes(&account_id, &mailbox_name, profile.poll_interval).await
         } else {
             idle_until_mailbox_changes(&account_id, &mailbox_name, profile.idle_timeout).await
         };
@@ -257,6 +259,7 @@ fn realtime_profile(provider: &str) -> RealtimeProfile {
         return RealtimeProfile {
             watch_junk: true,
             idle_timeout: Duration::from_secs(60 * 8),
+            poll_interval: Duration::from_secs(75),
             base_backoff: Duration::from_secs(3),
             max_backoff: Duration::from_secs(90),
         };
@@ -269,6 +272,7 @@ fn realtime_profile(provider: &str) -> RealtimeProfile {
         return RealtimeProfile {
             watch_junk: true,
             idle_timeout: Duration::from_secs(60 * 8),
+            poll_interval: Duration::from_secs(60),
             base_backoff: Duration::from_secs(5),
             max_backoff: Duration::from_secs(120),
         };
@@ -278,6 +282,7 @@ fn realtime_profile(provider: &str) -> RealtimeProfile {
         return RealtimeProfile {
             watch_junk: false,
             idle_timeout: Duration::from_secs(60 * 9),
+            poll_interval: Duration::from_secs(45),
             base_backoff: Duration::from_secs(5),
             max_backoff: Duration::from_secs(120),
         };
@@ -286,6 +291,7 @@ fn realtime_profile(provider: &str) -> RealtimeProfile {
     RealtimeProfile {
         watch_junk: true,
         idle_timeout: Duration::from_secs(60 * 8),
+        poll_interval: Duration::from_secs(60),
         base_backoff: Duration::from_secs(5),
         max_backoff: Duration::from_secs(120),
     }

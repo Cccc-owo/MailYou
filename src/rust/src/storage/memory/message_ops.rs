@@ -7,6 +7,38 @@ use crate::models::{
 use crate::protocol::BackendError;
 use crate::storage::{memory, sync};
 
+pub(crate) fn mark_pending_deleted_messages(account_id: &str, message_ids: &[String]) {
+    if message_ids.is_empty() {
+        return;
+    }
+
+    let mut state = memory::lock_state();
+    let pending = state
+        .pending_deleted_message_ids
+        .entry(account_id.to_string())
+        .or_default();
+    pending.extend(message_ids.iter().cloned());
+}
+
+pub(crate) fn clear_pending_deleted_messages(account_id: &str, message_ids: &[String]) {
+    if message_ids.is_empty() {
+        return;
+    }
+
+    let mut state = memory::lock_state();
+    let Some(pending) = state.pending_deleted_message_ids.get_mut(account_id) else {
+        return;
+    };
+
+    for message_id in message_ids {
+        pending.remove(message_id);
+    }
+
+    if pending.is_empty() {
+        state.pending_deleted_message_ids.remove(account_id);
+    }
+}
+
 pub(crate) fn get_local_attachment_content(
     account_id: &str,
     message_id: &str,

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 mod account_ops;
@@ -255,6 +255,14 @@ impl MailStore {
         message_ops::delete_message(account_id, message_id)
     }
 
+    pub fn mark_pending_deleted_messages(self, account_id: &str, message_ids: &[String]) {
+        message_ops::mark_pending_deleted_messages(account_id, message_ids)
+    }
+
+    pub fn clear_pending_deleted_messages(self, account_id: &str, message_ids: &[String]) {
+        message_ops::clear_pending_deleted_messages(account_id, message_ids)
+    }
+
     pub fn batch_delete_messages(
         self,
         account_id: &str,
@@ -480,6 +488,7 @@ pub(crate) struct MemoryState {
     threads: Vec<MailThread>,
     drafts: Vec<DraftMessage>,
     sync_statuses: HashMap<String, SyncStatus>,
+    pending_deleted_message_ids: HashMap<String, HashSet<String>>,
     contacts: Vec<Contact>,
     contact_groups: Vec<ContactGroup>,
 }
@@ -639,6 +648,7 @@ fn initial_state() -> MemoryState {
         threads: mailbox_state.threads,
         drafts,
         sync_statuses,
+        pending_deleted_message_ids: HashMap::new(),
         contacts: Vec::new(),
         contact_groups: Vec::new(),
     };
