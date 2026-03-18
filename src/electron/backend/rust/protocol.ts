@@ -96,6 +96,10 @@ export interface RustBackendMethodMap {
     params: { accountId: string; messageId: string }
     result: MailMessage | null
   }
+  batchToggleRead: {
+    params: { accountId: string; messageIds: string[]; isRead: boolean }
+    result: void
+  }
   archiveMessage: {
     params: { accountId: string; messageId: string }
     result: MailMessage | null
@@ -108,12 +112,20 @@ export interface RustBackendMethodMap {
     params: { accountId: string; messageId: string; folderId: string }
     result: MailMessage | null
   }
+  batchMoveMessages: {
+    params: { accountId: string; messageIds: string[]; folderId: string }
+    result: void
+  }
   markAllRead: {
     params: { accountId: string; folderId: string }
     result: void
   }
   deleteMessage: {
     params: { accountId: string; messageId: string }
+    result: void
+  }
+  batchDeleteMessages: {
+    params: { accountId: string; messageIds: string[] }
     result: void
   }
   deleteAccount: {

@@ -135,6 +135,18 @@ pub(super) async fn imap_delete_message_by_uid(
     folder_id: &str,
     uid: u32,
 ) -> Result<(), BackendError> {
+    imap_delete_messages_by_uid(account_id, folder_id, &[uid]).await
+}
+
+pub(super) async fn imap_delete_messages_by_uid(
+    account_id: &str,
+    folder_id: &str,
+    uids: &[u32],
+) -> Result<(), BackendError> {
+    if uids.is_empty() {
+        return Ok(());
+    }
+
     let mailbox_name = get_imap_folder_name(account_id, folder_id)
         .ok_or_else(|| BackendError::not_found("IMAP folder not found"))?;
     let mut session = super::client_ops::imap_connect_by_account(account_id).await?;
@@ -142,7 +154,11 @@ pub(super) async fn imap_delete_message_by_uid(
         .select(&mailbox_name)
         .await
         .map_err(|error| BackendError::internal(format!("IMAP SELECT failed: {error}")))?;
-    let uid_str = uid.to_string();
+    let uid_str = uids
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
     session
         .uid_store(&uid_str, "+FLAGS (\\Deleted)")
         .await
@@ -167,10 +183,27 @@ pub(super) async fn imap_move_message(
     dest_folder_id: &str,
     uid: u32,
 ) -> Result<(), BackendError> {
+    imap_move_messages(account_id, src_folder_id, dest_folder_id, &[uid]).await
+}
+
+pub(super) async fn imap_move_messages(
+    account_id: &str,
+    src_folder_id: &str,
+    dest_folder_id: &str,
+    uids: &[u32],
+) -> Result<(), BackendError> {
+    if uids.is_empty() {
+        return Ok(());
+    }
+
     let src_name = get_imap_folder_name(account_id, src_folder_id)
         .ok_or_else(|| BackendError::internal("Source IMAP folder name not found"))?;
     let dest_name = get_imap_folder_name(account_id, dest_folder_id)
         .ok_or_else(|| BackendError::internal("Destination IMAP folder name not found"))?;
+
+    if src_name == dest_name {
+        return Ok(());
+    }
 
     let mut session = super::client_ops::imap_connect_by_account(account_id).await?;
     session
@@ -178,7 +211,11 @@ pub(super) async fn imap_move_message(
         .await
         .map_err(|e| BackendError::internal(format!("IMAP SELECT failed: {e}")))?;
 
-    let uid_str = uid.to_string();
+    let uid_str = uids
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
     session
         .uid_copy(&uid_str, &dest_name)
         .await

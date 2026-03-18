@@ -238,6 +238,31 @@ pub(crate) fn toggle_read(
     Ok(Some(updated))
 }
 
+pub(crate) fn batch_toggle_read(
+    account_id: &str,
+    message_ids: &[String],
+    is_read: bool,
+) -> Result<(), BackendError> {
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+
+    let message_ids = message_ids.iter().map(String::as_str).collect::<std::collections::HashSet<_>>();
+    let mut state = memory::lock_state();
+
+    for message in state
+        .messages
+        .iter_mut()
+        .filter(|message| message.account_id == account_id && message_ids.contains(message.id.as_str()))
+    {
+        message.is_read = is_read;
+    }
+
+    state.recalculate_counts();
+    state.persist()?;
+    Ok(())
+}
+
 pub(crate) fn delete_message(account_id: &str, message_id: &str) -> Result<(), BackendError> {
     let mut state = memory::lock_state();
     let trash_folder_id = state
@@ -260,6 +285,40 @@ pub(crate) fn delete_message(account_id: &str, message_id: &str) -> Result<(), B
     message.folder_id = trash_folder_id;
     message.previous_folder_id = None;
     message.is_read = true;
+    state.recalculate_counts();
+    state.persist()?;
+    Ok(())
+}
+
+pub(crate) fn batch_delete_messages(
+    account_id: &str,
+    message_ids: &[String],
+) -> Result<(), BackendError> {
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+
+    let message_ids = message_ids.iter().map(String::as_str).collect::<std::collections::HashSet<_>>();
+    let mut state = memory::lock_state();
+    let trash_folder_id = state
+        .folders
+        .iter()
+        .find(|folder| {
+            folder.account_id == account_id && matches!(folder.kind, MailFolderKind::Trash)
+        })
+        .map(|folder| folder.id.clone())
+        .ok_or_else(|| BackendError::internal("Trash folder is missing"))?;
+
+    for message in state
+        .messages
+        .iter_mut()
+        .filter(|message| message.account_id == account_id && message_ids.contains(message.id.as_str()))
+    {
+        message.folder_id = trash_folder_id.clone();
+        message.previous_folder_id = None;
+        message.is_read = true;
+    }
+
     state.recalculate_counts();
     state.persist()?;
     Ok(())
@@ -387,6 +446,48 @@ pub(crate) fn move_message(
     state.recalculate_counts();
     state.persist()?;
     Ok(Some(updated))
+}
+
+pub(crate) fn batch_move_messages(
+    account_id: &str,
+    message_ids: &[String],
+    folder_id: &str,
+) -> Result<(), BackendError> {
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+
+    let mut state = memory::lock_state();
+    let message_ids = message_ids.iter().map(String::as_str).collect::<std::collections::HashSet<_>>();
+
+    let target_folder = state
+        .folders
+        .iter()
+        .find(|folder| folder.account_id == account_id && folder.id == folder_id)
+        .cloned()
+        .ok_or_else(|| BackendError::not_found("Target folder not found"))?;
+
+    for message in state
+        .messages
+        .iter_mut()
+        .filter(|message| message.account_id == account_id && message_ids.contains(message.id.as_str()))
+    {
+        let current_folder_id = message.folder_id.clone();
+        let moving_to_junk = matches!(target_folder.kind, MailFolderKind::Junk);
+        let moving_out_of_junk = message.previous_folder_id.is_some() && !moving_to_junk;
+
+        if moving_to_junk {
+            message.previous_folder_id = Some(current_folder_id);
+        } else if moving_out_of_junk {
+            message.previous_folder_id = None;
+        }
+
+        message.folder_id = folder_id.to_string();
+    }
+
+    state.recalculate_counts();
+    state.persist()?;
+    Ok(())
 }
 
 pub(crate) fn mark_all_read(account_id: &str, folder_id: &str) -> Result<(), BackendError> {
@@ -732,10 +833,13 @@ pub(crate) fn sync_draft_mailbox_message(state: &mut memory::MemoryState, draft:
 }
 
 fn strip_html_tags(input: &str) -> String {
-    let mut output = String::with_capacity(input.len());
+    let cleaned = strip_html_block(input, "style");
+    let cleaned = strip_html_block(&cleaned, "script");
+    let cleaned = strip_html_block(&cleaned, "head");
+    let mut output = String::with_capacity(cleaned.len());
     let mut inside_tag = false;
 
-    for ch in input.chars() {
+    for ch in cleaned.chars() {
         match ch {
             '<' => inside_tag = true,
             '>' => {
@@ -747,6 +851,36 @@ fn strip_html_tags(input: &str) -> String {
         }
     }
 
+    output
+}
+
+fn strip_html_block(input: &str, tag_name: &str) -> String {
+    let lower = input.to_lowercase();
+    let open_tag = format!("<{tag_name}");
+    let close_tag = format!("</{tag_name}>");
+    let mut output = String::with_capacity(input.len());
+    let mut cursor = 0;
+
+    while let Some(relative_start) = lower[cursor..].find(&open_tag) {
+        let start = cursor + relative_start;
+        output.push_str(&input[cursor..start]);
+
+        let Some(open_end_relative) = lower[start..].find('>') else {
+            cursor = start;
+            break;
+        };
+        let content_start = start + open_end_relative + 1;
+
+        if let Some(close_relative) = lower[content_start..].find(&close_tag) {
+            cursor = content_start + close_relative + close_tag.len();
+            output.push(' ');
+        } else {
+            cursor = start;
+            break;
+        }
+    }
+
+    output.push_str(&input[cursor..]);
     output
 }
 
@@ -764,7 +898,11 @@ fn sort_message_labels(labels: &mut Vec<String>) {
 }
 
 fn preview_for(body: &str) -> String {
-    let trimmed = body.trim();
+    let trimmed = strip_html_tags(body)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let trimmed = trimmed.trim();
     if trimmed.is_empty() {
         return "(No message body)".into();
     }

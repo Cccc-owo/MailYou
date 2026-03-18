@@ -346,12 +346,10 @@ pub fn find_mime_part_by_path<'a>(
 }
 
 pub fn make_preview(body: &str) -> String {
-    let preview = strip_html_tags(body)
+    let preview = normalize_preview_text(&strip_html_tags(body))
         .chars()
         .take(96)
-        .collect::<String>()
-        .replace('\n', " ")
-        .replace('\r', "");
+        .collect::<String>();
     if preview.is_empty() {
         "(No preview)".into()
     } else {
@@ -360,18 +358,69 @@ pub fn make_preview(body: &str) -> String {
 }
 
 pub fn strip_html_tags(html: &str) -> String {
-    let mut result = String::with_capacity(html.len());
+    let cleaned = strip_html_block(html, "style");
+    let cleaned = strip_html_block(&cleaned, "script");
+    let cleaned = strip_html_block(&cleaned, "head");
+
+    let mut result = String::with_capacity(cleaned.len());
     let mut in_tag = false;
-    for ch in html.chars() {
+    for ch in cleaned.chars() {
         if ch == '<' {
             in_tag = true;
-        } else if ch == '>' {
+            continue;
+        }
+
+        if ch == '>' {
             in_tag = false;
-        } else if !in_tag {
+            result.push(' ');
+            continue;
+        }
+
+        if !in_tag {
             result.push(ch);
         }
     }
+
     result
+}
+
+fn strip_html_block(input: &str, tag_name: &str) -> String {
+    let lower = input.to_lowercase();
+    let open_tag = format!("<{tag_name}");
+    let close_tag = format!("</{tag_name}>");
+    let mut output = String::with_capacity(input.len());
+    let mut cursor = 0;
+
+    while let Some(relative_start) = lower[cursor..].find(&open_tag) {
+        let start = cursor + relative_start;
+        output.push_str(&input[cursor..start]);
+
+        let Some(open_end_relative) = lower[start..].find('>') else {
+            cursor = start;
+            break;
+        };
+        let content_start = start + open_end_relative + 1;
+
+        if let Some(close_relative) = lower[content_start..].find(&close_tag) {
+            cursor = content_start + close_relative + close_tag.len();
+            output.push(' ');
+        } else {
+            cursor = start;
+            break;
+        }
+    }
+
+    output.push_str(&input[cursor..]);
+    output
+}
+
+fn normalize_preview_text(input: &str) -> String {
+    input
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
 }
 
 fn html_escape(text: &str) -> String {

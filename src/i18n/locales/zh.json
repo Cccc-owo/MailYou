@@ -304,7 +304,12 @@
     "messageMoved": "邮件已移动",
     "messagesArchived": "{count} 封邮件已归档",
     "messagesDeleted": "{count} 封邮件已删除",
-    "messagesMoved": "{count} 封邮件已移动"
+    "messagesMoved": "{count} 封邮件已移动",
+    "deletingMessagesProgress": "正在删除邮件… {processed}/{total}",
+    "archivingMessagesProgress": "正在归档邮件… {processed}/{total}",
+    "markingMessagesReadProgress": "正在标记为已读… {processed}/{total}",
+    "markingMessagesUnreadProgress": "正在标记为未读… {processed}/{total}",
+    "movingMessagesProgress": "正在移动邮件… {processed}/{total}"
   },
   "labels": {
     "sidebarTitle": "标签",

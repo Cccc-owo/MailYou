@@ -304,7 +304,12 @@
     "messageMoved": "Message moved",
     "messagesArchived": "{count} messages archived",
     "messagesDeleted": "{count} messages deleted",
-    "messagesMoved": "{count} messages moved"
+    "messagesMoved": "{count} messages moved",
+    "deletingMessagesProgress": "Deleting messages… {processed}/{total}",
+    "archivingMessagesProgress": "Archiving messages… {processed}/{total}",
+    "markingMessagesReadProgress": "Marking messages as read… {processed}/{total}",
+    "markingMessagesUnreadProgress": "Marking messages as unread… {processed}/{total}",
+    "movingMessagesProgress": "Moving messages… {processed}/{total}"
   },
   "labels": {
     "sidebarTitle": "Labels",

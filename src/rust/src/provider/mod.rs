@@ -103,10 +103,21 @@ pub trait MessageMutationProvider: Send + Sync {
         account_id: &str,
         message_id: &str,
     ) -> Result<Option<MailMessage>, BackendError>;
+    async fn batch_toggle_read_cap(
+        &self,
+        account_id: &str,
+        message_ids: &[String],
+        is_read: bool,
+    ) -> Result<(), BackendError>;
     async fn delete_message_cap(
         &self,
         account_id: &str,
         message_id: &str,
+    ) -> Result<(), BackendError>;
+    async fn batch_delete_messages_cap(
+        &self,
+        account_id: &str,
+        message_ids: &[String],
     ) -> Result<(), BackendError>;
     async fn archive_message_cap(
         &self,
@@ -124,6 +135,12 @@ pub trait MessageMutationProvider: Send + Sync {
         message_id: &str,
         folder_id: &str,
     ) -> Result<Option<MailMessage>, BackendError>;
+    async fn batch_move_messages_cap(
+        &self,
+        account_id: &str,
+        message_ids: &[String],
+        folder_id: &str,
+    ) -> Result<(), BackendError>;
     async fn mark_all_read_cap(&self, account_id: &str, folder_id: &str) -> Result<(), BackendError>;
 }
 

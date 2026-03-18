@@ -5,10 +5,16 @@ import type { MailLabel, MailMessage, MailboxBundle } from '@/types/mail'
 type LoadingStage = 'idle' | 'syncing' | 'fetching' | 'applying' | 'searching' | 'finalizing'
 
 interface UseMailMailboxViewOptions {
-  t: (key: string) => string
+  t: (key: string, params?: Record<string, unknown>) => string
   isSyncing: Ref<boolean>
   selectedLabel: Ref<string | null>
   messagesStore: {
+    batchAction?: {
+      active: boolean
+      kind: 'delete' | 'archive' | 'markRead' | 'markUnread' | 'move' | null
+      processed: number
+      total: number
+    }
     isLoading: boolean
     hasSearchQuery: boolean
     query: string
@@ -47,12 +53,28 @@ export const useMailMailboxView = ({
   let lastLabelsLoadedAt = 0
   let refreshMailboxPromise: Promise<void> | null = null
   let refreshMailboxPending = false
+  const batchAction = computed(() => messagesStore.batchAction)
+  const batchProgress = computed(() => {
+    const current = batchAction.value
+    if (!current?.active || current.total <= 0) {
+      return 0
+    }
+
+    return Math.max(8, Math.round((current.processed / current.total) * 100))
+  })
 
   const loadingBarActive = computed(() =>
-    isSyncing.value || messagesStore.isLoading || loadingStage.value !== 'idle',
+    isSyncing.value
+      || messagesStore.isLoading
+      || loadingStage.value !== 'idle'
+      || Boolean(batchAction.value?.active),
   )
 
   const loadingBarProgress = computed(() => {
+    if (batchAction.value?.active) {
+      return batchProgress.value
+    }
+
     switch (loadingStage.value) {
       case 'syncing':
         return 18
@@ -70,6 +92,23 @@ export const useMailMailboxView = ({
   })
 
   const loadingBarLabel = computed(() => {
+    if (batchAction.value?.active) {
+      switch (batchAction.value.kind) {
+        case 'delete':
+          return t('shell.deletingMessagesProgress', batchAction.value)
+        case 'archive':
+          return t('shell.archivingMessagesProgress', batchAction.value)
+        case 'markRead':
+          return t('shell.markingMessagesReadProgress', batchAction.value)
+        case 'markUnread':
+          return t('shell.markingMessagesUnreadProgress', batchAction.value)
+        case 'move':
+          return t('shell.movingMessagesProgress', batchAction.value)
+        default:
+          return ''
+      }
+    }
+
     switch (loadingStage.value) {
       case 'syncing':
         return t('shell.syncInProgress')

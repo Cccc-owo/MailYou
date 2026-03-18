@@ -93,9 +93,20 @@ pub enum BackendRequest {
         message_id: String,
     },
     #[serde(rename_all = "camelCase")]
+    BatchToggleRead {
+        account_id: String,
+        message_ids: Vec<String>,
+        is_read: bool,
+    },
+    #[serde(rename_all = "camelCase")]
     DeleteMessage {
         account_id: String,
         message_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    BatchDeleteMessages {
+        account_id: String,
+        message_ids: Vec<String>,
     },
     #[serde(rename_all = "camelCase")]
     DeleteAccount {
@@ -115,6 +126,12 @@ pub enum BackendRequest {
     MoveMessage {
         account_id: String,
         message_id: String,
+        folder_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    BatchMoveMessages {
+        account_id: String,
+        message_ids: Vec<String>,
         folder_id: String,
     },
     #[serde(rename_all = "camelCase")]
@@ -234,11 +251,14 @@ impl BackendRequest {
             Self::SendMessage(_) => "sendMessage",
             Self::ToggleStar { .. } => "toggleStar",
             Self::ToggleRead { .. } => "toggleRead",
+            Self::BatchToggleRead { .. } => "batchToggleRead",
             Self::DeleteMessage { .. } => "deleteMessage",
+            Self::BatchDeleteMessages { .. } => "batchDeleteMessages",
             Self::DeleteAccount { .. } => "deleteAccount",
             Self::ArchiveMessage { .. } => "archiveMessage",
             Self::RestoreMessage { .. } => "restoreMessage",
             Self::MoveMessage { .. } => "moveMessage",
+            Self::BatchMoveMessages { .. } => "batchMoveMessages",
             Self::MarkAllRead { .. } => "markAllRead",
             Self::SyncAccount { .. } => "syncAccount",
             Self::GetMailboxBundle { .. } => "getMailboxBundle",

@@ -141,12 +141,27 @@ impl<'a> MailService<'a> {
                 let provider = self.message_mutation_provider_for_account(&account_id);
                 serialize(provider.toggle_read_cap(&account_id, &message_id).await?)
             }
+            BackendRequest::BatchToggleRead {
+                account_id,
+                message_ids,
+                is_read,
+            } => {
+                let provider = self.message_mutation_provider_for_account(&account_id);
+                serialize(provider.batch_toggle_read_cap(&account_id, &message_ids, is_read).await?)
+            }
             BackendRequest::DeleteMessage {
                 account_id,
                 message_id,
             } => {
                 let provider = self.message_mutation_provider_for_account(&account_id);
                 serialize(provider.delete_message_cap(&account_id, &message_id).await?)
+            }
+            BackendRequest::BatchDeleteMessages {
+                account_id,
+                message_ids,
+            } => {
+                let provider = self.message_mutation_provider_for_account(&account_id);
+                serialize(provider.batch_delete_messages_cap(&account_id, &message_ids).await?)
             }
             BackendRequest::DeleteAccount { account_id } => {
                 let provider = self.account_provider_for_account(&account_id);
@@ -173,6 +188,14 @@ impl<'a> MailService<'a> {
             } => {
                 let provider = self.message_mutation_provider_for_account(&account_id);
                 serialize(provider.move_message_cap(&account_id, &message_id, &folder_id).await?)
+            }
+            BackendRequest::BatchMoveMessages {
+                account_id,
+                message_ids,
+                folder_id,
+            } => {
+                let provider = self.message_mutation_provider_for_account(&account_id);
+                serialize(provider.batch_move_messages_cap(&account_id, &message_ids, &folder_id).await?)
             }
             BackendRequest::MarkAllRead {
                 account_id,

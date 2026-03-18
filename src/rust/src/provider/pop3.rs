@@ -179,8 +179,34 @@ impl MessageMutationProvider for Pop3SmtpProvider {
         memory::store().mail().toggle_read(account_id, message_id)
     }
 
+    async fn batch_toggle_read_cap(
+        &self,
+        account_id: &str,
+        message_ids: &[String],
+        is_read: bool,
+    ) -> Result<(), BackendError> {
+        for message_id in message_ids {
+            let current = memory::store().mail().get_message(account_id, message_id)?;
+            if current.as_ref().map(|message| message.is_read) != Some(is_read) {
+                let _ = memory::store().mail().toggle_read(account_id, message_id)?;
+            }
+        }
+        Ok(())
+    }
+
     async fn delete_message_cap(&self, account_id: &str, message_id: &str) -> Result<(), BackendError> {
         memory::store().mail().delete_message(account_id, message_id)
+    }
+
+    async fn batch_delete_messages_cap(
+        &self,
+        account_id: &str,
+        message_ids: &[String],
+    ) -> Result<(), BackendError> {
+        for message_id in message_ids {
+            memory::store().mail().delete_message(account_id, message_id)?;
+        }
+        Ok(())
     }
 
     async fn archive_message_cap(
@@ -206,6 +232,18 @@ impl MessageMutationProvider for Pop3SmtpProvider {
         folder_id: &str,
     ) -> Result<Option<MailMessage>, BackendError> {
         memory::store().mail().move_message(account_id, message_id, folder_id)
+    }
+
+    async fn batch_move_messages_cap(
+        &self,
+        account_id: &str,
+        message_ids: &[String],
+        folder_id: &str,
+    ) -> Result<(), BackendError> {
+        for message_id in message_ids {
+            let _ = memory::store().mail().move_message(account_id, message_id, folder_id)?;
+        }
+        Ok(())
     }
 
     async fn mark_all_read_cap(&self, account_id: &str, folder_id: &str) -> Result<(), BackendError> {

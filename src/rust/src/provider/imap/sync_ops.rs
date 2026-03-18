@@ -187,7 +187,7 @@ async fn imap_fetch_mailbox(
         }
 
         let display_name = super::parse_ops::decode_imap_utf7(raw_name);
-        let (kind, icon) = classify_folder(&display_name);
+        let (kind, icon) = classify_folder(&display_name, remote_folder.attributes());
         let folder_id = format!("{}-{}", super::parse_ops::slug(raw_name), account_id);
 
         let (unread, total, messages, threads) = fetch_folder_contents(
@@ -590,7 +590,45 @@ async fn fetch_folder_contents_incremental(
     })
 }
 
-fn classify_folder(name: &str) -> (MailFolderKind, &'static str) {
+fn classify_folder(
+    name: &str,
+    attributes: &[async_imap::types::NameAttribute<'_>],
+) -> (MailFolderKind, &'static str) {
+    if attributes
+        .iter()
+        .any(|attribute| matches!(attribute, async_imap::types::NameAttribute::Trash))
+    {
+        return (MailFolderKind::Trash, "mdi-delete-outline");
+    }
+
+    if attributes
+        .iter()
+        .any(|attribute| matches!(attribute, async_imap::types::NameAttribute::Junk))
+    {
+        return (MailFolderKind::Junk, "mdi-alert-circle-outline");
+    }
+
+    if attributes
+        .iter()
+        .any(|attribute| matches!(attribute, async_imap::types::NameAttribute::Sent))
+    {
+        return (MailFolderKind::Sent, "mdi-send-outline");
+    }
+
+    if attributes
+        .iter()
+        .any(|attribute| matches!(attribute, async_imap::types::NameAttribute::Drafts))
+    {
+        return (MailFolderKind::Drafts, "mdi-file-document-edit-outline");
+    }
+
+    if attributes
+        .iter()
+        .any(|attribute| matches!(attribute, async_imap::types::NameAttribute::Archive))
+    {
+        return (MailFolderKind::Archive, "mdi-archive-outline");
+    }
+
     let lower = name.to_lowercase();
     if lower == "inbox" || lower == "收件箱" {
         (MailFolderKind::Inbox, "mdi-inbox-arrow-down")
@@ -764,7 +802,7 @@ fn resolve_or_create_folder(account_id: &str, mailbox_name: &str) -> MailboxFold
     }
 
     let display_name = super::parse_ops::decode_imap_utf7(mailbox_name);
-    let (kind, icon) = classify_folder(&display_name);
+    let (kind, icon) = classify_folder(&display_name, &[]);
     MailboxFolder {
         id: format!("{}-{}", super::parse_ops::slug(mailbox_name), account_id),
         account_id: account_id.into(),

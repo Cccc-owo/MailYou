@@ -37,10 +37,60 @@ export const useMessagesStore = defineStore('messages', () => {
   const error = ref<string | null>(null)
   const selectedIds = shallowReactive(new Set<string>())
   const isMultiSelectMode = computed(() => selectedIds.size > 0)
+  const batchAction = ref<{
+    active: boolean
+    kind: 'delete' | 'archive' | 'markRead' | 'markUnread' | 'move' | null
+    processed: number
+    total: number
+  }>({
+    active: false,
+    kind: null,
+    processed: 0,
+    total: 0,
+  })
   let loadGeneration = 0
 
   const sortByDate = (list: MailMessage[]) =>
     list.slice().sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
+
+  const runWithConcurrency = async <T>(
+    items: T[],
+    limit: number,
+    worker: (item: T) => Promise<void>,
+  ) => {
+    const queue = items.slice()
+    const failures: unknown[] = []
+    const concurrency = Math.max(1, Math.min(limit, queue.length))
+
+    await Promise.all(
+      Array.from({ length: concurrency }, async () => {
+        while (queue.length > 0) {
+          const next = queue.shift()
+          if (!next) {
+            return
+          }
+
+          try {
+            await worker(next)
+          } catch (error) {
+            failures.push(error)
+          }
+        }
+      }),
+    )
+
+    return failures
+  }
+
+  const chunkItems = <T>(items: T[], size: number) => {
+    const chunks: T[][] = []
+
+    for (let index = 0; index < items.length; index += size) {
+      chunks.push(items.slice(index, index + size))
+    }
+
+    return chunks
+  }
 
   const filteredMessages = computed(() => {
     return sortByDate(messages.value)
@@ -104,6 +154,35 @@ export const useMessagesStore = defineStore('messages', () => {
 
   const setSyncStatus = (value: SyncStatus | null) => {
     syncStatus.value = value
+  }
+
+  const startBatchAction = (kind: NonNullable<typeof batchAction.value.kind>, total: number) => {
+    batchAction.value = {
+      active: total > 0,
+      kind,
+      processed: 0,
+      total,
+    }
+  }
+
+  const advanceBatchAction = () => {
+    if (!batchAction.value.active) {
+      return
+    }
+
+    batchAction.value = {
+      ...batchAction.value,
+      processed: Math.min(batchAction.value.processed + 1, batchAction.value.total),
+    }
+  }
+
+  const finishBatchAction = () => {
+    batchAction.value = {
+      active: false,
+      kind: null,
+      processed: 0,
+      total: 0,
+    }
   }
 
   const setMessages = (nextMessages: MailMessage[]) => {
@@ -252,79 +331,170 @@ export const useMessagesStore = defineStore('messages', () => {
 
   const batchDelete = async (accountId: string) => {
     const ids = [...selectedIds]
+    if (ids.length === 0) {
+      return
+    }
     const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
       ? computeNextSelectedId(selectedMessageId.value)
       : selectedMessageId.value
+    const snapshot = messages.value.filter((message) => selectedIds.has(message.id))
+    const snapshotById = new Map(snapshot.map((message) => [message.id, message]))
     const succeeded = new Set<string>()
-    try {
-      for (const id of ids) {
-        await mailRepository.deleteMessage(accountId, id)
-        succeeded.add(id)
-      }
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Batch delete failed'
-    }
-    messages.value = messages.value.filter((m) => !succeeded.has(m.id))
-    selectedMessageId.value = succeeded.has(selectedMessageId.value ?? '') ? nextId : selectedMessageId.value
+    startBatchAction('delete', ids.length)
+    messages.value = messages.value.filter((message) => !selectedIds.has(message.id))
+    selectedMessageId.value = selectedIds.has(selectedMessageId.value ?? '') ? nextId : selectedMessageId.value
     selectedIds.clear()
+    const failures: unknown[] = []
+    for (const batchIds of chunkItems(ids, 24)) {
+      try {
+        await mailRepository.batchDeleteMessages(accountId, batchIds)
+        batchIds.forEach((id) => {
+          succeeded.add(id)
+          advanceBatchAction()
+        })
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length > 0) {
+      const firstFailure = failures[0]
+      error.value = firstFailure instanceof Error ? firstFailure.message : 'Batch delete failed'
+      const failedMessages = ids
+        .filter((id) => !succeeded.has(id))
+        .map((id) => snapshotById.get(id))
+        .filter((message): message is MailMessage => Boolean(message))
+      if (failedMessages.length > 0) {
+        messages.value = sortByDate([...messages.value, ...failedMessages])
+      }
+    }
+    finishBatchAction()
   }
 
   const batchArchive = async (accountId: string) => {
     const ids = [...selectedIds]
+    if (ids.length === 0) {
+      return
+    }
     const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
       ? computeNextSelectedId(selectedMessageId.value)
       : selectedMessageId.value
+    const snapshot = messages.value.filter((message) => selectedIds.has(message.id))
+    const snapshotById = new Map(snapshot.map((message) => [message.id, message]))
     const succeeded = new Set<string>()
-    try {
-      for (const id of ids) {
-        await mailRepository.archiveMessage(accountId, id)
-        succeeded.add(id)
-      }
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Batch archive failed'
-    }
-    messages.value = messages.value.filter((m) => !succeeded.has(m.id))
-    selectedMessageId.value = succeeded.has(selectedMessageId.value ?? '') ? nextId : selectedMessageId.value
+    startBatchAction('archive', ids.length)
+    messages.value = messages.value.filter((message) => !selectedIds.has(message.id))
+    selectedMessageId.value = selectedIds.has(selectedMessageId.value ?? '') ? nextId : selectedMessageId.value
     selectedIds.clear()
+    const failures = await runWithConcurrency(ids, 4, async (id) => {
+      await mailRepository.archiveMessage(accountId, id)
+      succeeded.add(id)
+      advanceBatchAction()
+    })
+    if (failures.length > 0) {
+      const firstFailure = failures[0]
+      error.value = firstFailure instanceof Error ? firstFailure.message : 'Batch archive failed'
+      const failedMessages = ids
+        .filter((id) => !succeeded.has(id))
+        .map((id) => snapshotById.get(id))
+        .filter((message): message is MailMessage => Boolean(message))
+      if (failedMessages.length > 0) {
+        messages.value = sortByDate([...messages.value, ...failedMessages])
+      }
+    }
+    finishBatchAction()
   }
 
   const batchToggleRead = async (accountId: string, markRead: boolean) => {
     const ids = [...selectedIds]
-    const succeeded = new Set<string>()
-    try {
-      for (const id of ids) {
-        const msg = messages.value.find((m) => m.id === id)
-        if (msg && msg.isRead !== markRead) {
-          await mailRepository.toggleRead(accountId, id)
-        }
-        succeeded.add(id)
-      }
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Batch mark read failed'
+    if (ids.length === 0) {
+      return
     }
-    messages.value = messages.value.map((m) =>
-      succeeded.has(m.id) ? { ...m, isRead: markRead } : m,
+    const succeeded = new Set<string>()
+    const originalStates = new Map(
+      ids
+        .map((id) => messages.value.find((message) => message.id === id))
+        .filter((message): message is MailMessage => Boolean(message))
+        .map((message) => [message.id, message.isRead]),
+    )
+    startBatchAction(markRead ? 'markRead' : 'markUnread', ids.length)
+    messages.value = messages.value.map((message) =>
+      selectedIds.has(message.id) ? { ...message, isRead: markRead } : message,
     )
     selectedIds.clear()
+    const failures: unknown[] = []
+    for (const batchIds of chunkItems(
+      ids.filter((id) => originalStates.get(id) !== undefined),
+      48,
+    )) {
+      try {
+        const actionableIds = batchIds.filter((id) => originalStates.get(id) !== markRead)
+        if (actionableIds.length > 0) {
+          await mailRepository.batchToggleRead(accountId, actionableIds, markRead)
+        }
+        batchIds.forEach((id) => {
+          succeeded.add(id)
+          advanceBatchAction()
+        })
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length > 0) {
+      const firstFailure = failures[0]
+      error.value = firstFailure instanceof Error ? firstFailure.message : 'Batch mark read failed'
+      messages.value = messages.value.map((message) => {
+        if (!originalStates.has(message.id) || succeeded.has(message.id)) {
+          return message
+        }
+
+        return {
+          ...message,
+          isRead: originalStates.get(message.id) ?? message.isRead,
+        }
+      })
+    }
+    finishBatchAction()
   }
 
   const batchMove = async (accountId: string, folderId: string) => {
     const ids = [...selectedIds]
+    if (ids.length === 0) {
+      return
+    }
     const nextId = selectedMessageId.value && selectedIds.has(selectedMessageId.value)
       ? computeNextSelectedId(selectedMessageId.value)
       : selectedMessageId.value
+    const snapshot = messages.value.filter((message) => selectedIds.has(message.id))
+    const snapshotById = new Map(snapshot.map((message) => [message.id, message]))
     const succeeded = new Set<string>()
-    try {
-      for (const id of ids) {
-        await mailRepository.moveMessage(accountId, id, folderId)
-        succeeded.add(id)
-      }
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Batch move failed'
-    }
-    messages.value = messages.value.filter((m) => !succeeded.has(m.id))
-    selectedMessageId.value = succeeded.has(selectedMessageId.value ?? '') ? nextId : selectedMessageId.value
+    startBatchAction('move', ids.length)
+    messages.value = messages.value.filter((message) => !selectedIds.has(message.id))
+    selectedMessageId.value = selectedIds.has(selectedMessageId.value ?? '') ? nextId : selectedMessageId.value
     selectedIds.clear()
+    const failures: unknown[] = []
+    for (const batchIds of chunkItems(ids, 24)) {
+      try {
+        await mailRepository.batchMoveMessages(accountId, batchIds, folderId)
+        batchIds.forEach((id) => {
+          succeeded.add(id)
+          advanceBatchAction()
+        })
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length > 0) {
+      const firstFailure = failures[0]
+      error.value = firstFailure instanceof Error ? firstFailure.message : 'Batch move failed'
+      const failedMessages = ids
+        .filter((id) => !succeeded.has(id))
+        .map((id) => snapshotById.get(id))
+        .filter((message): message is MailMessage => Boolean(message))
+      if (failedMessages.length > 0) {
+        messages.value = sortByDate([...messages.value, ...failedMessages])
+      }
+    }
+    finishBatchAction()
   }
 
   const syncAccount = async (accountId: string) => {
@@ -368,6 +538,7 @@ export const useMessagesStore = defineStore('messages', () => {
     query,
     syncStatus,
     error,
+    batchAction,
     hasSearchQuery,
     selectedIds,
     isMultiSelectMode,

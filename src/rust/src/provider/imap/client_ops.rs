@@ -176,6 +176,49 @@ pub(super) async fn imap_store_flag(
     Ok(())
 }
 
+pub(super) async fn imap_store_flags(
+    account_id: &str,
+    folder_id: &str,
+    uids: &[u32],
+    flag: &str,
+    add: bool,
+) -> Result<(), BackendError> {
+    if uids.is_empty() {
+        return Ok(());
+    }
+
+    let mailbox_name = super::folder_ops::get_imap_folder_name(account_id, folder_id)
+        .ok_or_else(|| BackendError::internal("IMAP folder name not found"))?;
+
+    let mut session = imap_connect_by_account(account_id).await?;
+    session
+        .select(&mailbox_name)
+        .await
+        .map_err(|e| BackendError::internal(format!("IMAP SELECT failed: {e}")))?;
+
+    let query = if add {
+        format!("+FLAGS ({})", flag)
+    } else {
+        format!("-FLAGS ({})", flag)
+    };
+    let uid_set = uids
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+
+    session
+        .uid_store(uid_set, &query)
+        .await
+        .map_err(|e| BackendError::internal(format!("IMAP STORE failed: {e}")))?
+        .try_collect::<Vec<_>>()
+        .await
+        .map_err(|e| BackendError::internal(format!("IMAP STORE failed: {e}")))?;
+
+    let _ = session.logout().await;
+    Ok(())
+}
+
 async fn imap_tcp_connect(host: &str, port: u16) -> Result<TcpStream, BackendError> {
     tokio::time::timeout(super::TCP_CONNECT_TIMEOUT, TcpStream::connect((host, port)))
         .await

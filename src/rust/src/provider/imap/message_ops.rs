@@ -121,19 +121,72 @@ pub(super) async fn toggle_read(
     Ok(updated)
 }
 
+pub(super) async fn batch_toggle_read(
+    account_id: &str,
+    message_ids: &[String],
+    is_read: bool,
+) -> Result<(), BackendError> {
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+
+    let mail = memory::store().mail();
+    let originals = message_ids
+        .iter()
+        .filter_map(|message_id| mail.get_message(account_id, message_id).ok().flatten())
+        .collect::<Vec<_>>();
+    memory::store().mail().batch_toggle_read(account_id, message_ids, is_read)?;
+
+    let mut uids_by_folder = std::collections::HashMap::<String, Vec<u32>>::new();
+    for message in originals {
+        if message.is_read == is_read {
+            continue;
+        }
+        if let Some(uid) = message.imap_uid {
+            uids_by_folder.entry(message.folder_id).or_default().push(uid);
+        }
+    }
+
+    for (folder_id, uids) in uids_by_folder {
+        eprintln!(
+            "[imap] pushing read={} for {} messages in {}",
+            is_read,
+            uids.len(),
+            folder_id
+        );
+        if let Err(error) =
+            super::client_ops::imap_store_flags(account_id, &folder_id, &uids, "\\Seen", is_read).await
+        {
+            eprintln!("[imap] batch push read failed: {}", error.message);
+        }
+    }
+
+    Ok(())
+}
+
 pub(super) async fn delete_message(
     account_id: &str,
     message_id: &str,
 ) -> Result<(), BackendError> {
     let mail = memory::store().mail();
     let original = mail.get_message(account_id, message_id)?;
+    let original_folder = original
+        .as_ref()
+        .map(|message| mail.get_folder(account_id, &message.folder_id))
+        .transpose()?;
     mail.delete_message(account_id, message_id)?;
 
     if let Some(msg) = original {
         if let Some(uid) = msg.imap_uid {
-            if let Ok(folders) = mail.list_folders(account_id) {
-                if let Some(trash) = folders.iter().find(|f| matches!(f.kind, MailFolderKind::Trash))
+            if matches!(original_folder.as_ref().map(|folder| &folder.kind), Some(MailFolderKind::Trash)) {
+                eprintln!("[imap] permanently deleting uid {} from trash", uid);
+                if let Err(e) =
+                    super::folder_ops::imap_delete_message_by_uid(account_id, &msg.folder_id, uid).await
                 {
+                    eprintln!("[imap] push permanent delete failed: {}", e.message);
+                }
+            } else if let Ok(folders) = mail.list_folders(account_id) {
+                if let Some(trash) = folders.iter().find(|f| matches!(f.kind, MailFolderKind::Trash)) {
                     eprintln!("[imap] moving uid {} to trash", uid);
                     if let Err(e) =
                         super::folder_ops::imap_move_message(account_id, &msg.folder_id, &trash.id, uid).await
@@ -144,6 +197,73 @@ pub(super) async fn delete_message(
             }
         }
     }
+    Ok(())
+}
+
+pub(super) async fn batch_delete_messages(
+    account_id: &str,
+    message_ids: &[String],
+) -> Result<(), BackendError> {
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+
+    let mail = memory::store().mail();
+    let originals = message_ids
+        .iter()
+        .filter_map(|message_id| mail.get_message(account_id, message_id).ok().flatten())
+        .collect::<Vec<_>>();
+    memory::store().mail().batch_delete_messages(account_id, message_ids)?;
+
+    let folders = mail.list_folders(account_id).unwrap_or_default();
+    let trash_folder = folders
+        .iter()
+        .find(|folder| matches!(folder.kind, MailFolderKind::Trash))
+        .cloned();
+
+    let mut delete_from_trash = std::collections::HashMap::<String, Vec<u32>>::new();
+    let mut move_to_trash = std::collections::HashMap::<String, Vec<u32>>::new();
+
+    for message in originals {
+        let Some(uid) = message.imap_uid else {
+            continue;
+        };
+        let folder_kind = folders
+            .iter()
+            .find(|folder| folder.id == message.folder_id)
+            .map(|folder| folder.kind.clone());
+
+        if matches!(folder_kind, Some(MailFolderKind::Trash)) {
+            delete_from_trash.entry(message.folder_id).or_default().push(uid);
+        } else {
+            move_to_trash.entry(message.folder_id).or_default().push(uid);
+        }
+    }
+
+    for (folder_id, uids) in delete_from_trash {
+        eprintln!("[imap] permanently deleting {} messages from {}", uids.len(), folder_id);
+        if let Err(error) =
+            super::folder_ops::imap_delete_messages_by_uid(account_id, &folder_id, &uids).await
+        {
+            eprintln!("[imap] batch permanent delete failed: {}", error.message);
+        }
+    }
+
+    if let Some(trash_folder) = trash_folder {
+        for (folder_id, uids) in move_to_trash {
+            eprintln!(
+                "[imap] moving {} messages from {} to trash",
+                uids.len(),
+                folder_id
+            );
+            if let Err(error) =
+                super::folder_ops::imap_move_messages(account_id, &folder_id, &trash_folder.id, &uids).await
+            {
+                eprintln!("[imap] batch push delete failed: {}", error.message);
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -217,6 +337,46 @@ pub(super) async fn move_message(
         }
     }
     Ok(updated)
+}
+
+pub(super) async fn batch_move_messages(
+    account_id: &str,
+    message_ids: &[String],
+    folder_id: &str,
+) -> Result<(), BackendError> {
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+
+    let mail = memory::store().mail();
+    let originals = message_ids
+        .iter()
+        .filter_map(|message_id| mail.get_message(account_id, message_id).ok().flatten())
+        .collect::<Vec<_>>();
+    memory::store().mail().batch_move_messages(account_id, message_ids, folder_id)?;
+
+    let mut uids_by_folder = std::collections::HashMap::<String, Vec<u32>>::new();
+    for message in originals {
+        if let Some(uid) = message.imap_uid {
+            uids_by_folder.entry(message.folder_id).or_default().push(uid);
+        }
+    }
+
+    for (source_folder_id, uids) in uids_by_folder {
+        eprintln!(
+            "[imap] moving {} messages from {} to {}",
+            uids.len(),
+            source_folder_id,
+            folder_id
+        );
+        if let Err(error) =
+            super::folder_ops::imap_move_messages(account_id, &source_folder_id, folder_id, &uids).await
+        {
+            eprintln!("[imap] batch push move failed: {}", error.message);
+        }
+    }
+
+    Ok(())
 }
 
 pub(super) async fn mark_all_read(account_id: &str, folder_id: &str) -> Result<(), BackendError> {

@@ -86,6 +86,9 @@ export const registerMailIpc = () => {
   handle('mail:toggleRead', (accountId, messageId) =>
     mailBackend.toggleRead(accountId as string, messageId as string),
   )
+  handle('mail:batchToggleRead', (accountId, messageIds, isRead) =>
+    mailBackend.batchToggleRead(accountId as string, messageIds as string[], isRead as boolean),
+  )
   handle('mail:archiveMessage', (accountId, messageId) =>
     mailBackend.archiveMessage(accountId as string, messageId as string),
   )
@@ -95,11 +98,17 @@ export const registerMailIpc = () => {
   handle('mail:moveMessage', (accountId, messageId, folderId) =>
     mailBackend.moveMessage(accountId as string, messageId as string, folderId as string),
   )
+  handle('mail:batchMoveMessages', (accountId, messageIds, folderId) =>
+    mailBackend.batchMoveMessages(accountId as string, messageIds as string[], folderId as string),
+  )
   handle('mail:markAllRead', (accountId, folderId) =>
     mailBackend.markAllRead(accountId as string, folderId as string),
   )
   handle('mail:deleteMessage', (accountId, messageId) =>
     mailBackend.deleteMessage(accountId as string, messageId as string),
+  )
+  handle('mail:batchDeleteMessages', (accountId, messageIds) =>
+    mailBackend.batchDeleteMessages(accountId as string, messageIds as string[]),
   )
   handle('mail:deleteAccount', (accountId) => mailBackend.deleteAccount(accountId as string))
   handle('mail:syncAccount', (accountId) => mailBackend.syncAccount(accountId as string))

@@ -298,8 +298,25 @@ impl MessageMutationProvider for ImapSmtpProvider {
         message_ops::toggle_read(account_id, message_id).await
     }
 
+    async fn batch_toggle_read_cap(
+        &self,
+        account_id: &str,
+        message_ids: &[String],
+        is_read: bool,
+    ) -> Result<(), BackendError> {
+        message_ops::batch_toggle_read(account_id, message_ids, is_read).await
+    }
+
     async fn delete_message_cap(&self, account_id: &str, message_id: &str) -> Result<(), BackendError> {
         message_ops::delete_message(account_id, message_id).await
+    }
+
+    async fn batch_delete_messages_cap(
+        &self,
+        account_id: &str,
+        message_ids: &[String],
+    ) -> Result<(), BackendError> {
+        message_ops::batch_delete_messages(account_id, message_ids).await
     }
 
     async fn archive_message_cap(
@@ -325,6 +342,15 @@ impl MessageMutationProvider for ImapSmtpProvider {
         folder_id: &str,
     ) -> Result<Option<MailMessage>, BackendError> {
         message_ops::move_message(account_id, message_id, folder_id).await
+    }
+
+    async fn batch_move_messages_cap(
+        &self,
+        account_id: &str,
+        message_ids: &[String],
+        folder_id: &str,
+    ) -> Result<(), BackendError> {
+        message_ops::batch_move_messages(account_id, message_ids, folder_id).await
     }
 
     async fn mark_all_read_cap(&self, account_id: &str, folder_id: &str) -> Result<(), BackendError> {
