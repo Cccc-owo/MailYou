@@ -9,4 +9,8 @@ coverage/
 .env.*
 !.env.example
 src/rust/target/
-release/
+/release/
+!/web/release/
+!/web/release/index.md
+!/web/zh/release/
+!/web/zh/release/index.md
