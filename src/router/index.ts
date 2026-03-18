@@ -1,29 +1,25 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import MailShellView from '@/views/MailShellView.vue'
-import AccountSetupView from '@/views/AccountSetupView.vue'
-import SettingsView from '@/views/SettingsView.vue'
-import ContactsView from '@/views/ContactsView.vue'
 
 const routes = [
   {
     path: '/',
     name: 'mail',
-    component: MailShellView,
+    component: () => import('@/views/MailShellView.vue'),
   },
   {
     path: '/account-setup/:accountId?',
     name: 'account-setup',
-    component: AccountSetupView,
+    component: () => import('@/views/AccountSetupView.vue'),
   },
   {
     path: '/settings',
     name: 'settings',
-    component: SettingsView,
+    component: () => import('@/views/SettingsView.vue'),
   },
   {
     path: '/contacts',
     name: 'contacts',
-    component: ContactsView,
+    component: () => import('@/views/ContactsView.vue'),
   },
 ]
 

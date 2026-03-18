@@ -166,10 +166,11 @@
   },
   "closePrompt": {
     "title": "When closing MailYou",
-    "description": "Do you want MailYou to keep running in the background after the window closes? It will hide to the tray and continue syncing mail and notifications.",
-    "keepRunning": "Keep running",
-    "quit": "Quit MailYou",
-    "alwaysBackground": "Always keep running in the background"
+    "description": "Choose what to do when the window closes. Minimize will hide MailYou to the tray and keep syncing mail and notifications.",
+    "cancel": "Cancel",
+    "minimize": "Minimize",
+    "quit": "Close",
+    "always": "Always"
   },
   "settings": {
     "title": "Settings",

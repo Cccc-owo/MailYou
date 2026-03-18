@@ -1,16 +1,19 @@
 <template>
-  <div class="account-setup-page">
-    <AppTitleBar title="MailYou" :subtitle="isEditMode ? t('accountSetup.editSubtitle') : t('accountSetup.subtitle')">
-      <template #actions>
-        <v-btn prepend-icon="mdi-arrow-left" @click="router.push('/')">{{ t('common.backToMail') }}</v-btn>
-      </template>
-    </AppTitleBar>
+  <AppScrollablePage
+    title="MailYou"
+    :subtitle="isEditMode ? t('accountSetup.editSubtitle') : t('accountSetup.subtitle')"
+    :max-width="720"
+    content-class="account-setup-page__content"
+  >
+    <template #actions>
+      <BackActionButton :label="t('common.backToMail')" @click="router.push('/')" />
+    </template>
 
-    <div class="account-setup-page__scroller">
-      <v-container class="account-setup-page__content" max-width="720">
-        <v-card class="pa-6">
-          <div class="text-overline mb-2">{{ t('accountSetup.title') }}</div>
-          <div class="text-h4 mb-6">{{ isEditMode ? t('accountSetup.editHeading') : t('accountSetup.heading') }}</div>
+    <v-card class="pa-6">
+          <FormPageHero
+            :eyebrow="t('accountSetup.title')"
+            :title="isEditMode ? t('accountSetup.editHeading') : t('accountSetup.heading')"
+          />
 
           <v-form class="account-setup__form">
             <v-text-field
@@ -257,14 +260,14 @@
             </v-alert>
             <v-alert v-if="error" class="mt-4" type="error" variant="tonal">{{ error }}</v-alert>
           </v-form>
-        </v-card>
-      </v-container>
-    </div>
-  </div>
+    </v-card>
+  </AppScrollablePage>
 </template>
 
 <script setup lang="ts">
-import AppTitleBar from '@/components/AppTitleBar.vue'
+import BackActionButton from '@/components/ui/BackActionButton.vue'
+import AppScrollablePage from '@/components/ui/AppScrollablePage.vue'
+import FormPageHero from '@/components/ui/FormPageHero.vue'
 import { FALLBACK_OAUTH_PROVIDERS, MAIL_PROVIDER_PRESETS } from '@/config/mailProviders'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -759,17 +762,6 @@ const saveAccount = async () => {
 </script>
 
 <style scoped>
-.account-setup-page {
-  height: 100vh;
-  background: rgb(var(--v-theme-background));
-  overflow: hidden;
-}
-
-.account-setup-page__scroller {
-  height: calc(100vh - 40px);
-  overflow-y: auto;
-}
-
 .account-setup-page__content {
   padding-block: 40px;
 }

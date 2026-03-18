@@ -9,10 +9,11 @@
       </div>
       <div class="app-title-bar__copy">
         <div class="text-h1">{{ title }}</div>
+        <div v-if="subtitle" class="app-title-bar__subtitle">{{ subtitle }}</div>
       </div>
     </div>
 
-    <div class="app-title-bar__actions">
+    <div class="app-title-bar__actions ui-inline-actions">
       <div v-if="!hideSearch" class="app-title-bar__search" :class="{ 'app-title-bar__search--open': searchOpen }">
         <v-text-field
           v-if="searchOpen"
@@ -31,7 +32,19 @@
         />
         <v-tooltip v-else :text="searchPlaceholder" location="bottom">
           <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" icon="mdi-magnify" @click="openSearch" />
+            <v-btn
+              v-bind="tip"
+              icon
+              variant="tonal"
+              size="small"
+              class="app-title-bar__action-btn"
+              :aria-label="searchPlaceholder"
+              @click="openSearch"
+            >
+              <svg class="app-title-bar__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path :d="mdiMagnify" />
+              </svg>
+            </v-btn>
           </template>
         </v-tooltip>
       </div>
@@ -45,11 +58,20 @@
       <v-list-item prepend-icon="mdi-select-all" :title="t('reader.selectAll')" @click="searchSelectAll" />
     </ContextMenu>
 
-    <div v-if="isSupported" class="app-title-bar__window-controls">
+    <div v-if="isSupported" class="app-title-bar__window-controls ui-inline-actions">
       <v-tooltip :text="t('titleBar.minimize')" location="bottom">
         <template #activator="{ props: tip }">
-          <v-btn v-bind="tip" icon variant="text" size="small" :aria-label="t('titleBar.minimize')" @click="minimize">
-            <v-icon icon="mdi-window-minimize" />
+          <v-btn
+            v-bind="tip"
+            icon
+            variant="text"
+            size="small"
+            :aria-label="t('titleBar.minimize')"
+            @click="minimize"
+          >
+            <svg class="app-title-bar__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path :d="mdiWindowMinimize" />
+            </svg>
           </v-btn>
         </template>
       </v-tooltip>
@@ -63,14 +85,26 @@
             :aria-label="isMaximized ? t('titleBar.restore') : t('titleBar.maximize')"
             @click="toggleMaximize"
           >
-            <v-icon :icon="isMaximized ? 'mdi-window-restore' : 'mdi-window-maximize'" />
+            <svg class="app-title-bar__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path :d="isMaximized ? mdiWindowRestore : mdiWindowMaximize" />
+            </svg>
           </v-btn>
         </template>
       </v-tooltip>
       <v-tooltip :text="t('titleBar.close')" location="bottom">
         <template #activator="{ props: tip }">
-          <v-btn v-bind="tip" icon variant="text" size="small" :aria-label="t('titleBar.close')" class="app-title-bar__close" @click="close">
-            <v-icon icon="mdi-close" />
+          <v-btn
+            v-bind="tip"
+            class="app-title-bar__close"
+            icon
+            variant="text"
+            size="small"
+            :aria-label="t('titleBar.close')"
+            @click="close"
+          >
+            <svg class="app-title-bar__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path :d="mdiClose" />
+            </svg>
           </v-btn>
         </template>
       </v-tooltip>
@@ -80,6 +114,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
+import { mdiClose, mdiMagnify, mdiWindowMaximize, mdiWindowMinimize, mdiWindowRestore } from '@mdi/js'
 import { useI18n } from 'vue-i18n'
 import { useWindowControls } from '@/composables/useWindowControls'
 import { useContextMenu } from '@/composables/useContextMenu'
@@ -93,12 +128,14 @@ withDefaults(
     search?: string
     searchPlaceholder?: string
     title?: string
+    subtitle?: string
   }>(),
   {
     hideSearch: false,
     search: '',
     searchPlaceholder: '',
     title: 'MailYou',
+    subtitle: '',
   },
 )
 
@@ -169,6 +206,8 @@ const searchSelectAll = () => {
   grid-template-areas: 'brand actions controls';
   gap: 16px;
   align-items: center;
+  min-height: 64px;
+  box-sizing: border-box;
   padding: 8px 20px;
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   background: rgba(var(--v-theme-surface), 0.92);
@@ -206,11 +245,14 @@ const searchSelectAll = () => {
   white-space: nowrap;
 }
 
+.app-title-bar__subtitle {
+  font-size: 0.75rem;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+}
+
 .app-title-bar__actions {
   grid-area: actions;
-  display: flex;
   justify-content: flex-end;
-  align-items: center;
   gap: 8px;
   min-width: 0;
 }
@@ -229,10 +271,19 @@ const searchSelectAll = () => {
   font-size: 0.875rem;
 }
 
+.app-title-bar__icon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  display: block;
+}
+
+.app-title-bar__action-btn {
+  min-width: 40px;
+}
+
 .app-title-bar__window-controls {
   grid-area: controls;
-  display: inline-flex;
-  align-items: center;
   justify-content: flex-end;
   gap: 4px;
 }
@@ -245,10 +296,6 @@ const searchSelectAll = () => {
 
 .app-title-bar__actions :deep(> *) {
   flex-shrink: 0;
-}
-
-.app-title-bar__window-controls :deep(.v-btn) {
-  border-radius: 10px;
 }
 
 .app-title-bar__close:hover {

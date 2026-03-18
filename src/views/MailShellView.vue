@@ -7,28 +7,30 @@
     @update:search="handleSearchUpdate"
   >
     <template #actions>
-      <v-tooltip :text="t('shell.sync')" location="bottom">
-        <template #activator="{ props: tip }">
-          <v-btn v-bind="tip" prepend-icon="mdi-sync" :disabled="!accountsStore.currentAccountId" :loading="isSyncing" @click="syncCurrentAccount">
-            {{ t('shell.sync') }}
-          </v-btn>
-        </template>
-      </v-tooltip>
-      <v-tooltip :text="t('shell.toggleTheme')" location="bottom">
-        <template #activator="{ props: tip }">
-          <v-btn v-bind="tip" icon="mdi-theme-light-dark" @click="uiStore.toggleAppearance" />
-        </template>
-      </v-tooltip>
-      <v-tooltip :text="t('contacts.title')" location="bottom">
-        <template #activator="{ props: tip }">
-          <v-btn v-bind="tip" icon="mdi-contacts-outline" @click="router.push('/contacts')" />
-        </template>
-      </v-tooltip>
-      <v-tooltip :text="t('shell.settings')" location="bottom">
-        <template #activator="{ props: tip }">
-          <v-btn v-bind="tip" icon="mdi-cog-outline" @click="router.push('/settings')" />
-        </template>
-      </v-tooltip>
+      <ToolbarActionButton
+        :tooltip="t('shell.sync')"
+        prepend-icon="mdi-sync"
+        :disabled="!accountsStore.currentAccountId"
+        :loading="isSyncing"
+        @click="syncCurrentAccount"
+      >
+        {{ t('shell.sync') }}
+      </ToolbarActionButton>
+      <ToolbarActionButton
+        :tooltip="t('shell.toggleTheme')"
+        icon="mdi-theme-light-dark"
+        @click="uiStore.toggleAppearance"
+      />
+      <ToolbarActionButton
+        :tooltip="t('contacts.title')"
+        icon="mdi-contacts-outline"
+        @click="router.push('/contacts')"
+      />
+      <ToolbarActionButton
+        :tooltip="t('shell.settings')"
+        icon="mdi-cog-outline"
+        @click="router.push('/settings')"
+      />
     </template>
 
     <template #sidebar>
@@ -140,39 +142,36 @@
   />
 
   <!-- Draft recovery dialog -->
-  <v-dialog v-model="composerStore.showRecoveryDialog" max-width="420" persistent>
-    <v-card>
-      <v-card-title>{{ t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.existingTitle' : 'composer.recovery.title') }}</v-card-title>
-      <v-card-text>{{ t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.existingMessage' : 'composer.recovery.message') }}</v-card-text>
-      <v-card-actions>
-        <v-btn variant="text" @click="composerStore.cancelRecovery()">{{ t('common.cancel') }}</v-btn>
-        <v-spacer />
-        <v-btn variant="text" @click="composerStore.discardAndProceed()">
-          {{ t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.useSaved' : 'composer.recovery.discard') }}
-        </v-btn>
-        <v-btn color="primary" variant="tonal" @click="composerStore.recoverDraft()">
-          {{ t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.restoreLocal' : 'composer.recovery.restore') }}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  <AppDialogShell
+    v-model="composerStore.showRecoveryDialog"
+    :title="t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.existingTitle' : 'composer.recovery.title')"
+    :max-width="420"
+    persistent
+  >
+    <v-card-text>{{ t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.existingMessage' : 'composer.recovery.message') }}</v-card-text>
+    <template #actions>
+      <v-btn variant="text" @click="composerStore.cancelRecovery()">{{ t('common.cancel') }}</v-btn>
+      <v-spacer />
+      <v-btn variant="text" @click="composerStore.discardAndProceed()">
+        {{ t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.useSaved' : 'composer.recovery.discard') }}
+      </v-btn>
+      <v-btn color="primary" variant="tonal" @click="composerStore.recoverDraft()">
+        {{ t(composerStore.recoveryMode === 'existing' ? 'composer.recovery.restoreLocal' : 'composer.recovery.restore') }}
+      </v-btn>
+    </template>
+  </AppDialogShell>
 
   <!-- Delete confirmation dialog -->
-  <v-dialog v-model="deleteConfirmDialog" max-width="400">
-    <v-card>
-      <v-card-title>{{ t('shell.confirmDelete') }}</v-card-title>
-      <v-card-text>{{ t('shell.confirmDeleteText') }}</v-card-text>
-      <v-card-actions>
-        <v-spacer />
-        <v-btn variant="text" @click="deleteConfirmDialog = false">{{ t('common.cancel') }}</v-btn>
-        <v-btn color="error" variant="tonal" @click="confirmDeleteCurrentMessage">{{ t('common.delete') }}</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  <AppDialogShell v-model="deleteConfirmDialog" :title="t('shell.confirmDelete')" :max-width="400">
+    <v-card-text>{{ t('shell.confirmDeleteText') }}</v-card-text>
+    <template #actions>
+      <v-spacer />
+      <v-btn variant="text" @click="deleteConfirmDialog = false">{{ t('common.cancel') }}</v-btn>
+      <v-btn color="error" variant="tonal" @click="confirmDeleteCurrentMessage">{{ t('common.delete') }}</v-btn>
+    </template>
+  </AppDialogShell>
 
-  <v-dialog v-model="labelDialogOpen" max-width="560">
-    <v-card>
-      <v-card-title>{{ t('labels.manageTitle') }}</v-card-title>
+  <AppDialogShell v-model="labelDialogOpen" :title="t('labels.manageTitle')" :max-width="560">
       <v-card-text>
         <div class="text-body-2 text-medium-emphasis mb-4">
           {{ labelDialogSummary }}
@@ -254,12 +253,11 @@
           </v-list>
         </div>
       </v-card-text>
-      <v-card-actions>
+      <template #actions>
         <v-spacer />
         <v-btn variant="text" :disabled="labelDialogBusy" @click="closeLabelDialog">{{ t('common.cancel') }}</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+      </template>
+  </AppDialogShell>
 
   <v-snackbar
     :model-value="Boolean(composerStore.error)"
@@ -270,8 +268,7 @@
   >
     <span class="mail-shell__snackbar-text">{{ composerStore.error }}</span>
     <template #actions>
-      <v-btn variant="text" size="small" @click="retrySend">{{ t('common.retry') }}</v-btn>
-      <v-btn variant="text" size="small" icon="mdi-close" @click="composerStore.clearFeedback()" />
+      <SnackbarActions :actions="composerErrorActions" @select="handleComposerErrorAction" />
     </template>
   </v-snackbar>
 
@@ -294,8 +291,7 @@
   >
     <span class="mail-shell__snackbar-text">{{ messagesStore.error }}</span>
     <template #actions>
-      <v-btn variant="text" @click="retryLastAction">{{ t('common.retry') }}</v-btn>
-      <v-btn variant="text" @click="messagesStore.clearError()">{{ t('common.dismiss') }}</v-btn>
+      <SnackbarActions :actions="messagesErrorActions" @select="handleMessagesErrorAction" />
     </template>
   </v-snackbar>
 
@@ -308,7 +304,7 @@
   >
     <span class="mail-shell__snackbar-text">{{ mailboxesStore.error }}</span>
     <template #actions>
-      <v-btn variant="text" @click="mailboxesStore.error = null">{{ t('common.dismiss') }}</v-btn>
+      <SnackbarActions :actions="dismissOnlyActions" @select="handleMailboxErrorAction" />
     </template>
   </v-snackbar>
 
@@ -326,24 +322,29 @@
   >
     {{ undoableAction?.label }}
     <template #actions>
-      <v-btn variant="text" @click="handleUndo">{{ t('common.undo') }}</v-btn>
-      <v-btn variant="text" @click="dismissUndo">{{ t('common.dismiss') }}</v-btn>
+      <SnackbarActions :actions="undoActions" @select="handleUndoAction" />
     </template>
   </v-snackbar>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, toRef, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import AppDialogShell from '@/components/ui/AppDialogShell.vue'
+import SnackbarActions from '@/components/ui/SnackbarActions.vue'
+import ToolbarActionButton from '@/components/ui/ToolbarActionButton.vue'
 import MailShellLayout from '@/layouts/MailShellLayout.vue'
-import ComposerDialog from '@/components/mail/ComposerDialog.vue'
 import MailList from '@/components/mail/MailList.vue'
 import MailReader from '@/components/mail/MailReader.vue'
 import MailSidebar from '@/components/mail/MailSidebar.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
-import { useContextMenu } from '@/composables/useContextMenu'
+import { useMailLabelDialog } from '@/composables/useMailLabelDialog'
+import { useMailMailboxView } from '@/composables/useMailMailboxView'
+import { useMailMessageActions } from '@/composables/useMailMessageActions'
+import { useMailSnackbarFeedback } from '@/composables/useMailSnackbarFeedback'
+import { useUndoableAction } from '@/composables/useUndoableAction'
 import DOMPurify from 'dompurify'
 import { useAccountsStore } from '@/stores/accounts'
 import { useComposerStore } from '@/stores/composer'
@@ -354,6 +355,8 @@ import { useContactsStore } from '@/stores/contacts'
 import { mailRepository } from '@/services/mail'
 import type { MailLabel, MailboxBundle } from '@/types/mail'
 
+const ComposerDialog = defineAsyncComponent(() => import('@/components/mail/ComposerDialog.vue'))
+
 const { t, locale } = useI18n()
 const router = useRouter()
 const accountsStore = useAccountsStore()
@@ -362,92 +365,13 @@ const messagesStore = useMessagesStore()
 const composerStore = useComposerStore()
 const uiStore = useUiStore()
 const contactsStore = useContactsStore()
-const snackbarCtx = useContextMenu()
-const snackbarHasSelection = ref(false)
-
-const openSnackbarMenu = (event: MouseEvent) => {
-  snackbarHasSelection.value = Boolean(window.getSelection()?.toString())
-  snackbarCtx.open(event)
-}
-
-const snackbarSelectAll = () => {
-  const sel = window.getSelection()
-  if (!sel) return
-  const snackbar = document.querySelector('.mail-shell__snackbar--error .v-snackbar__wrapper')
-  if (!snackbar) return
-  const range = document.createRange()
-  range.selectNodeContents(snackbar)
-  sel.removeAllRanges()
-  sel.addRange(range)
-}
-
-const snackbarCopy = () => {
-  const sel = window.getSelection()
-  if (sel && sel.toString()) {
-    navigator.clipboard.writeText(sel.toString())
-  } else {
-    const text = messagesStore.error || composerStore.error || ''
-    navigator.clipboard.writeText(text)
-  }
-}
 
 const { currentAccount } = storeToRefs(accountsStore)
 const { syncStatus } = storeToRefs(messagesStore)
 
 const deleteConfirmDialog = ref(false)
 const selectedLabel = ref<string | null>(null)
-const labelDialogOpen = ref(false)
-const labelDialogMessageIds = ref<string[]>([])
-const labelDialogBusy = ref(false)
-const labelDialogError = ref<string | null>(null)
-const labelDraftName = ref('')
-const labelRenameSource = ref<string | null>(null)
-const sidebarLabels = ref<MailLabel[]>([])
-const labelDialogLabels = ref<MailLabel[]>([])
-const currentMailboxBundle = ref<MailboxBundle | null>(null)
 const lastFailedAction = ref<(() => Promise<void>) | null>(null)
-const mailboxRequestGeneration = ref(0)
-let mailboxLoadPromise: Promise<MailboxBundle> | null = null
-let mailboxLoadAccountId: string | null = null
-let labelsLoadPromise: Promise<MailLabel[]> | null = null
-let labelsLoadAccountId: string | null = null
-let lastMailboxLoadedAt = 0
-let lastLabelsLoadedAt = 0
-let refreshMailboxPromise: Promise<void> | null = null
-let refreshMailboxPending = false
-
-const MAILBOX_CACHE_WINDOW_MS = 1200
-const LABEL_CACHE_WINDOW_MS = 1500
-type LoadingStage = 'idle' | 'syncing' | 'fetching' | 'applying' | 'searching' | 'finalizing'
-const loadingStage = ref<LoadingStage>('idle')
-
-interface UndoableAction {
-  label: string
-  undo: () => Promise<void>
-  timer: ReturnType<typeof setTimeout>
-}
-const undoableAction = ref<UndoableAction | null>(null)
-
-const performUndoable = (label: string, undoFn: () => Promise<void>) => {
-  if (undoableAction.value) clearTimeout(undoableAction.value.timer)
-  const timer = setTimeout(() => { undoableAction.value = null }, 5000)
-  undoableAction.value = { label, undo: undoFn, timer }
-}
-
-const handleUndo = async () => {
-  if (!undoableAction.value) return
-  clearTimeout(undoableAction.value.timer)
-  const action = undoableAction.value
-  undoableAction.value = null
-  await action.undo()
-}
-
-const dismissUndo = () => {
-  if (undoableAction.value) {
-    clearTimeout(undoableAction.value.timer)
-    undoableAction.value = null
-  }
-}
 
 const currentFolderDisplayName = computed(() => {
   if (messagesStore.hasSearchQuery) {
@@ -462,108 +386,28 @@ const currentFolderDisplayName = computed(() => {
 })
 
 const isSyncing = computed(() => syncStatus.value?.state === 'syncing')
-const loadingBarActive = computed(() =>
-  isSyncing.value || messagesStore.isLoading || loadingStage.value !== 'idle',
-)
-const loadingBarProgress = computed(() => {
-  switch (loadingStage.value) {
-    case 'syncing':
-      return 18
-    case 'fetching':
-      return 42
-    case 'applying':
-      return 72
-    case 'searching':
-      return 84
-    case 'finalizing':
-      return 96
-    default:
-      return isSyncing.value || messagesStore.isLoading ? null : 100
-  }
-})
-const loadingBarLabel = computed(() => {
-  switch (loadingStage.value) {
-    case 'syncing':
-      return t('shell.syncInProgress')
-    case 'fetching':
-      return t('shell.loadingMail')
-    case 'applying':
-      return t('shell.applyingMailboxChanges')
-    case 'searching':
-      return t('shell.searchingMail')
-    case 'finalizing':
-      return t('shell.finalizingMailbox')
-    default:
-      return ''
-  }
+
+const {
+  applyMailboxView,
+  clearMailboxCaches,
+  currentMailboxBundle,
+  fetchAccountLabels,
+  loadMailbox,
+  loadingBarActive,
+  loadingBarLabel,
+  loadingBarProgress,
+  refreshMailbox: refreshMailboxState,
+  setLoadingStage,
+  sidebarLabels,
+} = useMailMailboxView({
+  t,
+  isSyncing,
+  selectedLabel,
+  messagesStore,
+  mailboxesStore,
 })
 
-const setLoadingStage = (stage: LoadingStage) => {
-  loadingStage.value = stage
-}
-
-const buildLabelFilteredMessages = (bundle: MailboxBundle, label: string) =>
-  bundle.messages
-    .filter((message) => message.labels.some((item) => item.toLowerCase() === label.toLowerCase()))
-    .sort((left, right) => new Date(right.receivedAt).getTime() - new Date(left.receivedAt).getTime())
-
-const fetchMailboxBundle = async (accountId: string, options?: { force?: boolean }) => {
-  const force = options?.force ?? false
-  const now = Date.now()
-
-  if (!force
-    && currentMailboxBundle.value
-    && mailboxLoadAccountId === accountId
-    && now - lastMailboxLoadedAt < MAILBOX_CACHE_WINDOW_MS) {
-    return currentMailboxBundle.value
-  }
-
-  if (!force && mailboxLoadPromise && mailboxLoadAccountId === accountId) {
-    return mailboxLoadPromise
-  }
-
-  mailboxLoadAccountId = accountId
-  mailboxLoadPromise = mailRepository.getMailboxBundle(accountId)
-    .then((bundle) => {
-      currentMailboxBundle.value = bundle
-      lastMailboxLoadedAt = Date.now()
-      return bundle
-    })
-    .finally(() => {
-      mailboxLoadPromise = null
-    })
-
-  return mailboxLoadPromise
-}
-
-const fetchAccountLabels = async (accountId: string, options?: { force?: boolean }) => {
-  const force = options?.force ?? false
-  const now = Date.now()
-
-  if (!force
-    && sidebarLabels.value.length > 0
-    && labelsLoadAccountId === accountId
-    && now - lastLabelsLoadedAt < LABEL_CACHE_WINDOW_MS) {
-    return sidebarLabels.value
-  }
-
-  if (!force && labelsLoadPromise && labelsLoadAccountId === accountId) {
-    return labelsLoadPromise
-  }
-
-  labelsLoadAccountId = accountId
-  labelsLoadPromise = mailRepository.listLabels(accountId)
-    .then((labels) => {
-      sidebarLabels.value = labels
-      lastLabelsLoadedAt = Date.now()
-      return labels
-    })
-    .finally(() => {
-      labelsLoadPromise = null
-    })
-
-  return labelsLoadPromise
-}
+const refreshMailbox = () => refreshMailboxState(accountsStore.currentAccountId)
 
 const patchCachedMessage = (messageId: string, updater: (message: import('@/types/mail').MailMessage) => import('@/types/mail').MailMessage) => {
   if (!currentMailboxBundle.value) {
@@ -620,80 +464,6 @@ const adjustUnreadCountsForMessages = (
   }
 }
 
-const applyMailboxView = async (accountId: string, bundle?: MailboxBundle) => {
-  const requestId = ++mailboxRequestGeneration.value
-  const mailboxBundle = bundle ?? await fetchMailboxBundle(accountId)
-  setLoadingStage('applying')
-  const labels = await fetchAccountLabels(accountId)
-  if (requestId !== mailboxRequestGeneration.value) {
-    return
-  }
-
-  currentMailboxBundle.value = mailboxBundle
-  mailboxesStore.setFolders(mailboxBundle.folders)
-  sidebarLabels.value = labels
-
-  if (messagesStore.hasSearchQuery) {
-    setLoadingStage('searching')
-    await messagesStore.searchMessages(accountId, messagesStore.query)
-    setLoadingStage('finalizing')
-    return
-  }
-
-  if (selectedLabel.value) {
-    messagesStore.setSyncStatus(mailboxBundle.syncStatus)
-    messagesStore.setMessages(buildLabelFilteredMessages(mailboxBundle, selectedLabel.value))
-    return
-  }
-
-  messagesStore.setMailboxBundle(mailboxBundle, mailboxesStore.currentFolderId)
-}
-
-const loadMailbox = async (accountId: string) => {
-  messagesStore.isLoading = true
-
-  try {
-    setLoadingStage('fetching')
-    const bundle = await fetchMailboxBundle(accountId, { force: true })
-    await applyMailboxView(accountId, bundle)
-    setLoadingStage('finalizing')
-  } finally {
-    messagesStore.isLoading = false
-    setLoadingStage('idle')
-  }
-}
-
-const refreshMailbox = async () => {
-  if (!accountsStore.currentAccountId) {
-    return
-  }
-
-  if (refreshMailboxPromise) {
-    refreshMailboxPending = true
-    return refreshMailboxPromise
-  }
-
-  refreshMailboxPromise = (async () => {
-    do {
-      const accountId = accountsStore.currentAccountId
-      if (!accountId) {
-        refreshMailboxPending = false
-        break
-      }
-      refreshMailboxPending = false
-      mailboxLoadPromise = null
-      labelsLoadPromise = null
-      lastMailboxLoadedAt = 0
-      lastLabelsLoadedAt = 0
-      await loadMailbox(accountId)
-    } while (refreshMailboxPending)
-  })().finally(() => {
-    refreshMailboxPromise = null
-  })
-
-  return refreshMailboxPromise
-}
-
 const handleSearchUpdate = (value: string) => {
   messagesStore.query = value
   if (value.trim()) {
@@ -713,6 +483,38 @@ const retryLastAction = async () => {
     await handleAccountChange(accountsStore.currentAccountId)
   }
 }
+
+const {
+  dismissUndo,
+  handleUndoAction,
+  performUndoable,
+  undoActions,
+  undoableAction,
+} = useUndoableAction(t)
+
+const {
+  composerErrorActions,
+  dismissOnlyActions,
+  handleComposerErrorAction,
+  handleMailboxErrorAction,
+  handleMessagesErrorAction,
+  messagesErrorActions,
+  openSnackbarMenu,
+  snackbarCopy,
+  snackbarCtx,
+  snackbarHasSelection,
+  snackbarSelectAll,
+} = useMailSnackbarFeedback({
+  t,
+  retrySend: () => retrySend(),
+  retryLastAction: () => retryLastAction(),
+  clearComposerFeedback: () => composerStore.clearFeedback(),
+  clearMessagesError: () => messagesStore.clearError(),
+  clearMailboxError: () => {
+    mailboxesStore.error = null
+  },
+  getFallbackCopyText: () => messagesStore.error || composerStore.error || '',
+})
 
 const handleSelectMessage = async (messageId: string) => {
   messagesStore.selectMessage(messageId)
@@ -754,12 +556,7 @@ const handleDeleteAccount = async (accountId: string) => {
   messagesStore.clearError()
   currentMailboxBundle.value = null
   sidebarLabels.value = []
-  mailboxLoadPromise = null
-  mailboxLoadAccountId = null
-  labelsLoadPromise = null
-  labelsLoadAccountId = null
-  lastMailboxLoadedAt = 0
-  lastLabelsLoadedAt = 0
+  clearMailboxCaches()
   lastFailedAction.value = null
 
   if (accountsStore.currentAccountId) {
@@ -974,236 +771,70 @@ const promptDeleteCurrentMessage = () => {
   deleteConfirmDialog.value = true
 }
 
-const confirmDeleteCurrentMessage = async () => {
-  deleteConfirmDialog.value = false
-
-  if (!accountsStore.currentAccountId || !messagesStore.selectedMessageId) {
-    return
-  }
-
-  const accountId = accountsStore.currentAccountId
-  const messageId = messagesStore.selectedMessageId
-  await messagesStore.deleteMessage(accountId, messageId)
-  await refreshMailbox()
-  performUndoable(t('shell.messageDeleted'), async () => {
-    await messagesStore.restoreMessage(accountId, messageId)
-    await refreshMailbox()
-  })
-}
-
-const archiveCurrentMessage = async () => {
-  if (!accountsStore.currentAccountId || !messagesStore.selectedMessageId) {
-    return
-  }
-
-  const accountId = accountsStore.currentAccountId
-  const messageId = messagesStore.selectedMessageId
-  await messagesStore.archiveMessage(accountId, messageId)
-  await refreshMailbox()
-  performUndoable(t('shell.messageArchived'), async () => {
-    await messagesStore.restoreMessage(accountId, messageId)
-    await refreshMailbox()
-  })
-}
-
-const restoreCurrentMessage = async () => {
-  if (!accountsStore.currentAccountId || !messagesStore.selectedMessageId) {
-    return
-  }
-
-  if (mailboxesStore.currentFolder?.kind === 'junk') {
-    await restoreMessageFromJunk(messagesStore.selectedMessageId)
-    return
-  }
-
-  await messagesStore.restoreMessage(accountsStore.currentAccountId, messagesStore.selectedMessageId)
-  await refreshMailbox()
-}
-
-const moveCurrentMessage = async (folderId: string) => {
-  if (!accountsStore.currentAccountId || !messagesStore.selectedMessageId) {
-    return
-  }
-
-  const accountId = accountsStore.currentAccountId
-  const messageId = messagesStore.selectedMessageId
-  const originalFolderId = mailboxesStore.currentFolderId
-  await messagesStore.moveMessage(accountId, messageId, folderId)
-  await refreshMailbox()
-  if (originalFolderId) {
-    performUndoable(t('shell.messageMoved'), async () => {
-      await messagesStore.moveMessage(accountId, messageId, originalFolderId)
-      await refreshMailbox()
-    })
-  }
-}
-
-const handleMarkAllRead = async () => {
-  if (!accountsStore.currentAccountId || !mailboxesStore.currentFolderId) {
-    return
-  }
-
-  const unreadMessages = messagesStore.messages
-    .filter((message) => !message.isRead)
-    .map((message) => ({ folderId: message.folderId, isRead: message.isRead }))
-  await messagesStore.markAllRead(accountsStore.currentAccountId, mailboxesStore.currentFolderId)
-  adjustUnreadCountsForMessages(unreadMessages, true)
-  applyCachedReadState(messagesStore.messages.map((message) => message.id), true)
-}
-
-const handleCreateFolder = async (name: string) => {
-  if (!accountsStore.currentAccountId) {
-    return
-  }
-
-  try {
-    await mailboxesStore.createFolder(accountsStore.currentAccountId, name)
-    await refreshMailbox()
-  } catch (error) {
-    mailboxesStore.error = error instanceof Error ? error.message : 'Unable to create folder'
-  }
-}
-
-const handleRenameFolder = async (folderId: string, name: string) => {
-  if (!accountsStore.currentAccountId) {
-    return
-  }
-
-  try {
-    await mailboxesStore.renameFolder(accountsStore.currentAccountId, folderId, name)
-    await refreshMailbox()
-  } catch (error) {
-    mailboxesStore.error = error instanceof Error ? error.message : 'Unable to rename folder'
-  }
-}
-
-const handleDeleteFolder = async (folderId: string) => {
-  if (!accountsStore.currentAccountId) {
-    return
-  }
-
-  try {
-    await mailboxesStore.deleteFolder(accountsStore.currentAccountId, folderId)
-    await refreshMailbox()
-  } catch (error) {
-    mailboxesStore.error = error instanceof Error ? error.message : 'Unable to delete folder'
-  }
-}
-
-// --- Batch operation handlers ---
-const handleBatchDelete = async () => {
-  if (!accountsStore.currentAccountId) return
-  const accountId = accountsStore.currentAccountId
-  const ids = [...messagesStore.selectedIds]
-  await messagesStore.batchDelete(accountId)
-  await refreshMailbox()
-  performUndoable(t('shell.messagesDeleted', { count: ids.length }), async () => {
-    for (const id of ids) await messagesStore.restoreMessage(accountId, id)
-    await refreshMailbox()
-  })
-}
-
-const handleBatchArchive = async () => {
-  if (!accountsStore.currentAccountId) return
-  const accountId = accountsStore.currentAccountId
-  const ids = [...messagesStore.selectedIds]
-  await messagesStore.batchArchive(accountId)
-  await refreshMailbox()
-  performUndoable(t('shell.messagesArchived', { count: ids.length }), async () => {
-    for (const id of ids) await messagesStore.restoreMessage(accountId, id)
-    await refreshMailbox()
-  })
-}
-
-const handleBatchMarkRead = async () => {
-  if (!accountsStore.currentAccountId) return
-  const selectedIds = [...messagesStore.selectedIds]
-  const affectedMessages = selectedIds
-    .map((id) => messagesStore.messages.find((message) => message.id === id))
-    .filter((message): message is NonNullable<typeof message> => Boolean(message))
-  await messagesStore.batchToggleRead(accountsStore.currentAccountId, true)
-  adjustUnreadCountsForMessages(affectedMessages, true)
-  applyCachedReadState(selectedIds, true)
-}
-
-const handleBatchMarkUnread = async () => {
-  if (!accountsStore.currentAccountId) return
-  const selectedIds = [...messagesStore.selectedIds]
-  const affectedMessages = selectedIds
-    .map((id) => messagesStore.messages.find((message) => message.id === id))
-    .filter((message): message is NonNullable<typeof message> => Boolean(message))
-  await messagesStore.batchToggleRead(accountsStore.currentAccountId, false)
-  adjustUnreadCountsForMessages(affectedMessages, false)
-  applyCachedReadState(selectedIds, false)
-}
-
-const handleBatchMove = async (folderId: string) => {
-  if (!accountsStore.currentAccountId) return
-  const accountId = accountsStore.currentAccountId
-  const ids = [...messagesStore.selectedIds]
-  const originalFolderId = mailboxesStore.currentFolderId
-  await messagesStore.batchMove(accountId, folderId)
-  await refreshMailbox()
-  if (originalFolderId) {
-    performUndoable(t('shell.messagesMoved', { count: ids.length }), async () => {
-      for (const id of ids) await messagesStore.moveMessage(accountId, id, originalFolderId)
-      await refreshMailbox()
-    })
-  }
-}
-
 // --- Context menu handlers (operate by messageId, not selectedMessage) ---
-const findMessage = (messageId: string) =>
-  messagesStore.messages.find((m) => m.id === messageId)
-
-const labelDialogMessages = computed(() =>
-  labelDialogMessageIds.value
-    .map((messageId) => findMessage(messageId))
-    .filter((message): message is NonNullable<typeof message> => Boolean(message)),
-)
-
-const labelDialogSummary = computed(() => {
-  if (labelDialogMessages.value.length === 1) {
-    return labelDialogMessages.value[0].subject || t('labels.manageHint')
-  }
-  if (labelDialogMessages.value.length > 1) {
-    return t('labels.selectedMessages', { count: labelDialogMessages.value.length })
-  }
-  return t('labels.manageHint')
+const {
+  archiveCurrentMessage,
+  confirmDeleteCurrentMessage: runDeleteCurrentMessage,
+  findMessage,
+  handleBatchArchive,
+  handleBatchDelete,
+  handleBatchMarkRead,
+  handleBatchMarkUnread,
+  handleBatchMove,
+  handleContextArchive,
+  handleContextDelete,
+  handleContextMarkSpam,
+  handleContextMove,
+  handleContextRestore,
+  handleContextToggleRead,
+  handleCreateFolder,
+  handleDeleteFolder,
+  handleMarkAllRead,
+  handleRenameFolder,
+  markCurrentMessageSpam,
+  moveCurrentMessage,
+  restoreCurrentMessage,
+} = useMailMessageActions({
+  t,
+  currentAccountId: toRef(accountsStore, 'currentAccountId'),
+  messagesStore,
+  mailboxesStore,
+  refreshMailbox,
+  performUndoable,
+  applyCachedReadState,
+  adjustUnreadCountsForMessages,
+  patchCachedMessage,
 })
 
-const resetLabelDialogState = () => {
-  labelDialogBusy.value = false
-  labelDialogError.value = null
-  labelDraftName.value = ''
-  labelRenameSource.value = null
-  labelDialogLabels.value = []
+const confirmDeleteCurrentMessage = async () => {
+  deleteConfirmDialog.value = false
+  await runDeleteCurrentMessage()
 }
 
-const loadAccountLabels = async () => {
-  if (!accountsStore.currentAccountId) {
-    labelDialogLabels.value = []
-    return
-  }
-
-  labelDialogLabels.value = await fetchAccountLabels(accountsStore.currentAccountId, { force: true })
-}
-
-const openLabelDialog = async (messageId: string) => {
-  await openLabelDialogForMessages([messageId])
-}
-
-const openLabelDialogForMessages = async (messageIds: string[]) => {
-  if (!accountsStore.currentAccountId) return
-  labelDialogMessageIds.value = messageIds
-  resetLabelDialogState()
-  labelDialogOpen.value = true
-  try {
-    await loadAccountLabels()
-  } catch (error) {
-    labelDialogError.value = error instanceof Error ? error.message : t('labels.loadFailed')
-  }
-}
+const {
+  cancelLabelRename,
+  closeLabelDialog,
+  deleteAccountLabel,
+  isLabelApplied,
+  labelDialogBusy,
+  labelDialogError,
+  labelDialogLabels,
+  labelDialogOpen,
+  labelDialogSummary,
+  labelDraftName,
+  labelRenameSource,
+  openLabelDialog,
+  openLabelDialogForMessages,
+  startRenameLabel,
+  submitLabelDraft,
+  toggleMessageLabel,
+} = useMailLabelDialog({
+  t,
+  currentAccountId: () => accountsStore.currentAccountId,
+  findMessage,
+  fetchAccountLabels,
+  refreshMailbox,
+})
 
 const openCurrentMessageLabelDialog = async () => {
   if (!messagesStore.selectedMessageId) return
@@ -1213,102 +844,6 @@ const openCurrentMessageLabelDialog = async () => {
 const openBatchLabelDialog = async () => {
   if (messagesStore.selectedIds.size === 0) return
   await openLabelDialogForMessages([...messagesStore.selectedIds])
-}
-
-const closeLabelDialog = () => {
-  labelDialogOpen.value = false
-  labelDialogMessageIds.value = []
-  resetLabelDialogState()
-}
-
-const isLabelApplied = (label: string) =>
-  labelDialogMessages.value.length > 0
-    && labelDialogMessages.value.every((message) =>
-      message.labels.some((item) => item.toLowerCase() === label.toLowerCase()),
-    )
-
-const toggleMessageLabel = async (label: string) => {
-  if (!accountsStore.currentAccountId || labelDialogMessageIds.value.length === 0) return
-
-  labelDialogBusy.value = true
-  labelDialogError.value = null
-  try {
-    const applyToAll = !isLabelApplied(label)
-    for (const messageId of labelDialogMessageIds.value) {
-      if (applyToAll) {
-        await mailRepository.addLabel(accountsStore.currentAccountId, messageId, label)
-      } else {
-        await mailRepository.removeLabel(accountsStore.currentAccountId, messageId, label)
-      }
-    }
-    await refreshMailbox()
-    await loadAccountLabels()
-  } catch (error) {
-    labelDialogError.value = error instanceof Error ? error.message : t('labels.updateFailed')
-  } finally {
-    labelDialogBusy.value = false
-  }
-}
-
-const startRenameLabel = (label: string) => {
-  labelRenameSource.value = label
-  labelDraftName.value = label
-  labelDialogError.value = null
-}
-
-const cancelLabelRename = () => {
-  labelRenameSource.value = null
-  labelDraftName.value = ''
-  labelDialogError.value = null
-}
-
-const submitLabelDraft = async () => {
-  if (!accountsStore.currentAccountId || labelDialogMessageIds.value.length === 0 || !labelDraftName.value.trim()) return
-
-  labelDialogBusy.value = true
-  labelDialogError.value = null
-  try {
-    if (labelRenameSource.value) {
-      labelDialogLabels.value = await mailRepository.renameLabel(
-        accountsStore.currentAccountId,
-        labelRenameSource.value,
-        labelDraftName.value,
-      )
-      await refreshMailbox()
-      cancelLabelRename()
-      return
-    }
-
-    for (const messageId of labelDialogMessageIds.value) {
-      await mailRepository.addLabel(accountsStore.currentAccountId, messageId, labelDraftName.value)
-    }
-    labelDraftName.value = ''
-    await refreshMailbox()
-    await loadAccountLabels()
-  } catch (error) {
-    labelDialogError.value = error instanceof Error ? error.message : t('labels.updateFailed')
-  } finally {
-    labelDialogBusy.value = false
-  }
-}
-
-const deleteAccountLabel = async (label: string) => {
-  if (!accountsStore.currentAccountId) return
-  if (!window.confirm(t('labels.deleteConfirm', { label }))) return
-
-  labelDialogBusy.value = true
-  labelDialogError.value = null
-  try {
-    labelDialogLabels.value = await mailRepository.deleteLabel(accountsStore.currentAccountId, label)
-    await refreshMailbox()
-    if (labelRenameSource.value?.toLowerCase() === label.toLowerCase()) {
-      cancelLabelRename()
-    }
-  } catch (error) {
-    labelDialogError.value = error instanceof Error ? error.message : t('labels.updateFailed')
-  } finally {
-    labelDialogBusy.value = false
-  }
 }
 
 const handleContextReply = (messageId: string) => {
@@ -1335,98 +870,6 @@ const handleContextForward = (messageId: string) => {
   composerStore.openForward(accountsStore.currentAccountId, msg)
 }
 
-const handleContextToggleRead = async (messageId: string) => {
-  if (!accountsStore.currentAccountId) return
-  const before = messagesStore.messages.find((message) => message.id === messageId)
-  await messagesStore.toggleRead(accountsStore.currentAccountId, messageId)
-  const after = messagesStore.messages.find((message) => message.id === messageId)
-  if (before && after) {
-    mailboxesStore.adjustUnread(before.folderId, after.isRead === before.isRead ? 0 : (after.isRead ? -1 : 1))
-    patchCachedMessage(messageId, () => after)
-  }
-}
-
-const handleContextArchive = async (messageId: string) => {
-  if (!accountsStore.currentAccountId) return
-  const accountId = accountsStore.currentAccountId
-  await messagesStore.archiveMessage(accountId, messageId)
-  await refreshMailbox()
-  performUndoable(t('shell.messageArchived'), async () => {
-    await messagesStore.restoreMessage(accountId, messageId)
-    await refreshMailbox()
-  })
-}
-
-const getFolderIdByKind = (kind: 'inbox' | 'junk') =>
-  mailboxesStore.folders.find((folder) => folder.kind === kind)?.id ?? null
-
-const markMessageSpam = async (messageId: string) => {
-  if (!accountsStore.currentAccountId) return
-  const junkFolderId = getFolderIdByKind('junk')
-  const originalFolderId = findMessage(messageId)?.folderId ?? mailboxesStore.currentFolderId
-  if (!junkFolderId || !originalFolderId || originalFolderId === junkFolderId) return
-
-  const accountId = accountsStore.currentAccountId
-  await messagesStore.moveMessage(accountId, messageId, junkFolderId)
-  await refreshMailbox()
-  performUndoable(t('shell.messageMoved'), async () => {
-    await messagesStore.moveMessage(accountId, messageId, originalFolderId)
-    await refreshMailbox()
-  })
-}
-
-const restoreMessageFromJunk = async (messageId: string) => {
-  if (!accountsStore.currentAccountId) return
-  const inboxFolderId = getFolderIdByKind('inbox')
-  if (!inboxFolderId) return
-
-  await messagesStore.moveMessage(accountsStore.currentAccountId, messageId, inboxFolderId)
-  await refreshMailbox()
-}
-
-const markCurrentMessageSpam = async () => {
-  if (!messagesStore.selectedMessageId) return
-  await markMessageSpam(messagesStore.selectedMessageId)
-}
-
-const handleContextRestore = async (messageId: string) => {
-  if (!accountsStore.currentAccountId) return
-  if (mailboxesStore.currentFolder?.kind === 'junk') {
-    await restoreMessageFromJunk(messageId)
-    return
-  }
-  await messagesStore.restoreMessage(accountsStore.currentAccountId, messageId)
-  await refreshMailbox()
-}
-
-const handleContextMarkSpam = async (messageId: string) => {
-  await markMessageSpam(messageId)
-}
-
-const handleContextDelete = async (messageId: string) => {
-  if (!accountsStore.currentAccountId) return
-  const accountId = accountsStore.currentAccountId
-  await messagesStore.deleteMessage(accountId, messageId)
-  await refreshMailbox()
-  performUndoable(t('shell.messageDeleted'), async () => {
-    await messagesStore.restoreMessage(accountId, messageId)
-    await refreshMailbox()
-  })
-}
-
-const handleContextMove = async (messageId: string, folderId: string) => {
-  if (!accountsStore.currentAccountId) return
-  const accountId = accountsStore.currentAccountId
-  const originalFolderId = mailboxesStore.currentFolderId
-  await messagesStore.moveMessage(accountId, messageId, folderId)
-  await refreshMailbox()
-  if (originalFolderId) {
-    performUndoable(t('shell.messageMoved'), async () => {
-      await messagesStore.moveMessage(accountId, messageId, originalFolderId)
-      await refreshMailbox()
-    })
-  }
-}
 
 // --- Sidebar context menu handlers ---
 const handleSaveContact = async (data: { name: string; email: string }) => {

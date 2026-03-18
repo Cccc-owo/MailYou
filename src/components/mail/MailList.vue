@@ -78,13 +78,12 @@
     </div>
     <v-progress-linear v-if="isLoading" indeterminate color="primary" />
 
-    <div v-if="!isLoading && threads.length === 0" class="mail-list__empty">
-      <v-icon :icon="isSearchResult ? 'mdi-magnify' : 'mdi-inbox-outline'" size="40" class="mb-3" />
-      <div class="text-h6 mb-1">{{ isSearchResult ? t('mailList.noSearchResults') : t('mailList.noMessages') }}</div>
-      <div class="text-body-2 text-medium-emphasis">
-        {{ isSearchResult ? t('mailList.noSearchResultsHint') : t('mailList.emptyFolder') }}
-      </div>
-    </div>
+    <EmptyState
+      v-if="!isLoading && threads.length === 0"
+      :icon="isSearchResult ? 'mdi-magnify' : 'mdi-inbox-outline'"
+      :title="isSearchResult ? t('mailList.noSearchResults') : t('mailList.noMessages')"
+      :description="isSearchResult ? t('mailList.noSearchResultsHint') : t('mailList.emptyFolder')"
+    />
 
     <v-virtual-scroll v-else :items="flatItems" class="mail-list__items">
       <template #default="{ item }">
@@ -210,6 +209,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MailMessage, MailThreadSummary, MailboxFolder } from '@/types/mail'
 import ContextMenu from '@/components/ContextMenu.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 import { useContextMenu } from '@/composables/useContextMenu'
 
 const { t, locale } = useI18n()
@@ -383,14 +383,6 @@ const formatDate = (value: string) =>
   padding: 8px 12px;
   border-radius: 12px;
   background: rgba(var(--v-theme-primary), 0.08);
-}
-
-.mail-list__empty {
-  display: grid;
-  place-items: center;
-  text-align: center;
-  min-height: 200px;
-  padding: 24px;
 }
 
 .mail-list__items {

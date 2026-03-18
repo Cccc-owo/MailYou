@@ -12,16 +12,19 @@
     </AppTitleBar>
 
     <div
-      v-if="loadingActive"
       class="mail-shell-layout__progress"
-      :class="{ 'mail-shell-layout__progress--indeterminate': loadingProgress === null }"
+      :class="{
+        'mail-shell-layout__progress--active': loadingActive,
+        'mail-shell-layout__progress--indeterminate': loadingActive && loadingProgress === null,
+      }"
+      :aria-hidden="!loadingActive"
     >
-      <div v-if="loadingLabel" class="mail-shell-layout__progress-label">
+      <div v-if="loadingActive && loadingLabel" class="mail-shell-layout__progress-label">
         {{ loadingLabel }}
       </div>
       <v-progress-linear
-        :model-value="loadingProgress ?? undefined"
-        :indeterminate="loadingProgress === null"
+        :model-value="loadingActive ? loadingProgress ?? undefined : 0"
+        :indeterminate="loadingActive && loadingProgress === null"
         color="primary"
         height="4"
       />
@@ -165,7 +168,19 @@ onUnmounted(() => {
 
 .mail-shell-layout__progress {
   grid-row: 2;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  max-height: 0;
+  min-height: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  overflow: hidden;
+  visibility: hidden;
+  transition: max-height 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.mail-shell-layout__progress--active {
+  max-height: 64px;
+  border-bottom-color: rgba(var(--v-theme-on-surface), 0.06);
+  visibility: visible;
   background: rgba(var(--v-theme-primary), 0.03);
 }
 
@@ -201,7 +216,8 @@ onUnmounted(() => {
 
 .mail-shell-layout__sidebar,
 .mail-shell-layout__reader {
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .mail-shell-layout__sidebar {
@@ -237,7 +253,7 @@ onUnmounted(() => {
 }
 
 [data-gutter="sidebar"] {
-  background: transparent;
+  background: rgba(var(--v-theme-on-surface), 0.06);
 }
 
 [data-gutter="sidebar"]:hover {

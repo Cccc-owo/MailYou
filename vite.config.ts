@@ -32,6 +32,11 @@ export default defineConfig({
     rolldownOptions: {
       output: {
         manualChunks(id) {
+          if (
+            id.includes('node_modules/@tiptap/') ||
+            id.includes('node_modules/prosemirror-')
+          ) return 'editor'
+          if (id.includes('node_modules/dompurify')) return 'sanitizer'
           if (id.includes('node_modules/vuetify')) return 'vuetify'
           if (
             id.includes('node_modules/vue/') ||

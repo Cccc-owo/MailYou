@@ -1,25 +1,12 @@
 <template>
-  <div class="settings-page">
-    <AppTitleBar title="MailYou" hide-search>
-      <template #actions>
-        <v-tooltip :text="t('common.backToMail')" location="bottom">
-          <template #activator="{ props: tip }">
-            <v-btn v-bind="tip" icon="mdi-arrow-left" @click="router.push('/')" />
-          </template>
-        </v-tooltip>
-      </template>
-    </AppTitleBar>
+  <AppScrollablePage title="MailYou" hide-search :max-width="820" content-class="settings-page__content">
+    <template #actions>
+      <BackActionButton :label="t('common.backToMail')" @click="router.push('/')" />
+    </template>
 
-    <div class="settings-page__content">
-      <!-- Appearance -->
-      <div class="settings-page__section">
-        <div class="settings-page__section-header">
-          <v-icon icon="mdi-palette-outline" size="18" />
-          <span>{{ t('settings.title') }}</span>
-        </div>
-
-        <div class="settings-page__group">
-          <div class="settings-page__item">
+    <!-- Appearance -->
+    <FormSectionCard :title="t('settings.title')" icon="mdi-palette-outline">
+          <div class="settings-page__item ui-row">
             <v-icon icon="mdi-brightness-6" class="settings-page__item-icon" />
             <div class="settings-page__item-body">
               <div class="settings-page__item-label">{{ t('settings.themeMode') }}</div>
@@ -32,7 +19,7 @@
 
           <v-divider class="settings-page__divider" />
 
-          <div class="settings-page__item">
+          <div class="settings-page__item ui-row">
             <v-icon icon="mdi-translate" class="settings-page__item-icon" />
             <div class="settings-page__item-body">
               <div class="settings-page__item-label">{{ t('settings.language') }}</div>
@@ -45,8 +32,8 @@
 
           <v-divider class="settings-page__divider" />
 
-          <div class="settings-page__item settings-page__item--vertical">
-            <div class="settings-page__item-row">
+          <div class="settings-page__item ui-row settings-page__item--vertical">
+            <div class="settings-page__item-row ui-row">
               <v-icon icon="mdi-palette-swatch-outline" class="settings-page__item-icon" />
               <div class="settings-page__item-body">
                 <div class="settings-page__item-label">{{ t('settings.seedColor') }}</div>
@@ -67,18 +54,11 @@
               </button>
             </div>
           </div>
-        </div>
-      </div>
+    </FormSectionCard>
 
-      <!-- Sync -->
-      <div class="settings-page__section">
-        <div class="settings-page__section-header">
-          <v-icon icon="mdi-sync" size="18" />
-          <span>{{ t('settings.syncSettings') }}</span>
-        </div>
-
-        <div class="settings-page__group">
-          <div class="settings-page__item">
+    <!-- Sync -->
+    <FormSectionCard :title="t('settings.syncSettings')" icon="mdi-sync">
+          <div class="settings-page__item ui-row">
             <v-icon icon="mdi-timer-outline" class="settings-page__item-icon" />
             <div class="settings-page__item-body">
               <div class="settings-page__item-label">{{ t('settings.syncFrequency') }}</div>
@@ -98,7 +78,7 @@
 
           <v-divider class="settings-page__divider" />
 
-          <div class="settings-page__item">
+          <div class="settings-page__item ui-row">
             <v-icon icon="mdi-window-close" class="settings-page__item-icon" />
             <div class="settings-page__item-body">
               <div class="settings-page__item-label">{{ t('settings.closeBehavior') }}</div>
@@ -115,18 +95,11 @@
               @update:model-value="setCloseBehavior"
             />
           </div>
-        </div>
-      </div>
+    </FormSectionCard>
 
-      <!-- Privacy -->
-      <div class="settings-page__section">
-        <div class="settings-page__section-header">
-          <v-icon icon="mdi-shield-outline" size="18" />
-          <span>{{ t('settings.privacy') }}</span>
-        </div>
-
-        <div class="settings-page__group">
-          <div class="settings-page__item">
+    <!-- Privacy -->
+    <FormSectionCard :title="t('settings.privacy')" icon="mdi-shield-outline">
+          <div class="settings-page__item ui-row">
             <v-icon icon="mdi-image-outline" class="settings-page__item-icon" />
             <div class="settings-page__item-body">
               <div class="settings-page__item-label">{{ t('settings.imageLoadPolicy') }}</div>
@@ -146,8 +119,8 @@
 
           <v-divider class="settings-page__divider" />
 
-          <div class="settings-page__item settings-page__item--vertical">
-            <div class="settings-page__item-row">
+          <div class="settings-page__item ui-row settings-page__item--vertical">
+            <div class="settings-page__item-row ui-row">
               <v-icon icon="mdi-lock-outline" class="settings-page__item-icon" />
               <div class="settings-page__item-body">
                 <div class="settings-page__item-label">{{ t('security.title') }}</div>
@@ -222,15 +195,15 @@
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  </div>
+    </FormSectionCard>
+  </AppScrollablePage>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import AppTitleBar from '@/components/AppTitleBar.vue'
+import AppScrollablePage from '@/components/ui/AppScrollablePage.vue'
+import BackActionButton from '@/components/ui/BackActionButton.vue'
+import FormSectionCard from '@/components/ui/FormSectionCard.vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useUiStore, type AppearanceMode, type LocaleMode, type ImageLoadPolicy } from '@/stores/ui'
@@ -339,72 +312,42 @@ const lockCurrentSession = async () => {
 </script>
 
 <style scoped>
-.settings-page {
-  min-height: 100vh;
-  background: rgb(var(--v-theme-background));
-}
-
 .settings-page__content {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 24px 24px 48px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 0;
+  padding-top: 4px;
+}
+
+.settings-page__content > .form-section-card + .form-section-card {
+  margin-top: 20px;
 }
 
 /* ── Section header (MD3 label-small, primary) ── */
 
-.settings-page__section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: rgb(var(--v-theme-primary));
-  padding: 0 16px;
-  margin-bottom: 8px;
-}
-
-/* ── Group container (surface, single-level) ── */
-
-.settings-page__group {
-  border-radius: 16px;
-  background: rgb(var(--v-theme-surface));
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.06),
-    0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
 /* ── List item (MD3: 56px min-height, 16px padding) ── */
 
 .settings-page__item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 16px;
-  min-height: 56px;
+  padding-block: 14px;
 }
 
 .settings-page__item--vertical {
   flex-direction: column;
   align-items: stretch;
-  gap: 12px;
+  gap: 16px;
 }
 
 .settings-page__item-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+  min-height: 0;
+  padding: 0;
 }
 
 .settings-page__security-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   width: 100%;
+  padding-top: 4px;
 }
 
 .settings-page__item-icon {
@@ -420,6 +363,11 @@ const lockCurrentSession = async () => {
 .settings-page__item-label {
   font-size: 1rem;
   line-height: 1.5;
+}
+
+.settings-page__item-body :deep(.text-body-2) {
+  margin-top: 4px;
+  line-height: 1.55;
 }
 
 .settings-page__divider {
@@ -444,7 +392,7 @@ const lockCurrentSession = async () => {
 /* ── Select (fixed width, compact) ── */
 
 .settings-page__select {
-  max-width: 180px;
+  max-width: 200px;
   flex-shrink: 0;
 }
 
@@ -454,7 +402,7 @@ const lockCurrentSession = async () => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  padding-left: 40px;
+  padding-left: 44px;
 }
 
 .settings-page__color-option {
@@ -499,7 +447,6 @@ const lockCurrentSession = async () => {
 
 @media (max-width: 600px) {
   .settings-page__content {
-    padding: 16px 16px 32px;
     gap: 24px;
   }
 

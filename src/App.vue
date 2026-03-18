@@ -61,23 +61,27 @@
     <router-view v-else />
 
     <v-dialog v-model="closePromptOpen" max-width="460" persistent>
-      <v-card>
-        <v-card-title>{{ t('closePrompt.title') }}</v-card-title>
-        <v-card-text>
-          <div class="text-body-1 mb-4">{{ t('closePrompt.description') }}</div>
+      <v-card class="close-prompt">
+        <v-card-title class="close-prompt__title">{{ t('closePrompt.title') }}</v-card-title>
+        <v-card-text class="close-prompt__body">
+          <div class="close-prompt__description text-body-1">{{ t('closePrompt.description') }}</div>
           <v-checkbox
             v-model="rememberCloseBehavior"
+            class="close-prompt__checkbox"
             hide-details
-            :label="t('closePrompt.alwaysBackground')"
+            :label="t('closePrompt.always')"
           />
         </v-card-text>
-        <v-card-actions>
+        <v-card-actions class="close-prompt__actions">
           <v-spacer />
-          <v-btn variant="text" @click="resolveCloseRequest('quit')">
-            {{ t('closePrompt.quit') }}
+          <v-btn variant="text" :disabled="rememberCloseBehavior" @click="cancelCloseRequest">
+            {{ t('closePrompt.cancel') }}
           </v-btn>
-          <v-btn color="primary" variant="flat" @click="resolveCloseRequest('background')">
-            {{ t('closePrompt.keepRunning') }}
+          <v-btn variant="text" @click="resolveCloseRequest('background')">
+            {{ t('closePrompt.minimize') }}
+          </v-btn>
+          <v-btn class="close-prompt__close-btn" variant="text" @click="resolveCloseRequest('quit')">
+            {{ t('closePrompt.quit') }}
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -117,6 +121,11 @@ const submitUnlock = async () => {
   if (!unlockPassword.value) return
   await securityStore.unlock(unlockPassword.value)
   unlockPassword.value = ''
+}
+
+const cancelCloseRequest = () => {
+  closePromptOpen.value = false
+  rememberCloseBehavior.value = false
 }
 
 const resolveCloseRequest = async (action: CloseRequestAction) => {
@@ -176,6 +185,123 @@ onUnmounted(() => {
 .app-shell__card {
   width: min(420px, 100%);
   border-radius: 24px;
+}
+
+.close-prompt {
+  border-radius: 28px;
+  padding-top: 8px;
+}
+
+.close-prompt__title {
+  padding: 16px 24px 0;
+  font-size: 1.75rem;
+  line-height: 1.25;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.close-prompt__body {
+  padding: 20px 24px 8px;
+}
+
+.close-prompt__description {
+  line-height: 1.55;
+  color: rgba(var(--v-theme-on-surface), 0.86);
+}
+
+.close-prompt__checkbox {
+  margin-top: 16px;
+}
+
+.close-prompt__actions {
+  padding: 8px 24px 20px;
+  gap: 8px;
+}
+
+.close-prompt__close-btn:hover {
+  background: rgba(var(--v-theme-error), 0.12);
+  color: rgb(var(--v-theme-error));
+}
+
+.ui-empty-state {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  min-height: 200px;
+  padding: 24px;
+}
+
+.ui-empty-state__icon {
+  margin-bottom: 12px;
+}
+
+.ui-empty-state__description {
+  color: rgba(var(--v-theme-on-surface), 0.65);
+}
+
+.ui-empty-state__actions {
+  margin-top: 16px;
+}
+
+.ui-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgb(var(--v-theme-primary));
+}
+
+.ui-section-header__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-surface-panel {
+  border-radius: 16px;
+  background: rgb(var(--v-theme-surface));
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.ui-subtle-panel {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 16px;
+  background: rgba(var(--v-theme-on-surface), 0.02);
+}
+
+.ui-pane-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+}
+
+.ui-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
+  padding: 12px 16px;
+}
+
+.ui-inline-actions {
+  display: flex;
+  align-items: center;
+}
+
+.ui-page-content {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
 }
 
 /* Global scrollbar tokens */
@@ -255,5 +381,12 @@ body,
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   pointer-events: none;
+}
+
+@media (max-width: 600px) {
+  .ui-section-header .v-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>

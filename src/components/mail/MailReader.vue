@@ -1,8 +1,8 @@
 <template>
   <div v-if="message" class="mail-reader" @contextmenu="openReaderMenu($event)">
     <!-- Toolbar: primary actions with labels -->
-    <div class="mail-reader__toolbar">
-      <div class="mail-reader__toolbar-primary">
+    <div class="mail-reader__toolbar ui-pane-toolbar">
+      <div class="mail-reader__toolbar-primary ui-inline-actions">
         <v-btn
           v-if="isDraftMessage"
           variant="text"
@@ -19,7 +19,7 @@
         </template>
         <v-btn variant="text" size="small" prepend-icon="mdi-delete-outline" color="error" @click="$emit('delete')">{{ t('common.delete') }}</v-btn>
       </div>
-      <div class="mail-reader__toolbar-secondary">
+      <div class="mail-reader__toolbar-secondary ui-inline-actions">
         <v-tooltip :text="t('reader.exportPdf')" location="bottom">
           <template #activator="{ props: tip }">
             <v-btn v-bind="tip" variant="text" size="small" icon="mdi-file-pdf-box" @click="$emit('export-pdf')" />
@@ -75,7 +75,7 @@
     </div>
 
     <div class="mail-reader__scroll">
-    <div v-if="threadMessages.length > 1" class="mail-reader__conversation">
+    <div v-if="threadMessages.length > 1" class="mail-reader__conversation ui-subtle-panel">
       <div class="mail-reader__conversation-header">
         <span class="text-subtitle-2">{{ t('reader.conversation') }}</span>
         <v-chip size="x-small" variant="tonal" color="secondary">
@@ -281,11 +281,15 @@
     </ContextMenu>
   </div>
 
-  <div v-else class="mail-reader__empty">
-    <v-icon :icon="emptyStateIcon" size="48" class="mb-4" />
-    <div class="text-h5 mb-2">{{ emptyStateTitle }}</div>
-    <div class="text-body-1 text-medium-emphasis">{{ emptyStateDescription }}</div>
-  </div>
+  <EmptyState
+    v-else
+    class="mail-reader__empty"
+    :icon="emptyStateIcon"
+    :icon-size="48"
+    :title="emptyStateTitle"
+    :description="emptyStateDescription"
+    title-class="text-h5 mb-2"
+  />
 </template>
 
 <script setup lang="ts">
@@ -295,6 +299,7 @@ import DOMPurify from 'dompurify'
 import type { AttachmentMeta, MailMessage, MailboxFolder } from '@/types/mail'
 import ContextMenu from '@/components/ContextMenu.vue'
 import EmailContactPopover from '@/components/mail/EmailContactPopover.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 import { useContextMenu } from '@/composables/useContextMenu'
 import { mailRepository } from '@/services/mail'
 import { useContactsStore } from '@/stores/contacts'
@@ -745,24 +750,14 @@ const parseAddr = (addr: string): { name: string; email: string } => {
 
 /* Toolbar */
 .mail-reader__toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
   padding: 4px 12px;
-  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.06);
-  gap: 8px;
 }
 
 .mail-reader__toolbar-primary {
-  display: flex;
-  align-items: center;
   gap: 2px;
 }
 
 .mail-reader__toolbar-secondary {
-  display: flex;
-  align-items: center;
   gap: 2px;
 }
 
@@ -774,9 +769,6 @@ const parseAddr = (addr: string): { name: string; email: string } => {
 
 .mail-reader__conversation {
   margin-bottom: 12px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  border-radius: 16px;
-  background: rgba(var(--v-theme-on-surface), 0.02);
 }
 
 .mail-reader__conversation-header {
@@ -896,10 +888,7 @@ const parseAddr = (addr: string): { name: string; email: string } => {
 }
 
 .mail-reader__empty {
-  display: grid;
-  place-items: center;
   min-height: 100%;
-  text-align: center;
   padding: 32px;
 }
 </style>

@@ -166,10 +166,11 @@
   },
   "closePrompt": {
     "title": "关闭 MailYou 时",
-    "description": "你希望 MailYou 在关闭窗口后继续在后台运行吗？后台运行时会隐藏到托盘，并继续收信与通知。",
-    "keepRunning": "继续后台运行",
-    "quit": "退出 MailYou",
-    "alwaysBackground": "以后总是继续后台运行"
+    "description": "请选择关闭窗口后的操作。最小化后 MailYou 会隐藏到托盘，并继续收信与通知。",
+    "cancel": "取消",
+    "minimize": "最小化",
+    "quit": "关闭",
+    "always": "始终"
   },
   "settings": {
     "title": "设置",

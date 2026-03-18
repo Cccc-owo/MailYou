@@ -1,16 +1,13 @@
 <template>
   <div class="mail-sidebar">
     <div class="mail-sidebar__section">
-      <div class="mail-sidebar__section-header">
-        <v-icon icon="mdi-account-multiple-outline" size="18" />
-        <span>{{ t('sidebar.accounts') }}</span>
-        <v-spacer />
+      <SectionHeader :title="t('sidebar.accounts')" icon="mdi-account-multiple-outline">
         <v-tooltip :text="t('sidebar.addAccount')" location="bottom">
           <template #activator="{ props: tip }">
             <v-btn v-bind="tip" icon="mdi-plus" size="x-small" variant="text" @click="$emit('add-account')" />
           </template>
         </v-tooltip>
-      </div>
+      </SectionHeader>
 
       <v-list v-if="accounts.length" class="mail-sidebar__list" lines="two">
         <v-list-item
@@ -36,21 +33,25 @@
       </v-list>
 
       <div v-else class="mail-sidebar__empty">
-        <v-icon icon="mdi-email-plus-outline" size="32" class="mb-2" />
-        <div class="text-body-2 text-medium-emphasis mb-3">{{ t('sidebar.noAccounts') }}</div>
-        <v-btn size="small" prepend-icon="mdi-plus" @click="$emit('add-account')">{{ t('sidebar.addAccount') }}</v-btn>
+        <EmptyState
+          icon="mdi-email-plus-outline"
+          :icon-size="32"
+          :title="t('sidebar.noAccounts')"
+          title-class="text-body-2 text-medium-emphasis"
+        >
+          <template #actions>
+            <v-btn size="small" prepend-icon="mdi-plus" @click="$emit('add-account')">{{ t('sidebar.addAccount') }}</v-btn>
+          </template>
+        </EmptyState>
       </div>
     </div>
 
-    <v-divider />
+    <v-divider class="mail-sidebar__divider" />
 
     <div class="mail-sidebar__section">
-      <div class="mail-sidebar__section-header">
-        <v-icon icon="mdi-folder-outline" size="18" />
-        <span>{{ currentAccount?.name ?? t('sidebar.selectAccount') }}</span>
-        <v-spacer />
+      <SectionHeader :title="currentAccount?.name ?? t('sidebar.selectAccount')" icon="mdi-folder-outline">
         <v-btn size="small" variant="tonal" prepend-icon="mdi-pencil-plus-outline" @click="$emit('compose')">{{ t('sidebar.compose') }}</v-btn>
-      </div>
+      </SectionHeader>
 
       <v-progress-linear v-if="isFoldersLoading" indeterminate color="primary" class="mb-1" />
 
@@ -93,20 +94,19 @@
       </v-alert>
 
       <div v-else-if="!visibleFolders.length" class="mail-sidebar__empty">
-        <v-icon icon="mdi-folder-outline" size="32" class="mb-2" />
-        <div class="text-body-2 text-medium-emphasis">
-          {{ accounts.length ? t('sidebar.selectAccountToView') : t('sidebar.addAccountToStart') }}
-        </div>
+        <EmptyState
+          icon="mdi-folder-outline"
+          :icon-size="32"
+          :title="accounts.length ? t('sidebar.selectAccountToView') : t('sidebar.addAccountToStart')"
+          title-class="text-body-2 text-medium-emphasis"
+        />
       </div>
     </div>
 
-    <v-divider v-if="currentAccount && labels.length > 0" />
+    <v-divider v-if="currentAccount && labels.length > 0" class="mail-sidebar__divider" />
 
     <div v-if="currentAccount && labels.length > 0" class="mail-sidebar__section">
-      <div class="mail-sidebar__section-header">
-        <v-icon icon="mdi-label-multiple-outline" size="18" />
-        <span>{{ t('labels.sidebarTitle') }}</span>
-      </div>
+      <SectionHeader :title="t('labels.sidebarTitle')" icon="mdi-label-multiple-outline" />
 
       <v-list class="mail-sidebar__list" nav density="compact">
         <v-list-item
@@ -160,49 +160,43 @@
     </ContextMenu>
   </div>
 
-  <v-dialog v-model="deleteDialog" max-width="400" persistent>
-    <v-card>
-      <v-card-title>{{ t('sidebar.deleteAccount') }}</v-card-title>
-      <v-card-text>
-        {{ t('sidebar.deleteConfirmText', { name: pendingDeleteAccount?.name, email: pendingDeleteAccount?.email }) }}
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer />
-        <v-btn @click="deleteDialog = false">{{ t('common.cancel') }}</v-btn>
-        <v-btn color="error" variant="flat" @click="emitDelete">{{ t('common.delete') }}</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  <AppDialogShell v-model="deleteDialog" :title="t('sidebar.deleteAccount')" :max-width="400" persistent>
+    <v-card-text>
+      {{ t('sidebar.deleteConfirmText', { name: pendingDeleteAccount?.name, email: pendingDeleteAccount?.email }) }}
+    </v-card-text>
+    <template #actions>
+      <v-spacer />
+      <v-btn @click="deleteDialog = false">{{ t('common.cancel') }}</v-btn>
+      <v-btn color="error" variant="flat" @click="emitDelete">{{ t('common.delete') }}</v-btn>
+    </template>
+  </AppDialogShell>
 
-  <v-dialog v-model="folderDialog.open" max-width="420" persistent>
-    <v-card>
-      <v-card-title>{{ folderDialogTitle }}</v-card-title>
-      <v-card-text>
-        <v-text-field
-          v-if="folderDialog.mode !== 'delete'"
-          v-model="folderDialog.name"
-          :label="t('sidebar.folderName')"
-          :hint="t('sidebar.folderNameHint')"
-          persistent-hint
-        />
-        <div v-else>
-          {{ t('sidebar.deleteFolderConfirmText', { name: folderDialog.target?.name ?? '' }) }}
-        </div>
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer />
-        <v-btn @click="closeFolderDialog">{{ t('common.cancel') }}</v-btn>
-        <v-btn
-          :color="folderDialog.mode === 'delete' ? 'error' : 'primary'"
-          variant="flat"
-          :disabled="folderDialog.mode !== 'delete' && !folderDialog.name.trim()"
-          @click="submitFolderDialog"
-        >
-          {{ folderDialogActionLabel }}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  <AppDialogShell v-model="folderDialog.open" :title="folderDialogTitle" :max-width="420" persistent>
+    <v-card-text>
+      <v-text-field
+        v-if="folderDialog.mode !== 'delete'"
+        v-model="folderDialog.name"
+        :label="t('sidebar.folderName')"
+        :hint="t('sidebar.folderNameHint')"
+        persistent-hint
+      />
+      <div v-else>
+        {{ t('sidebar.deleteFolderConfirmText', { name: folderDialog.target?.name ?? '' }) }}
+      </div>
+    </v-card-text>
+    <template #actions>
+      <v-spacer />
+      <v-btn @click="closeFolderDialog">{{ t('common.cancel') }}</v-btn>
+      <v-btn
+        :color="folderDialog.mode === 'delete' ? 'error' : 'primary'"
+        variant="flat"
+        :disabled="folderDialog.mode !== 'delete' && !folderDialog.name.trim()"
+        @click="submitFolderDialog"
+      >
+        {{ folderDialogActionLabel }}
+      </v-btn>
+    </template>
+  </AppDialogShell>
 </template>
 
 <script setup lang="ts">
@@ -211,6 +205,9 @@ import { useI18n } from 'vue-i18n'
 import type { MailAccount } from '@/types/account'
 import type { MailLabel, MailboxFolder } from '@/types/mail'
 import ContextMenu from '@/components/ContextMenu.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import SectionHeader from '@/components/ui/SectionHeader.vue'
+import AppDialogShell from '@/components/ui/AppDialogShell.vue'
 import { useContextMenu } from '@/composables/useContextMenu'
 
 const { t } = useI18n()
@@ -335,33 +332,17 @@ const submitFolderDialog = () => {
   padding: 0 8px;
 }
 
-.mail-sidebar__section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 8px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: rgb(var(--v-theme-primary));
-}
-
 .mail-sidebar__list {
   padding: 0;
 }
 
 .mail-sidebar__empty {
-  display: grid;
-  place-items: center;
-  text-align: center;
-  padding: 24px 16px;
+  padding: 0 16px;
 }
 
-@media (max-width: 600px) {
-  .mail-sidebar__section-header :deep(.v-btn) {
-    width: 100%;
-    justify-content: center;
-  }
+.mail-sidebar__divider {
+  margin: 10px -1px 10px -1px;
+  border-color: rgba(var(--v-theme-on-surface), 0.1);
+  opacity: 1;
 }
 </style>

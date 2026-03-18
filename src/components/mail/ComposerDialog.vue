@@ -155,14 +155,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { DraftMessage } from '@/types/mail'
 import type { Contact } from '@/types/contact'
 import { mailRepository } from '@/services/mail'
 import { applyIdentitySignature as applyIdentitySignatureToBody } from '@/shared/mail/signature'
 import { useAccountsStore } from '@/stores/accounts'
-import RichTextEditor from '@/components/mail/RichTextEditor.vue'
+
+const RichTextEditor = defineAsyncComponent(() => import('@/components/mail/RichTextEditor.vue'))
 
 const { t } = useI18n()
 const accountsStore = useAccountsStore()

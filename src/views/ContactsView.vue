@@ -1,7 +1,7 @@
 <template>
   <MailShellLayout hide-search>
     <template #actions>
-      <v-btn prepend-icon="mdi-arrow-left" variant="text" @click="router.push('/')">{{ t('common.backToMail') }}</v-btn>
+      <BackActionButton :label="t('common.backToMail')" @click="router.push('/')" />
     </template>
 
     <template #sidebar>
@@ -48,24 +48,25 @@
   </MailShellLayout>
 
   <!-- Group name dialog -->
-  <v-dialog v-model="groupDialog.open" max-width="360">
-    <v-card>
-      <v-card-title>{{ groupDialog.groupId ? t('contacts.editGroup') : t('contacts.addGroup') }}</v-card-title>
-      <v-card-text>
-        <v-text-field
-          v-model="groupDialog.name"
-          :label="t('contacts.groupNamePlaceholder')"
-          autofocus
-          @keydown.enter="confirmGroupDialog"
-        />
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer />
-        <v-btn variant="text" @click="groupDialog.open = false">{{ t('common.cancel') }}</v-btn>
-        <v-btn color="primary" :disabled="!groupDialog.name.trim()" @click="confirmGroupDialog">{{ t('common.save') }}</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  <AppDialogShell
+    v-model="groupDialog.open"
+    :title="groupDialog.groupId ? t('contacts.editGroup') : t('contacts.addGroup')"
+    :max-width="360"
+  >
+    <v-card-text>
+      <v-text-field
+        v-model="groupDialog.name"
+        :label="t('contacts.groupNamePlaceholder')"
+        autofocus
+        @keydown.enter="confirmGroupDialog"
+      />
+    </v-card-text>
+    <template #actions>
+      <v-spacer />
+      <v-btn variant="text" @click="groupDialog.open = false">{{ t('common.cancel') }}</v-btn>
+      <v-btn color="primary" :disabled="!groupDialog.name.trim()" @click="confirmGroupDialog">{{ t('common.save') }}</v-btn>
+    </template>
+  </AppDialogShell>
 
   <v-snackbar v-model="snackbar" location="bottom right" color="primary">
     {{ snackbarText }}
@@ -82,6 +83,8 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import AppDialogShell from '@/components/ui/AppDialogShell.vue'
+import BackActionButton from '@/components/ui/BackActionButton.vue'
 import MailShellLayout from '@/layouts/MailShellLayout.vue'
 import ContactsSidebar from '@/components/contacts/ContactsSidebar.vue'
 import ContactsList from '@/components/contacts/ContactsList.vue'
