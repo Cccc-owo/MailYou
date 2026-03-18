@@ -78,6 +78,30 @@
 
           <v-divider class="settings-page__divider" />
 
+          <div v-if="autoLaunchSupported" class="settings-page__item ui-row">
+            <v-icon icon="mdi-rocket-launch-outline" class="settings-page__item-icon" />
+            <div class="settings-page__item-body">
+              <div class="settings-page__item-label">{{ t('settings.launchOnStartup') }}</div>
+              <div class="text-body-2 text-medium-emphasis">
+                {{ t('settings.launchOnStartupDescription') }}
+              </div>
+              <div v-if="autoLaunchError" class="text-body-2 text-error mt-1">
+                {{ autoLaunchError }}
+              </div>
+            </div>
+            <v-switch
+              :model-value="autoLaunchEnabled"
+              color="primary"
+              hide-details
+              inset
+              :loading="autoLaunchLoading"
+              :disabled="autoLaunchLoading"
+              @update:model-value="toggleAutoLaunch"
+            />
+          </div>
+
+          <v-divider v-if="autoLaunchSupported" class="settings-page__divider" />
+
           <div v-if="accountsStore.currentAccountId" class="settings-page__item ui-row">
             <v-icon icon="mdi-database-outline" class="settings-page__item-icon" />
             <div class="settings-page__item-body">
@@ -233,7 +257,7 @@ import { useAccountsStore } from '@/stores/accounts'
 import { useUiStore, type AppearanceMode, type LocaleMode, type ImageLoadPolicy } from '@/stores/ui'
 import { useSecurityStore } from '@/stores/security'
 import type { AccountQuota } from '@/types/account'
-import type { CloseBehaviorPreference } from '@/shared/window/bridge'
+import type { AutoLaunchSettings, CloseBehaviorPreference } from '@/shared/window/bridge'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -247,6 +271,10 @@ const securityError = ref<string | null>(null)
 const quota = ref<AccountQuota | null>(null)
 const quotaLoading = ref(false)
 const quotaError = ref<string | null>(null)
+const autoLaunchEnabled = ref(false)
+const autoLaunchSupported = ref(false)
+const autoLaunchLoading = ref(false)
+const autoLaunchError = ref<string | null>(null)
 
 const seedOptions = computed(() => [
   { label: t('settings.violet'), value: '#6750A4' },
@@ -335,6 +363,44 @@ const setSyncInterval = (value: number | null) => { if (value) uiStore.setSyncIn
 const setImageLoadPolicy = (value: ImageLoadPolicy | null) => { if (value) uiStore.setImageLoadPolicy(value) }
 const setCloseBehavior = (value: CloseBehaviorPreference | null) => { if (value) uiStore.setCloseBehavior(value) }
 
+const applyAutoLaunchSettings = (settings: AutoLaunchSettings | null | undefined) => {
+  autoLaunchEnabled.value = Boolean(settings?.enabled)
+  autoLaunchSupported.value = Boolean(settings?.supported)
+}
+
+const loadAutoLaunchSettings = async () => {
+  autoLaunchLoading.value = true
+  autoLaunchError.value = null
+
+  try {
+    applyAutoLaunchSettings(await window.windowControls?.getAutoLaunchSettings())
+  } catch (err) {
+    autoLaunchError.value = err instanceof Error ? err.message : t('settings.launchOnStartupFailed')
+  } finally {
+    autoLaunchLoading.value = false
+  }
+}
+
+const toggleAutoLaunch = async (value: boolean | null) => {
+  if (typeof value !== 'boolean' || autoLaunchLoading.value) {
+    return
+  }
+
+  const previous = autoLaunchEnabled.value
+  autoLaunchEnabled.value = value
+  autoLaunchLoading.value = true
+  autoLaunchError.value = null
+
+  try {
+    applyAutoLaunchSettings(await window.windowControls?.setAutoLaunchEnabled(value))
+  } catch (err) {
+    autoLaunchEnabled.value = previous
+    autoLaunchError.value = err instanceof Error ? err.message : t('settings.launchOnStartupFailed')
+  } finally {
+    autoLaunchLoading.value = false
+  }
+}
+
 const loadQuota = async (accountId: string | null) => {
   quota.value = null
   quotaError.value = null
@@ -410,6 +476,7 @@ const lockCurrentSession = async () => {
 }
 
 watch(() => accountsStore.currentAccountId, loadQuota, { immediate: true })
+void loadAutoLaunchSettings()
 </script>
 
 <style scoped>

@@ -73,6 +73,8 @@ const windowControls: WindowControlsBridge = {
   close: () => ipcRenderer.invoke('window:close'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   openExternal: (url) => ipcRenderer.invoke('window:openExternal', url),
+  getAutoLaunchSettings: () => ipcRenderer.invoke('window:getAutoLaunchSettings'),
+  setAutoLaunchEnabled: (enabled) => ipcRenderer.invoke('window:setAutoLaunchEnabled', enabled),
   setCloseBehaviorPreference: (value) => ipcRenderer.invoke('window:setCloseBehaviorPreference', value),
   resolveCloseRequest: (action, rememberBackground) =>
     ipcRenderer.invoke('window:resolveCloseRequest', action, rememberBackground),

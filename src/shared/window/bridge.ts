@@ -1,5 +1,9 @@
 export type CloseBehaviorPreference = 'ask' | 'always_background' | 'always_quit'
 export type CloseRequestAction = 'background' | 'quit'
+export interface AutoLaunchSettings {
+  enabled: boolean
+  supported: boolean
+}
 
 export interface WindowControlsBridge {
   minimize(): Promise<void>
@@ -7,6 +11,8 @@ export interface WindowControlsBridge {
   close(): Promise<void>
   isMaximized(): Promise<boolean>
   openExternal(url: string): Promise<void>
+  getAutoLaunchSettings(): Promise<AutoLaunchSettings>
+  setAutoLaunchEnabled(enabled: boolean): Promise<AutoLaunchSettings>
   setCloseBehaviorPreference(value: CloseBehaviorPreference): Promise<void>
   resolveCloseRequest(action: CloseRequestAction, rememberBackground: boolean): Promise<void>
   setBackgroundSyncInterval(minutes: number): Promise<void>

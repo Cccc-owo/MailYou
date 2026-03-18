@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Menu, Notification, Tray, dialog, nativeImage, protocol, session } from 'electron'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -12,9 +12,9 @@ import { initializeMainProcessLogging } from './logging'
 import { handleOAuthCallbackUrl } from './backend/oauth'
 import { ensureRustBackendReady, onRustBackendEvent, shutdownRustBackend } from './backend/rust/process'
 import { registerMailIpc } from './ipc/mail'
-import { registerWindowIpc, setWindowCloseBehaviorHandler, setWindowCloseResolveHandler, setWindowSyncIntervalHandler } from './ipc/window'
+import { registerWindowIpc, setWindowAutoLaunchHandlers, setWindowCloseBehaviorHandler, setWindowCloseResolveHandler, setWindowSyncIntervalHandler } from './ipc/window'
 import { mailBackend } from './backend/mailBackend'
-import type { CloseBehaviorPreference, CloseRequestAction } from '@/shared/window/bridge'
+import type { AutoLaunchSettings, CloseBehaviorPreference, CloseRequestAction } from '@/shared/window/bridge'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 let mainWindow: BrowserWindow | null = null
@@ -28,6 +28,8 @@ let backgroundSyncRunPromise: Promise<void> | null = null
 const knownUnreadIdsByAccount = new Map<string, Set<string>>()
 const isDev = isMailYouDevServerEnabled()
 let closeBehaviorPreference: CloseBehaviorPreference = 'ask'
+const AUTO_START_DESKTOP_FILE = 'MailYou.desktop'
+const HIDDEN_START_ARG = '--hidden'
 
 const MAIN_LOCALE_MESSAGES = {
   zh: {
@@ -43,6 +45,88 @@ const MAIN_LOCALE_MESSAGES = {
 const getMainLocaleMessages = () => {
   const locale = app.getLocale().toLowerCase()
   return locale.startsWith('zh') ? MAIN_LOCALE_MESSAGES.zh : MAIN_LOCALE_MESSAGES.en
+}
+
+const isAutoLaunchSupported = () => !isDev && (process.platform === 'win32' || process.platform === 'linux')
+
+const getAutoLaunchArgs = (hidden = false) => {
+  if (process.defaultApp && process.argv.length >= 2) {
+    return hidden ? [process.argv[1], HIDDEN_START_ARG] : [process.argv[1]]
+  }
+
+  return hidden ? [HIDDEN_START_ARG] : []
+}
+
+const escapeDesktopExecArg = (value: string) => value.replace(/(["\\`$])/g, '\\$1')
+
+const getLinuxAutoStartExec = () => {
+  const command = process.env.APPIMAGE || process.execPath
+  const args = getAutoLaunchArgs(true)
+  return [`"${escapeDesktopExecArg(command)}"`, ...args.map((arg) => `"${escapeDesktopExecArg(arg)}"`)].join(' ')
+}
+
+const getLinuxAutoStartFilePath = () => join(app.getPath('appData'), 'autostart', AUTO_START_DESKTOP_FILE)
+
+const getAutoLaunchSettings = (): AutoLaunchSettings => {
+  if (!isAutoLaunchSupported()) {
+    return { enabled: false, supported: false }
+  }
+
+  if (process.platform === 'win32') {
+    return {
+      enabled: app.getLoginItemSettings({
+        path: process.execPath,
+        args: getAutoLaunchArgs(true),
+      }).openAtLogin,
+      supported: true,
+    }
+  }
+
+  return {
+    enabled: existsSync(getLinuxAutoStartFilePath()),
+    supported: true,
+  }
+}
+
+const setAutoLaunchEnabled = (enabled: boolean): AutoLaunchSettings => {
+  if (!isAutoLaunchSupported()) {
+    return { enabled: false, supported: false }
+  }
+
+  if (process.platform === 'win32') {
+    app.setLoginItemSettings({
+      openAtLogin: enabled,
+      path: process.execPath,
+      args: getAutoLaunchArgs(true),
+    })
+    return getAutoLaunchSettings()
+  }
+
+  const autostartFilePath = getLinuxAutoStartFilePath()
+
+  if (!enabled) {
+    rmSync(autostartFilePath, { force: true })
+    return getAutoLaunchSettings()
+  }
+
+  mkdirSync(dirname(autostartFilePath), { recursive: true })
+  writeFileSync(
+    autostartFilePath,
+    [
+      '[Desktop Entry]',
+      'Type=Application',
+      'Version=1.0',
+      'Name=MailYou',
+      'Comment=Launch MailYou on login',
+      `Exec=${getLinuxAutoStartExec()}`,
+      'Terminal=false',
+      'StartupNotify=false',
+      'X-GNOME-Autostart-enabled=true',
+    ].join('\n'),
+    'utf-8',
+  )
+
+  return getAutoLaunchSettings()
 }
 
 const findBundledIconPath = (preferPng = false) => {
@@ -178,6 +262,7 @@ const tryExtractProtocolUrl = (argv: string[]) =>
   argv.find((value) => value.startsWith('mailyou://')) ?? null
 
 const initialProtocolUrl = tryExtractProtocolUrl(process.argv)
+const shouldLaunchHidden = process.argv.includes(HIDDEN_START_ARG) && !initialProtocolUrl
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -201,6 +286,7 @@ const createMainWindow = async () => {
     titleBarOverlay: false,
     backgroundColor: '#10131c',
     icon: appIconPath,
+    show: !shouldLaunchHidden,
     webPreferences: {
       preload: join(__dirname, 'preload.mjs'),
       contextIsolation: true,
@@ -220,7 +306,9 @@ const createMainWindow = async () => {
   const devServerUrl = getMailYouDevServerUrl()
   if (devServerUrl) {
     await window.loadURL(devServerUrl)
-    window.webContents.openDevTools({ mode: 'detach' })
+    if (!shouldLaunchHidden) {
+      window.webContents.openDevTools({ mode: 'detach' })
+    }
     mainWindow = window
     consumePendingOAuthCallback()
     return window
@@ -467,6 +555,7 @@ app.whenReady().then(async () => {
 
   registerMailIpc()
   registerWindowIpc()
+  setWindowAutoLaunchHandlers(getAutoLaunchSettings, setAutoLaunchEnabled)
   setWindowCloseBehaviorHandler((value) => {
     closeBehaviorPreference = value
   })

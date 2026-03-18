@@ -2,12 +2,14 @@ import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { writeFile, readFile, unlink } from 'fs/promises'
 import { join, basename } from 'path'
 import { tmpdir } from 'os'
-import type { CloseBehaviorPreference, CloseRequestAction } from '@/shared/window/bridge'
+import type { AutoLaunchSettings, CloseBehaviorPreference, CloseRequestAction } from '@/shared/window/bridge'
 
 let registered = false
 let setBackgroundSyncIntervalHandler: ((minutes: number) => void) | null = null
 let setCloseBehaviorPreferenceHandler: ((value: CloseBehaviorPreference) => void) | null = null
 let resolveCloseRequestHandler: ((window: BrowserWindow | null, action: CloseRequestAction, rememberBackground: boolean) => void) | null = null
+let getAutoLaunchSettingsHandler: (() => Promise<AutoLaunchSettings> | AutoLaunchSettings) | null = null
+let setAutoLaunchEnabledHandler: ((enabled: boolean) => Promise<AutoLaunchSettings> | AutoLaunchSettings) | null = null
 
 const getWindowFromEvent = (event: Electron.IpcMainInvokeEvent) => BrowserWindow.fromWebContents(event.sender)
 
@@ -23,6 +25,14 @@ export const setWindowCloseResolveHandler = (
   handler: (window: BrowserWindow | null, action: CloseRequestAction, rememberBackground: boolean) => void,
 ) => {
   resolveCloseRequestHandler = handler
+}
+
+export const setWindowAutoLaunchHandlers = (
+  getHandler: () => Promise<AutoLaunchSettings> | AutoLaunchSettings,
+  setHandler: (enabled: boolean) => Promise<AutoLaunchSettings> | AutoLaunchSettings,
+) => {
+  getAutoLaunchSettingsHandler = getHandler
+  setAutoLaunchEnabledHandler = setHandler
 }
 
 export const registerWindowIpc = () => {
@@ -62,6 +72,16 @@ export const registerWindowIpc = () => {
     if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
       return shell.openExternal(url)
     }
+  })
+
+  ipcMain.handle('window:getAutoLaunchSettings', async () => getAutoLaunchSettingsHandler?.() ?? { enabled: false, supported: false })
+
+  ipcMain.handle('window:setAutoLaunchEnabled', async (_event, enabled: boolean) => {
+    if (typeof enabled !== 'boolean') {
+      return getAutoLaunchSettingsHandler?.() ?? { enabled: false, supported: false }
+    }
+
+    return setAutoLaunchEnabledHandler?.(enabled) ?? { enabled: false, supported: false }
   })
 
   ipcMain.handle('window:setCloseBehaviorPreference', (_event, value: CloseBehaviorPreference) => {
