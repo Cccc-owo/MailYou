@@ -78,6 +78,28 @@
 
           <v-divider class="settings-page__divider" />
 
+          <div v-if="accountsStore.currentAccountId" class="settings-page__item ui-row">
+            <v-icon icon="mdi-database-outline" class="settings-page__item-icon" />
+            <div class="settings-page__item-body">
+              <div class="settings-page__item-label">{{ t('settings.accountQuota') }}</div>
+              <div class="text-body-2 text-medium-emphasis">
+                {{ quotaSummary }}
+              </div>
+            </div>
+            <v-progress-circular
+              v-if="quotaLoading"
+              indeterminate
+              size="18"
+              width="2"
+              color="primary"
+            />
+            <div v-else-if="quota?.usagePercent != null" class="settings-page__metric">
+              {{ quota.usagePercent }}%
+            </div>
+          </div>
+
+          <v-divider v-if="accountsStore.currentAccountId" class="settings-page__divider" />
+
           <div class="settings-page__item ui-row">
             <v-icon icon="mdi-window-close" class="settings-page__item-icon" />
             <div class="settings-page__item-body">
@@ -200,24 +222,31 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import AppScrollablePage from '@/components/ui/AppScrollablePage.vue'
 import BackActionButton from '@/components/ui/BackActionButton.vue'
 import FormSectionCard from '@/components/ui/FormSectionCard.vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { mailRepository } from '@/services/mail'
+import { useAccountsStore } from '@/stores/accounts'
 import { useUiStore, type AppearanceMode, type LocaleMode, type ImageLoadPolicy } from '@/stores/ui'
 import { useSecurityStore } from '@/stores/security'
+import type { AccountQuota } from '@/types/account'
 import type { CloseBehaviorPreference } from '@/shared/window/bridge'
 
 const { t } = useI18n()
 const router = useRouter()
+const accountsStore = useAccountsStore()
 const uiStore = useUiStore()
 const securityStore = useSecurityStore()
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 const securityError = ref<string | null>(null)
+const quota = ref<AccountQuota | null>(null)
+const quotaLoading = ref(false)
+const quotaError = ref<string | null>(null)
 
 const seedOptions = computed(() => [
   { label: t('settings.violet'), value: '#6750A4' },
@@ -247,12 +276,82 @@ const closeBehaviorOptions = computed(() => [
   { label: t('settings.closeBehaviorQuit'), value: 'always_quit' },
 ] satisfies Array<{ label: string; value: CloseBehaviorPreference }>)
 
+const formatQuotaValue = (valueKb: number | null | undefined) => {
+  if (valueKb == null) {
+    return null
+  }
+
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = valueKb
+  let unitIndex = 0
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+
+  const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2
+  return `${new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  }).format(value)} ${units[unitIndex]}`
+}
+
+const quotaSummary = computed(() => {
+  if (quotaLoading.value) {
+    return t('settings.accountQuotaLoading')
+  }
+
+  if (quotaError.value) {
+    return quotaError.value
+  }
+
+  if (!accountsStore.currentAccountId) {
+    return t('settings.accountQuotaUnavailable')
+  }
+
+  if (!quota.value?.storageUsedKb && quota.value?.storageUsedKb !== 0) {
+    return t('settings.accountQuotaUnavailable')
+  }
+
+  const used = formatQuotaValue(quota.value.storageUsedKb)
+  const limit = formatQuotaValue(quota.value.storageLimitKb)
+
+  if (used && limit) {
+    return t('settings.accountQuotaUsage', { used, limit })
+  }
+
+  if (used) {
+    return t('settings.accountQuotaUsedOnly', { used })
+  }
+
+  return t('settings.accountQuotaUnavailable')
+})
+
 const setThemeSeed = (value: string) => uiStore.setThemeSeed(value)
 const setAppearance = (value: AppearanceMode | null) => { if (value) uiStore.setAppearance(value) }
 const setLocale = (value: LocaleMode | null) => { if (value) uiStore.setLocale(value) }
 const setSyncInterval = (value: number | null) => { if (value) uiStore.setSyncIntervalMinutes(value) }
 const setImageLoadPolicy = (value: ImageLoadPolicy | null) => { if (value) uiStore.setImageLoadPolicy(value) }
 const setCloseBehavior = (value: CloseBehaviorPreference | null) => { if (value) uiStore.setCloseBehavior(value) }
+
+const loadQuota = async (accountId: string | null) => {
+  quota.value = null
+  quotaError.value = null
+
+  if (!accountId) {
+    return
+  }
+
+  quotaLoading.value = true
+  try {
+    quota.value = await mailRepository.getAccountQuota(accountId)
+  } catch (err) {
+    quotaError.value = err instanceof Error ? err.message : t('settings.accountQuotaUnavailable')
+  } finally {
+    quotaLoading.value = false
+  }
+}
 
 const securitySummary = computed(() =>
   !securityStore.status?.hasMasterPassword && securityStore.status && !securityStore.status.keyringAvailable
@@ -309,6 +408,8 @@ const lockCurrentSession = async () => {
     securityError.value = err instanceof Error ? err.message : t('security.lockFailed')
   }
 }
+
+watch(() => accountsStore.currentAccountId, loadQuota, { immediate: true })
 </script>
 
 <style scoped>
@@ -394,6 +495,15 @@ const lockCurrentSession = async () => {
 .settings-page__select {
   max-width: 200px;
   flex-shrink: 0;
+}
+
+.settings-page__metric {
+  flex-shrink: 0;
+  min-width: 52px;
+  text-align: right;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: rgb(var(--v-theme-primary));
 }
 
 /* ── Color palette row ── */

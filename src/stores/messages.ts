@@ -49,6 +49,18 @@ export const useMessagesStore = defineStore('messages', () => {
     total: 0,
   })
   let loadGeneration = 0
+  let inFlightListRequest:
+    | {
+        key: string
+        promise: Promise<MailMessage[]>
+      }
+    | null = null
+  let inFlightSearchRequest:
+    | {
+        key: string
+        promise: Promise<MailMessage[]>
+      }
+    | null = null
 
   const sortByDate = (list: MailMessage[]) =>
     list.slice().sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
@@ -206,9 +218,22 @@ export const useMessagesStore = defineStore('messages', () => {
   const loadMessages = async (accountId: string, folderId: string) => {
     isLoading.value = true
     const gen = ++loadGeneration
+    const key = `${accountId}\n${folderId}`
 
     try {
-      const result = await mailRepository.listMessages(accountId, folderId)
+      const result = await (
+        inFlightListRequest?.key === key
+          ? inFlightListRequest.promise
+          : (() => {
+              const promise = mailRepository.listMessages(accountId, folderId)
+              inFlightListRequest = { key, promise }
+              return promise.finally(() => {
+                if (inFlightListRequest?.key === key) {
+                  inFlightListRequest = null
+                }
+              })
+            })()
+      )
       if (gen !== loadGeneration) return // stale response, discard
       setMessages(result)
     } catch (loadError) {
@@ -224,9 +249,23 @@ export const useMessagesStore = defineStore('messages', () => {
   const searchMessages = async (accountId: string, searchQuery: string) => {
     isLoading.value = true
     const gen = ++loadGeneration
+    const normalizedQuery = searchQuery.trim()
+    const key = `${accountId}\n${normalizedQuery}`
 
     try {
-      const result = await mailRepository.searchMessages(accountId, searchQuery)
+      const result = await (
+        inFlightSearchRequest?.key === key
+          ? inFlightSearchRequest.promise
+          : (() => {
+              const promise = mailRepository.searchMessages(accountId, normalizedQuery)
+              inFlightSearchRequest = { key, promise }
+              return promise.finally(() => {
+                if (inFlightSearchRequest?.key === key) {
+                  inFlightSearchRequest = null
+                }
+              })
+            })()
+      )
       if (gen !== loadGeneration) return
       setMessages(result)
     } catch (loadError) {

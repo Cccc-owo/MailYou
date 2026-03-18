@@ -17,6 +17,9 @@ pub(super) async fn create_folder(
         .create(&mailbox_name)
         .await
         .map_err(|e| BackendError::internal(format!("IMAP CREATE failed: {e}")))?;
+    if let Err(error) = session.subscribe(&mailbox_name).await {
+        eprintln!("[imap] SUBSCRIBE failed after create for {mailbox_name}: {error}");
+    }
     let _ = session.logout().await;
 
     provider.sync_account_cap(account_id).await?;
@@ -47,6 +50,12 @@ pub(super) async fn rename_folder(
         .rename(&current_name, &next_name)
         .await
         .map_err(|e| BackendError::internal(format!("IMAP RENAME failed: {e}")))?;
+    if let Err(error) = session.unsubscribe(&current_name).await {
+        eprintln!("[imap] UNSUBSCRIBE failed after rename for {current_name}: {error}");
+    }
+    if let Err(error) = session.subscribe(&next_name).await {
+        eprintln!("[imap] SUBSCRIBE failed after rename for {next_name}: {error}");
+    }
     let _ = session.logout().await;
 
     provider.sync_account_cap(account_id).await?;
@@ -80,6 +89,9 @@ pub(super) async fn delete_folder(
         .delete(&mailbox_name)
         .await
         .map_err(|e| BackendError::internal(format!("IMAP DELETE failed: {e}")))?;
+    if let Err(error) = session.unsubscribe(&mailbox_name).await {
+        eprintln!("[imap] UNSUBSCRIBE failed after delete for {mailbox_name}: {error}");
+    }
     let _ = session.logout().await;
 
     provider.sync_account_cap(account_id).await?;
@@ -154,6 +166,10 @@ pub(super) async fn imap_delete_messages_by_uid(
         .select(&mailbox_name)
         .await
         .map_err(|error| BackendError::internal(format!("IMAP SELECT failed: {error}")))?;
+    let capabilities = session
+        .capabilities()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP CAPABILITY failed: {error}")))?;
     let uid_str = uids
         .iter()
         .map(u32::to_string)
@@ -166,13 +182,7 @@ pub(super) async fn imap_delete_messages_by_uid(
         .try_collect::<Vec<_>>()
         .await
         .map_err(|error| BackendError::internal(format!("IMAP STORE \\Deleted failed: {error}")))?;
-    session
-        .expunge()
-        .await
-        .map_err(|error| BackendError::internal(format!("IMAP EXPUNGE failed: {error}")))?
-        .try_collect::<Vec<_>>()
-        .await
-        .map_err(|error| BackendError::internal(format!("IMAP EXPUNGE failed: {error}")))?;
+    expunge_deleted_messages(&mut session, &uid_str, &capabilities).await?;
     let _ = session.logout().await;
     Ok(())
 }
@@ -210,34 +220,69 @@ pub(super) async fn imap_move_messages(
         .select(&src_name)
         .await
         .map_err(|e| BackendError::internal(format!("IMAP SELECT failed: {e}")))?;
+    let capabilities = session
+        .capabilities()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP CAPABILITY failed: {error}")))?;
 
     let uid_str = uids
         .iter()
         .map(u32::to_string)
         .collect::<Vec<_>>()
         .join(",");
-    session
-        .uid_copy(&uid_str, &dest_name)
-        .await
-        .map_err(|e| BackendError::internal(format!("IMAP COPY failed: {e}")))?;
 
-    session
-        .uid_store(&uid_str, "+FLAGS (\\Deleted)")
-        .await
-        .map_err(|e| BackendError::internal(format!("IMAP STORE \\Deleted failed: {e}")))?
-        .try_collect::<Vec<_>>()
-        .await
-        .map_err(|e| BackendError::internal(format!("IMAP STORE \\Deleted failed: {e}")))?;
+    if capabilities.has_str("MOVE") {
+        session
+            .uid_mv(&uid_str, &dest_name)
+            .await
+            .map_err(|error| BackendError::internal(format!("IMAP MOVE failed: {error}")))?;
+    } else {
+        session
+            .uid_copy(&uid_str, &dest_name)
+            .await
+            .map_err(|e| BackendError::internal(format!("IMAP COPY failed: {e}")))?;
+
+        session
+            .uid_store(&uid_str, "+FLAGS (\\Deleted)")
+            .await
+            .map_err(|e| BackendError::internal(format!("IMAP STORE \\Deleted failed: {e}")))?
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|e| BackendError::internal(format!("IMAP STORE \\Deleted failed: {e}")))?;
+
+        expunge_deleted_messages(&mut session, &uid_str, &capabilities).await?;
+    }
+
+    let _ = session.logout().await;
+    Ok(())
+}
+
+async fn expunge_deleted_messages<T>(
+    session: &mut async_imap::Session<T>,
+    uid_set: &str,
+    capabilities: &async_imap::types::Capabilities,
+) -> Result<(), BackendError>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
+{
+    if capabilities.has_str("UIDPLUS") {
+        session
+            .uid_expunge(uid_set)
+            .await
+            .map_err(|error| BackendError::internal(format!("IMAP UID EXPUNGE failed: {error}")))?
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|error| BackendError::internal(format!("IMAP UID EXPUNGE failed: {error}")))?;
+        return Ok(());
+    }
 
     session
         .expunge()
         .await
-        .map_err(|e| BackendError::internal(format!("IMAP EXPUNGE failed: {e}")))?
+        .map_err(|error| BackendError::internal(format!("IMAP EXPUNGE failed: {error}")))?
         .try_collect::<Vec<_>>()
         .await
-        .map_err(|e| BackendError::internal(format!("IMAP EXPUNGE failed: {e}")))?;
-
-    let _ = session.logout().await;
+        .map_err(|error| BackendError::internal(format!("IMAP EXPUNGE failed: {error}")))?;
     Ok(())
 }
 

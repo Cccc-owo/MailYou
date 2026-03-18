@@ -6,7 +6,7 @@ pub mod registry;
 use async_trait::async_trait;
 
 use crate::models::{
-    AccountSetupDraft, AttachmentContent, DraftMessage, MailAccount, MailLabel, MailMessage,
+    AccountQuota, AccountSetupDraft, AttachmentContent, DraftMessage, MailAccount, MailLabel, MailMessage,
     MailboxBundle, MailboxFolder, SyncStatus,
 };
 use crate::protocol::BackendError;
@@ -32,6 +32,10 @@ pub trait AccountProvider: Send + Sync {
         account_id: &str,
         draft: AccountSetupDraft,
     ) -> Result<MailAccount, BackendError>;
+    async fn get_account_quota_cap(
+        &self,
+        account_id: &str,
+    ) -> Result<Option<AccountQuota>, BackendError>;
 }
 
 #[async_trait]

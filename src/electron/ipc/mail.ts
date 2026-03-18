@@ -124,6 +124,9 @@ export const registerMailIpc = () => {
   handle('mail:updateAccount', (accountId, draft) =>
     mailBackend.updateAccount(accountId as string, draft as AccountSetupDraft),
   )
+  handle('mail:getAccountQuota', (accountId) =>
+    mailBackend.getAccountQuota(accountId as string),
+  )
   handle('mail:listOAuthProviders', () => mailBackend.listOAuthProviders())
   handle('mail:authorizeOAuth', (request) => mailBackend.authorizeOAuth(request as never))
   handle('mail:listContacts', (groupId) => mailBackend.listContacts(groupId as string | undefined))

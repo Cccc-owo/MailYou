@@ -7,7 +7,7 @@ interface UseMailLabelDialogOptions {
   currentAccountId: () => string | null
   findMessage: (messageId: string) => MailMessage | undefined
   fetchAccountLabels: (accountId: string, options?: { force?: boolean }) => Promise<MailLabel[]>
-  refreshMailbox: () => Promise<void>
+  refreshMailbox: (options?: { reloadLabels?: boolean }) => Promise<void>
 }
 
 export const useMailLabelDialog = ({
@@ -105,7 +105,7 @@ export const useMailLabelDialog = ({
           await mailRepository.removeLabel(accountId, messageId, label)
         }
       }
-      await refreshMailbox()
+      await refreshMailbox({ reloadLabels: true })
       await loadAccountLabels()
     } catch (error) {
       labelDialogError.value = error instanceof Error ? error.message : t('labels.updateFailed')
@@ -141,7 +141,7 @@ export const useMailLabelDialog = ({
           labelRenameSource.value,
           nextLabelName,
         )
-        await refreshMailbox()
+        await refreshMailbox({ reloadLabels: true })
         cancelLabelRename()
         return
       }
@@ -150,7 +150,7 @@ export const useMailLabelDialog = ({
         await mailRepository.addLabel(accountId, messageId, nextLabelName)
       }
       labelDraftName.value = ''
-      await refreshMailbox()
+      await refreshMailbox({ reloadLabels: true })
       await loadAccountLabels()
     } catch (error) {
       labelDialogError.value = error instanceof Error ? error.message : t('labels.updateFailed')
@@ -169,7 +169,7 @@ export const useMailLabelDialog = ({
 
     try {
       labelDialogLabels.value = await mailRepository.deleteLabel(accountId, label)
-      await refreshMailbox()
+      await refreshMailbox({ reloadLabels: true })
       if (labelRenameSource.value?.toLowerCase() === label.toLowerCase()) {
         cancelLabelRename()
       }

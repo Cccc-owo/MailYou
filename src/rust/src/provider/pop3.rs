@@ -4,8 +4,8 @@ mod mail_ops;
 use async_trait::async_trait;
 
 use crate::models::{
-    AccountSetupDraft, AttachmentContent, DraftMessage, MailAccount, MailLabel, MailMessage,
-    MailboxBundle, MailboxFolder, SyncStatus,
+    AccountQuota, AccountSetupDraft, AttachmentContent, DraftMessage, MailAccount, MailLabel,
+    MailMessage, MailboxBundle, MailboxFolder, SyncStatus,
 };
 use crate::protocol::BackendError;
 use crate::provider::common::validate_draft;
@@ -65,6 +65,13 @@ impl AccountProvider for Pop3SmtpProvider {
         draft: AccountSetupDraft,
     ) -> Result<MailAccount, BackendError> {
         memory::store().accounts().update_account(account_id, draft)
+    }
+
+    async fn get_account_quota_cap(
+        &self,
+        _account_id: &str,
+    ) -> Result<Option<AccountQuota>, BackendError> {
+        Ok(None)
     }
 }
 

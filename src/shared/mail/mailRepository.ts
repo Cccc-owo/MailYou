@@ -1,5 +1,6 @@
 import type {
   AccountSetupDraft,
+  AccountQuota,
   MailAccount,
   OAuthAuthorizationRequest,
   OAuthAuthorizationResult,
@@ -52,6 +53,7 @@ export interface MailRepository {
   getAttachmentContent(accountId: string, messageId: string, attachmentId: string): Promise<AttachmentContent>
   getAccountConfig(accountId: string): Promise<AccountSetupDraft>
   updateAccount(accountId: string, draft: AccountSetupDraft): Promise<MailAccount>
+  getAccountQuota(accountId: string): Promise<AccountQuota | null>
   listOAuthProviders(): Promise<OAuthProviderAvailability[]>
   authorizeOAuth(request: OAuthAuthorizationRequest): Promise<OAuthAuthorizationResult>
   listContacts(groupId?: string): Promise<Contact[]>

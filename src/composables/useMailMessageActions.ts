@@ -33,7 +33,7 @@ interface UseMailMessageActionsOptions {
   currentAccountId: Ref<string | null>
   messagesStore: MessageStoreLike
   mailboxesStore: MailboxStoreLike
-  refreshMailbox: () => Promise<void>
+  refreshMailbox: (options?: { reloadLabels?: boolean }) => Promise<void>
   performUndoable: (label: string, undoFn: () => Promise<void>) => void
   applyCachedReadState: (messageIds: Iterable<string>, isRead: boolean) => void
   adjustUnreadCountsForMessages: (

@@ -44,6 +44,7 @@ export const electronMailRepository: MailRepository = {
   getAttachmentContent: (accountId, messageId, attachmentId) => getBridge().getAttachmentContent(accountId, messageId, attachmentId),
   getAccountConfig: (accountId) => getBridge().getAccountConfig(accountId),
   updateAccount: (accountId, draft) => getBridge().updateAccount(accountId, draft),
+  getAccountQuota: (accountId) => getBridge().getAccountQuota(accountId),
   listOAuthProviders: () => getBridge().listOAuthProviders(),
   authorizeOAuth: (request) => getBridge().authorizeOAuth(request),
   listContacts: (groupId) => getBridge().listContacts(groupId),

@@ -58,6 +58,15 @@ export interface MailAccount {
   identities: MailIdentity[]
 }
 
+export interface AccountQuota {
+  accountId: string
+  quotaRoot?: string | null
+  storageUsedKb?: number | null
+  storageLimitKb?: number | null
+  usagePercent?: number | null
+  updatedAt: string
+}
+
 export interface AccountSetupDraft {
   displayName: string
   email: string

@@ -1,4 +1,5 @@
 import type { AccountSetupDraft, MailAccount, OAuthProviderAvailability } from '@/types/account'
+import type { AccountQuota } from '@/types/account'
 import type { Contact, ContactGroup } from '@/types/contact'
 import type {
   MailLabel,
@@ -151,6 +152,10 @@ export interface RustBackendMethodMap {
   updateAccount: {
     params: { accountId: string; draft: AccountSetupDraft }
     result: MailAccount
+  }
+  getAccountQuota: {
+    params: { accountId: string }
+    result: AccountQuota | null
   }
   listOAuthProviders: {
     params: undefined

@@ -41,15 +41,6 @@ impl RealtimeController {
             .into_iter()
             .filter(|account| account.incoming_protocol == "imap")
         {
-            if self
-                .idle_unsupported_accounts
-                .lock()
-                .unwrap()
-                .contains(&account.id)
-            {
-                continue;
-            }
-
             let profile = realtime_profile(&account.provider);
             for mailbox_name in resolve_watched_mailboxes(&account.id, profile.watch_junk) {
                 let task_key = format!("{}\n{}", account.id, mailbox_name);
@@ -110,7 +101,22 @@ async fn run_realtime_loop(
     let mut backoff = profile.base_backoff;
 
     loop {
-        match idle_until_mailbox_changes(&account_id, &mailbox_name, profile.idle_timeout).await {
+        let uses_poll_fallback = idle_unsupported_accounts
+            .lock()
+            .unwrap()
+            .contains(&account_id);
+        let change_result = if uses_poll_fallback {
+            poll_until_mailbox_changes(
+                &account_id,
+                &mailbox_name,
+                std::cmp::max(profile.base_backoff, Duration::from_secs(20)),
+            )
+            .await
+        } else {
+            idle_until_mailbox_changes(&account_id, &mailbox_name, profile.idle_timeout).await
+        };
+
+        match change_result {
             Ok(IdleMailboxChange::Changed) => {
                 if let Err(error) = sync_mailbox_incremental(&account_id, &mailbox_name).await {
                     eprintln!(
@@ -156,14 +162,15 @@ async fn run_realtime_loop(
             Err(error) => {
                 if error_indicates_unsupported_idle(&error.message) {
                     eprintln!(
-                        "[idle] disabling realtime watcher for {account_id}: {}",
+                        "[idle] switching realtime watcher to NOOP polling for {account_id}: {}",
                         error.message
                     );
                     idle_unsupported_accounts
                         .lock()
                         .unwrap()
                         .insert(account_id.clone());
-                    break;
+                    backoff = profile.base_backoff;
+                    continue;
                 }
 
                 eprintln!(
@@ -187,6 +194,18 @@ async fn idle_until_mailbox_changes(
         .get_account_state(account_id)
         .ok_or_else(|| crate::protocol::BackendError::not_found("Account not found"))?;
     wait_for_mailbox_change(&account_state, mailbox_name, idle_timeout).await
+}
+
+async fn poll_until_mailbox_changes(
+    account_id: &str,
+    mailbox_name: &str,
+    poll_interval: Duration,
+) -> Result<IdleMailboxChange, crate::protocol::BackendError> {
+    let account_state = memory::store()
+        .accounts()
+        .get_account_state(account_id)
+        .ok_or_else(|| crate::protocol::BackendError::not_found("Account not found"))?;
+    crate::provider::imap::poll_for_mailbox_change(&account_state, mailbox_name, poll_interval).await
 }
 
 fn resolve_folder_id(account_id: &str, mailbox_name: &str) -> Option<String> {

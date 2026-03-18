@@ -40,6 +40,10 @@ export const useMailMailboxView = ({
   messagesStore,
   mailboxesStore,
 }: UseMailMailboxViewOptions) => {
+  type RefreshMailboxOptions = {
+    reloadLabels?: boolean
+  }
+
   const sidebarLabels = ref<MailLabel[]>([])
   const currentMailboxBundle = ref<MailboxBundle | null>(null)
   const loadingStage = ref<LoadingStage>('idle')
@@ -53,6 +57,7 @@ export const useMailMailboxView = ({
   let lastLabelsLoadedAt = 0
   let refreshMailboxPromise: Promise<void> | null = null
   let refreshMailboxPending = false
+  let refreshMailboxNeedsLabels = false
   const batchAction = computed(() => messagesStore.batchAction)
   const batchProgress = computed(() => {
     const current = batchAction.value
@@ -240,10 +245,12 @@ export const useMailMailboxView = ({
     }
   }
 
-  const refreshMailbox = async (accountId: string | null) => {
+  const refreshMailbox = async (accountId: string | null, options?: RefreshMailboxOptions) => {
     if (!accountId) {
       return
     }
+
+    refreshMailboxNeedsLabels = refreshMailboxNeedsLabels || Boolean(options?.reloadLabels)
 
     if (refreshMailboxPromise) {
       refreshMailboxPending = true
@@ -258,13 +265,18 @@ export const useMailMailboxView = ({
         }
         refreshMailboxPending = false
         mailboxLoadPromise = null
-        labelsLoadPromise = null
         lastMailboxLoadedAt = 0
-        lastLabelsLoadedAt = 0
+        if (refreshMailboxNeedsLabels) {
+          labelsLoadPromise = null
+          labelsLoadAccountId = null
+          lastLabelsLoadedAt = 0
+        }
         await loadMailbox(accountId)
+        refreshMailboxNeedsLabels = false
       } while (refreshMailboxPending)
     })().finally(() => {
       refreshMailboxPromise = null
+      refreshMailboxNeedsLabels = false
     })
 
     return refreshMailboxPromise

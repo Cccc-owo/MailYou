@@ -407,7 +407,8 @@ const {
   mailboxesStore,
 })
 
-const refreshMailbox = () => refreshMailboxState(accountsStore.currentAccountId)
+const refreshMailbox = (options?: { reloadLabels?: boolean }) =>
+  refreshMailboxState(accountsStore.currentAccountId, options)
 
 const patchCachedMessage = (messageId: string, updater: (message: import('@/types/mail').MailMessage) => import('@/types/mail').MailMessage) => {
   if (!currentMailboxBundle.value) {
@@ -573,9 +574,16 @@ const handleFolderChange = async (folderId: string) => {
   selectedLabel.value = null
   mailboxesStore.selectFolder(folderId)
   try {
-    setLoadingStage('fetching')
-    await messagesStore.loadMessages(accountsStore.currentAccountId, folderId)
-    setLoadingStage('finalizing')
+    const canReuseMailboxBundle = currentMailboxBundle.value?.folders.some((folder) => folder.id === folderId)
+
+    if (canReuseMailboxBundle && currentMailboxBundle.value) {
+      setLoadingStage('applying')
+      messagesStore.setMailboxBundle(currentMailboxBundle.value, folderId)
+      setLoadingStage('finalizing')
+      return
+    }
+
+    await loadMailbox(accountsStore.currentAccountId)
   } catch {
     messagesStore.error = t('shell.failedToLoadMessages')
   } finally {
@@ -901,7 +909,7 @@ const handleSyncAccount = async (accountId: string) => {
     if (messagesStore.error) {
       lastFailedAction.value = () => handleSyncAccount(accountId)
     } else {
-      await refreshMailbox()
+      await refreshMailbox({ reloadLabels: true })
     }
   } finally {
     setLoadingStage('idle')
@@ -934,7 +942,7 @@ const syncCurrentAccount = async () => {
       lastFailedAction.value = () => handleSyncAccount(accountId)
       return
     }
-    await refreshMailbox()
+    await refreshMailbox({ reloadLabels: true })
   } finally {
     setLoadingStage('idle')
   }
@@ -1018,7 +1026,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyboard)
   backgroundSyncUnsubscribe = window.mailyou?.onBackgroundSync(async (accountId) => {
     if (accountId === accountsStore.currentAccountId) {
-      await refreshMailbox()
+      await refreshMailbox({ reloadLabels: true })
     }
   })
 })
@@ -1062,8 +1070,16 @@ watch(
       }
 
       if (folderId) {
-        setLoadingStage('fetching')
-        await messagesStore.loadMessages(accountId, folderId)
+        const canReuseMailboxBundle = currentMailboxBundle.value?.folders.some((folder) => folder.id === folderId)
+
+        if (canReuseMailboxBundle && currentMailboxBundle.value) {
+          setLoadingStage('applying')
+          messagesStore.setMailboxBundle(currentMailboxBundle.value, folderId)
+          setLoadingStage('finalizing')
+        } else {
+          setLoadingStage('fetching')
+          await messagesStore.loadMessages(accountId, folderId)
+        }
         setLoadingStage('idle')
       } else {
         await loadMailbox(accountId)

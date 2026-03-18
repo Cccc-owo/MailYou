@@ -54,6 +54,7 @@ export const rustMailBackend: MailBackend = {
   getAttachmentContent: (accountId, messageId, attachmentId) => invokeRustBackend('getAttachmentContent', { accountId, messageId, attachmentId }),
   getAccountConfig: (accountId) => invokeRustBackend('getAccountConfig', { accountId }),
   updateAccount: (accountId, draft) => invokeRustBackend('updateAccount', { accountId, draft }),
+  getAccountQuota: (accountId) => invokeRustBackend('getAccountQuota', { accountId }),
   listOAuthProviders: () => invokeRustBackend('listOAuthProviders'),
   authorizeOAuth,
   listContacts: (groupId) => invokeRustBackend('listContacts', { groupId }),

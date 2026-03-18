@@ -68,6 +68,49 @@ pub(super) async fn wait_for_mailbox_change(
     }
 }
 
+pub(super) async fn poll_for_mailbox_change(
+    state: &StoredAccountState,
+    mailbox_name: &str,
+    poll_interval: std::time::Duration,
+) -> Result<super::IdleMailboxChange, BackendError> {
+    tokio::time::sleep(poll_interval).await;
+
+    let account_id = &state.account.id;
+    let previous_folder = memory::store()
+        .mail()
+        .list_folders(account_id)
+        .ok()
+        .and_then(|folders| {
+            folders
+                .into_iter()
+                .find(|folder| folder.imap_name.as_deref() == Some(mailbox_name))
+        });
+    let previous_total = previous_folder.as_ref().map(|folder| folder.total_count).unwrap_or(0);
+    let previous_uid_next = previous_folder.as_ref().and_then(|folder| folder.imap_uid_next);
+    let previous_uid_validity = previous_folder.as_ref().and_then(|folder| folder.imap_uid_validity);
+
+    let mut session = super::client_ops::imap_connect(state).await?;
+    session
+        .noop()
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP NOOP failed: {error}")))?;
+    let mailbox = session
+        .status(mailbox_name, "(MESSAGES UIDNEXT UIDVALIDITY)")
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP STATUS failed: {error}")))?;
+    let _ = session.logout().await;
+
+    let changed = mailbox.exists != previous_total
+        || mailbox.uid_next != previous_uid_next
+        || mailbox.uid_validity != previous_uid_validity;
+
+    if changed {
+        Ok(super::IdleMailboxChange::Changed)
+    } else {
+        Ok(super::IdleMailboxChange::Timeout)
+    }
+}
+
 pub(super) async fn sync_mailbox_incremental(
     account_id: &str,
     mailbox_name: &str,
@@ -147,6 +190,7 @@ async fn imap_fetch_mailbox(
     state: &StoredAccountState,
 ) -> Result<(Vec<MailboxFolder>, Vec<MailMessage>, Vec<MailThread>), BackendError> {
     let account_id = state.account.id.clone();
+    let previous_folders = memory::store().mail().list_folders(&account_id).unwrap_or_default();
     let mut session = super::client_ops::imap_connect(state).await?;
     let remote_folders = session
         .list(None, Some("*"))
@@ -155,6 +199,21 @@ async fn imap_fetch_mailbox(
         .try_collect::<Vec<_>>()
         .await
         .map_err(|e| BackendError::internal(format!("IMAP LIST failed: {e}")))?;
+    let subscribed_mailboxes = if let Ok(stream) = session.lsub(None, Some("*")).await {
+        stream
+            .try_collect::<Vec<_>>()
+            .await
+            .ok()
+            .map(|mailboxes| {
+                mailboxes
+                    .into_iter()
+                    .map(|mailbox| mailbox.name().to_string())
+                    .collect::<std::collections::HashSet<_>>()
+            })
+            .filter(|mailboxes| !mailboxes.is_empty())
+    } else {
+        None
+    };
 
     let existing_bodies = memory::store().mail().get_existing_bodies(&account_id);
     let mut folders = Vec::new();
@@ -188,7 +247,35 @@ async fn imap_fetch_mailbox(
 
         let display_name = super::parse_ops::decode_imap_utf7(raw_name);
         let (kind, icon) = classify_folder(&display_name, remote_folder.attributes());
+        if should_skip_unsubscribed_folder(raw_name, kind.clone(), &subscribed_mailboxes) {
+            continue;
+        }
         let folder_id = format!("{}-{}", super::parse_ops::slug(raw_name), account_id);
+        let previous_folder = previous_folders.iter().find(|folder| folder.id == folder_id);
+
+        if let Some(status) = fetch_idle_folder_status(
+            &mut session,
+            raw_name,
+            previous_folder,
+            &folder_id,
+        )
+        .await?
+        {
+            folders.push(MailboxFolder {
+                id: folder_id,
+                account_id: account_id.clone(),
+                name: display_name,
+                kind,
+                unread_count: 0,
+                total_count: status.exists,
+                icon: icon.into(),
+                imap_name: Some(raw_name.to_string()),
+                imap_uid_validity: status.uid_validity,
+                imap_uid_next: status.uid_next,
+                imap_highest_modseq: status.highest_modseq,
+            });
+            continue;
+        }
 
         let (unread, total, messages, threads) = fetch_folder_contents(
             &mut session,
@@ -219,6 +306,52 @@ async fn imap_fetch_mailbox(
 
     let _ = session.logout().await;
     Ok((folders, all_messages, all_threads))
+}
+
+fn should_skip_unsubscribed_folder(
+    mailbox_name: &str,
+    kind: MailFolderKind,
+    subscribed_mailboxes: &Option<std::collections::HashSet<String>>,
+) -> bool {
+    let Some(subscribed_mailboxes) = subscribed_mailboxes else {
+        return false;
+    };
+
+    if subscribed_mailboxes.contains(mailbox_name) {
+        return false;
+    }
+
+    matches!(kind, MailFolderKind::Custom)
+}
+
+async fn fetch_idle_folder_status(
+    session: &mut super::ImapAnySession,
+    mailbox_name: &str,
+    previous_folder: Option<&MailboxFolder>,
+    folder_id: &str,
+) -> Result<Option<async_imap::types::Mailbox>, BackendError> {
+    let Some(previous_folder) = previous_folder else {
+        return Ok(None);
+    };
+
+    if previous_folder.total_count != 0 {
+        return Ok(None);
+    }
+
+    let status = session
+        .status(mailbox_name, "(MESSAGES UIDNEXT UIDVALIDITY)")
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP STATUS failed: {error}")))?;
+
+    if status.exists != 0 {
+        return Ok(None);
+    }
+
+    eprintln!(
+        "[imap] STATUS shortcut for empty mailbox account={} mailbox={}",
+        previous_folder.account_id, folder_id
+    );
+    Ok(Some(status))
 }
 
 async fn fetch_folder_contents(
@@ -779,11 +912,11 @@ async fn select_mailbox_for_incremental_sync(
     }
 
     eprintln!(
-        "[imap] falling back to plain SELECT account={} mailbox={}",
+        "[imap] falling back to EXAMINE account={} mailbox={}",
         account_id, mailbox_name
     );
-    let mailbox = session.select(mailbox_name).await.map_err(|error| {
-        BackendError::internal(format!("IMAP SELECT '{mailbox_name}' failed: {error}"))
+    let mailbox = session.examine(mailbox_name).await.map_err(|error| {
+        BackendError::internal(format!("IMAP EXAMINE '{mailbox_name}' failed: {error}"))
     })?;
     Ok(super::MailboxSelectResult {
         mailbox,

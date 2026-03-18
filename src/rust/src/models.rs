@@ -14,4 +14,4 @@ pub use mailbox::{
     AttachmentContent, AttachmentMeta, MailFolderKind, MailLabel, MailMessage, MailThread,
     MailboxBundle, MailboxFolder,
 };
-pub use sync::SyncStatus;
+pub use sync::{AccountQuota, SyncStatus};

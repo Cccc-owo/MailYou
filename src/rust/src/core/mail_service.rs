@@ -232,6 +232,10 @@ impl<'a> MailService<'a> {
                 let provider = self.account_provider_for_account(&account_id);
                 serialize(provider.update_account_cap(&account_id, draft).await?)
             }
+            BackendRequest::GetAccountQuota { account_id } => {
+                let provider = self.account_provider_for_account(&account_id);
+                serialize(provider.get_account_quota_cap(&account_id).await?)
+            }
             BackendRequest::ListOAuthProviders => serialize(list_oauth_providers()),
             other => Err(BackendError::internal(format!(
                 "Unsupported mail request: {}",

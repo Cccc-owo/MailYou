@@ -18,8 +18,9 @@ use tokio::net::TcpStream;
 use tokio_native_tls::TlsStream;
 
 use crate::models::{
-    AccountSetupDraft, AttachmentContent, AttachmentMeta, DraftMessage, MailAccount, MailLabel,
-    MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
+    AccountQuota, AccountSetupDraft, AttachmentContent, AttachmentMeta, DraftMessage, MailAccount,
+    MailLabel, MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState,
+    SyncStatus,
 };
 use crate::protocol::BackendError;
 use crate::provider::common::{
@@ -190,6 +191,41 @@ impl AccountProvider for ImapSmtpProvider {
         draft: AccountSetupDraft,
     ) -> Result<MailAccount, BackendError> {
         memory::store().accounts().update_account(account_id, draft)
+    }
+
+    async fn get_account_quota_cap(
+        &self,
+        account_id: &str,
+    ) -> Result<Option<AccountQuota>, BackendError> {
+        let mut session = client_ops::imap_connect_by_account(account_id).await?;
+        let quota_result = session.get_quota_root("INBOX").await;
+        let _ = session.logout().await;
+
+        let (_quota_roots, quotas) = match quota_result {
+            Ok(result) => result,
+            Err(error) => {
+                eprintln!("[imap] quota unavailable for {account_id}: {error}");
+                return Ok(None);
+            }
+        };
+
+        for quota in quotas {
+            let quota_root = quota.root_name;
+            for resource in quota.resources {
+                if matches!(&resource.name, async_imap::types::QuotaResourceName::Storage) {
+                    return Ok(Some(AccountQuota {
+                        account_id: account_id.to_string(),
+                        quota_root: Some(quota_root),
+                        storage_used_kb: Some(resource.usage),
+                        storage_limit_kb: Some(resource.limit),
+                        usage_percent: Some(resource.get_usage_percentage()),
+                        updated_at: memory::current_timestamp(),
+                    }));
+                }
+            }
+        }
+
+        Ok(None)
     }
 }
 
@@ -427,6 +463,14 @@ pub(crate) async fn wait_for_mailbox_change(
     idle_timeout: Duration,
 ) -> Result<IdleMailboxChange, BackendError> {
     sync_ops::wait_for_mailbox_change(state, mailbox_name, idle_timeout).await
+}
+
+pub(crate) async fn poll_for_mailbox_change(
+    state: &StoredAccountState,
+    mailbox_name: &str,
+    poll_interval: Duration,
+) -> Result<IdleMailboxChange, BackendError> {
+    sync_ops::poll_for_mailbox_change(state, mailbox_name, poll_interval).await
 }
 
 pub(crate) async fn sync_mailbox_incremental(

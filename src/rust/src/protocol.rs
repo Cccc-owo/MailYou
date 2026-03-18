@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::models::{
-    AccountSetupDraft, AttachmentContent, Contact, ContactGroup, DraftMessage, MailAccount,
+    AccountQuota, AccountSetupDraft, AttachmentContent, Contact, ContactGroup, DraftMessage, MailAccount,
     MailMessage, MailboxBundle, MailboxFolder, OAuthProviderAvailability, SyncStatus,
 };
 
@@ -162,6 +162,10 @@ pub enum BackendRequest {
         account_id: String,
         draft: AccountSetupDraft,
     },
+    #[serde(rename_all = "camelCase")]
+    GetAccountQuota {
+        account_id: String,
+    },
     ListOAuthProviders,
     // -- Contacts (local-only, bypass mail capability providers) --
     #[serde(rename_all = "camelCase")]
@@ -265,6 +269,7 @@ impl BackendRequest {
             Self::GetAttachmentContent { .. } => "getAttachmentContent",
             Self::GetAccountConfig { .. } => "getAccountConfig",
             Self::UpdateAccount { .. } => "updateAccount",
+            Self::GetAccountQuota { .. } => "getAccountQuota",
             Self::ListOAuthProviders => "listOAuthProviders",
             Self::ListContacts { .. } => "listContacts",
             Self::CreateContact(_) => "createContact",
@@ -448,6 +453,8 @@ pub type SendMessageResponse = SendMessageResult;
 pub type ToggleMessageResult = Option<MailMessage>;
 #[allow(dead_code)]
 pub type DeleteMessageResult = ();
+#[allow(dead_code)]
+pub type GetAccountQuotaResult = Option<AccountQuota>;
 #[allow(dead_code)]
 pub type SyncAccountResult = SyncStatus;
 #[allow(dead_code)]
