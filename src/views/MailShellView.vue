@@ -1065,7 +1065,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyboard)
   backgroundSyncUnsubscribe = window.mailyou?.onBackgroundSync(async (accountId) => {
     if (accountId === accountsStore.currentAccountId) {
-      await refreshMailbox({ reloadLabels: true })
+      await refreshMailbox()
     }
   })
 })

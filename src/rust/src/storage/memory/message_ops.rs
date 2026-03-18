@@ -274,17 +274,24 @@ pub(crate) fn delete_message(account_id: &str, message_id: &str) -> Result<(), B
         .map(|folder| folder.id.clone())
         .ok_or_else(|| BackendError::internal("Trash folder is missing"))?;
 
-    let Some(message) = state
+    let Some(message_index) = state
         .messages
-        .iter_mut()
-        .find(|message| message.account_id == account_id && message.id == message_id)
+        .iter()
+        .position(|message| message.account_id == account_id && message.id == message_id)
     else {
         return Ok(());
     };
 
-    message.folder_id = trash_folder_id;
-    message.previous_folder_id = None;
-    message.is_read = true;
+    if state.messages[message_index].folder_id == trash_folder_id {
+        state.messages.remove(message_index);
+    } else {
+        let previous_folder_id = state.messages[message_index].folder_id.clone();
+        let message = &mut state.messages[message_index];
+        message.folder_id = trash_folder_id;
+        message.previous_folder_id = Some(previous_folder_id);
+        message.is_read = true;
+    }
+
     state.recalculate_counts();
     state.persist()?;
     Ok(())
@@ -309,15 +316,20 @@ pub(crate) fn batch_delete_messages(
         .map(|folder| folder.id.clone())
         .ok_or_else(|| BackendError::internal("Trash folder is missing"))?;
 
-    for message in state
-        .messages
-        .iter_mut()
-        .filter(|message| message.account_id == account_id && message_ids.contains(message.id.as_str()))
-    {
+    state.messages.retain_mut(|message| {
+        if message.account_id != account_id || !message_ids.contains(message.id.as_str()) {
+            return true;
+        }
+
+        if message.folder_id == trash_folder_id {
+            return false;
+        }
+
+        message.previous_folder_id = Some(message.folder_id.clone());
         message.folder_id = trash_folder_id.clone();
-        message.previous_folder_id = None;
         message.is_read = true;
-    }
+        true
+    });
 
     state.recalculate_counts();
     state.persist()?;

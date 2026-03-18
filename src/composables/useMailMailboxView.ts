@@ -31,8 +31,6 @@ interface UseMailMailboxViewOptions {
 }
 
 const MAILBOX_CACHE_WINDOW_MS = 1200
-const LABEL_CACHE_WINDOW_MS = 1500
-
 export const useMailMailboxView = ({
   t,
   isSyncing,
@@ -54,7 +52,6 @@ export const useMailMailboxView = ({
   let labelsLoadPromise: Promise<MailLabel[]> | null = null
   let labelsLoadAccountId: string | null = null
   let lastMailboxLoadedAt = 0
-  let lastLabelsLoadedAt = 0
   let refreshMailboxPromise: Promise<void> | null = null
   let refreshMailboxPending = false
   let refreshMailboxNeedsLabels = false
@@ -172,13 +169,11 @@ export const useMailMailboxView = ({
 
   const fetchAccountLabels = async (accountId: string, options?: { force?: boolean }) => {
     const force = options?.force ?? false
-    const now = Date.now()
 
     if (
       !force
       && sidebarLabels.value.length > 0
       && labelsLoadAccountId === accountId
-      && now - lastLabelsLoadedAt < LABEL_CACHE_WINDOW_MS
     ) {
       return sidebarLabels.value
     }
@@ -191,7 +186,6 @@ export const useMailMailboxView = ({
     labelsLoadPromise = mailRepository.listLabels(accountId)
       .then((labels) => {
         sidebarLabels.value = labels
-        lastLabelsLoadedAt = Date.now()
         return labels
       })
       .finally(() => {
@@ -269,7 +263,6 @@ export const useMailMailboxView = ({
         if (refreshMailboxNeedsLabels) {
           labelsLoadPromise = null
           labelsLoadAccountId = null
-          lastLabelsLoadedAt = 0
         }
         await loadMailbox(accountId)
         refreshMailboxNeedsLabels = false
@@ -288,7 +281,6 @@ export const useMailMailboxView = ({
     labelsLoadPromise = null
     labelsLoadAccountId = null
     lastMailboxLoadedAt = 0
-    lastLabelsLoadedAt = 0
   }
 
   return {
