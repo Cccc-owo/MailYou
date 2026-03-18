@@ -399,6 +399,36 @@ const updateIdentityField = (
   ))
 }
 
+const serializeIdentity = (identity: MailIdentity): MailIdentity => ({
+  id: identity.id,
+  name: identity.name,
+  email: identity.email,
+  replyTo: identity.replyTo ?? null,
+  signature: identity.signature ?? null,
+  isDefault: identity.isDefault,
+})
+
+const buildDraftPayload = (): AccountSetupDraft => ({
+  displayName: draft.displayName,
+  email: draft.email,
+  provider: draft.provider,
+  authMode: draft.authMode,
+  incomingProtocol: draft.incomingProtocol,
+  incomingHost: draft.incomingHost,
+  incomingPort: draft.incomingPort,
+  outgoingHost: draft.outgoingHost,
+  outgoingPort: draft.outgoingPort,
+  username: draft.username,
+  password: draft.password,
+  useTls: draft.useTls,
+  oauthProvider: draft.oauthProvider,
+  oauthSource: draft.oauthSource,
+  accessToken: draft.accessToken,
+  refreshToken: draft.refreshToken,
+  tokenExpiresAt: draft.tokenExpiresAt,
+  identities: draft.identities.map(serializeIdentity),
+})
+
 const protocolOptions = computed(() => [
   { label: t('accountSetup.protocolImap'), value: 'imap' },
   { label: t('accountSetup.protocolPop3'), value: 'pop3' },
@@ -731,7 +761,7 @@ const runConnectionTest = async () => {
   error.value = null
 
   try {
-    await accountsStore.testAccountConnection({ ...draft, identities: [...draft.identities] })
+    await accountsStore.testAccountConnection(buildDraftPayload())
   } catch (testError) {
     error.value = testError instanceof Error ? testError.message : 'Unable to test account connection'
   }
@@ -746,7 +776,7 @@ const saveAccount = async () => {
   error.value = null
 
   try {
-    const payload = { ...draft, identities: [...draft.identities] }
+    const payload = buildDraftPayload()
     if (isEditMode.value) {
       await accountsStore.updateAccount(editAccountId.value!, payload)
     } else {
