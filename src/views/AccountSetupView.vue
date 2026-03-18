@@ -178,6 +178,29 @@
                     {{ t('accountSetup.oauthAuthorizedUntil', { time: formattedTokenExpiry }) }}
                   </div>
                 </div>
+                <div v-if="isAuthorizingOAuth" class="account-setup__oauth-fallback">
+                  <v-alert type="info" variant="tonal">
+                    {{ t('accountSetup.oauthManualCallbackHint') }}
+                  </v-alert>
+                  <div class="d-flex ga-3 align-start flex-wrap">
+                    <v-text-field
+                      v-model="manualOAuthCallbackUrl"
+                      :label="t('accountSetup.oauthManualCallback')"
+                      :placeholder="t('accountSetup.oauthManualCallbackPlaceholder')"
+                      class="flex-grow-1"
+                      hide-details="auto"
+                      @keydown.enter.prevent="submitManualOAuthCallback"
+                    />
+                    <v-btn
+                      variant="tonal"
+                      color="primary"
+                      :disabled="!manualOAuthCallbackUrl.trim()"
+                      @click="submitManualOAuthCallback"
+                    >
+                      {{ t('accountSetup.oauthManualSubmit') }}
+                    </v-btn>
+                  </div>
+                </div>
               </template>
 
               <template v-if="showAdvancedConnectionFields">
@@ -288,6 +311,7 @@ const isSaving = ref(false)
 const isAuthorizingOAuth = ref(false)
 const advancedMode = ref(false)
 const error = ref<string | null>(null)
+const manualOAuthCallbackUrl = ref('')
 const serverOperationStage = ref<'idle' | 'testing' | 'saving' | 'syncing'>('idle')
 
 const editAccountId = computed(() => route.params.accountId as string | undefined)
@@ -778,6 +802,7 @@ const runOAuthAuthorization = async () => {
 
   isAuthorizingOAuth.value = true
   error.value = null
+  manualOAuthCallbackUrl.value = ''
 
   try {
     draft.username = draft.email.trim()
@@ -792,6 +817,26 @@ const runOAuthAuthorization = async () => {
     error.value = authorizeError instanceof Error ? authorizeError.message : 'Unable to authorize OAuth account'
   } finally {
     isAuthorizingOAuth.value = false
+  }
+}
+
+const submitManualOAuthCallback = async () => {
+  const rawUrl = manualOAuthCallbackUrl.value.trim()
+  if (!rawUrl || !isAuthorizingOAuth.value) {
+    return
+  }
+
+  try {
+    const handled = await accountsStore.handleOAuthCallbackUrl(rawUrl)
+    if (!handled) {
+      error.value = t('accountSetup.oauthManualCallbackRejected')
+      return
+    }
+
+    manualOAuthCallbackUrl.value = ''
+    error.value = null
+  } catch (submitError) {
+    error.value = submitError instanceof Error ? submitError.message : t('accountSetup.oauthManualCallbackRejected')
   }
 }
 
@@ -855,6 +900,11 @@ const saveAccount = async () => {
 }
 
 .account-identity-list {
+  display: grid;
+  gap: 12px;
+}
+
+.account-setup__oauth-fallback {
   display: grid;
   gap: 12px;
 }

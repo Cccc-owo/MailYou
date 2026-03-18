@@ -134,6 +134,10 @@ export const useAccountsStore = defineStore('accounts', () => {
     return await mailRepository.authorizeOAuth(request)
   }
 
+  const handleOAuthCallbackUrl = async (rawUrl: string) => {
+    return await mailRepository.handleOAuthCallbackUrl(rawUrl)
+  }
+
   return {
     accounts,
     currentAccount,
@@ -151,6 +155,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     updateAccount,
     loadOAuthProviders,
     authorizeOAuth,
+    handleOAuthCallbackUrl,
     selectAccount,
     syncAccount,
     testAccountConnection,

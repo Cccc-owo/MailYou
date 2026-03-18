@@ -40,6 +40,7 @@ const mailyou: MailyouBridge = {
   getAccountQuota: (accountId) => ipcRenderer.invoke('mail:getAccountQuota', accountId),
   listOAuthProviders: () => ipcRenderer.invoke('mail:listOAuthProviders'),
   authorizeOAuth: (request) => ipcRenderer.invoke('mail:authorizeOAuth', request),
+  handleOAuthCallbackUrl: (rawUrl) => ipcRenderer.invoke('mail:handleOAuthCallbackUrl', rawUrl),
   listContacts: (groupId) => ipcRenderer.invoke('mail:listContacts', groupId),
   createContact: (contact) => ipcRenderer.invoke('mail:createContact', contact),
   updateContact: (contactId, contact) => ipcRenderer.invoke('mail:updateContact', contactId, contact),

@@ -56,6 +56,7 @@ export interface MailRepository {
   getAccountQuota(accountId: string): Promise<AccountQuota | null>
   listOAuthProviders(): Promise<OAuthProviderAvailability[]>
   authorizeOAuth(request: OAuthAuthorizationRequest): Promise<OAuthAuthorizationResult>
+  handleOAuthCallbackUrl(rawUrl: string): Promise<boolean>
   listContacts(groupId?: string): Promise<Contact[]>
   createContact(contact: Contact): Promise<Contact>
   updateContact(contactId: string, contact: Contact): Promise<Contact>

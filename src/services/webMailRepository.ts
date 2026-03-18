@@ -42,6 +42,7 @@ export const webMailRepository: MailRepository = {
   getAccountQuota: notAvailable,
   listOAuthProviders: notAvailable,
   authorizeOAuth: notAvailable,
+  handleOAuthCallbackUrl: notAvailable,
   listContacts: notAvailable,
   createContact: notAvailable,
   updateContact: notAvailable,

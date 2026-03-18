@@ -1,5 +1,5 @@
 import type { MailBackend } from '../mailBackend'
-import { authorizeOAuth } from '../oauth'
+import { authorizeOAuth, handleOAuthCallbackUrl } from '../oauth'
 import { invokeRustBackend, shutdownRustBackend } from './process'
 
 const inFlightSyncs = new Map<string, Promise<Awaited<ReturnType<MailBackend['syncAccount']>>>>()
@@ -58,6 +58,7 @@ export const rustMailBackend: MailBackend = {
   getAccountQuota: (accountId) => invokeRustBackend('getAccountQuota', { accountId }),
   listOAuthProviders: () => invokeRustBackend('listOAuthProviders'),
   authorizeOAuth,
+  handleOAuthCallbackUrl: async (rawUrl) => handleOAuthCallbackUrl(rawUrl),
   listContacts: (groupId) => invokeRustBackend('listContacts', { groupId }),
   createContact: (contact) => invokeRustBackend('createContact', contact),
   updateContact: (contactId, contact) => invokeRustBackend('updateContact', { contactId, contact }),
