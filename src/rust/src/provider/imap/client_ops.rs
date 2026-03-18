@@ -51,6 +51,7 @@ pub(super) async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), Bac
         };
         eprintln!("[imap] logging in as {}...", draft.username.trim());
         let mut session = imap_authenticate_client(client, draft).await?;
+        send_client_id(&mut session).await?;
         let _ = session.logout().await;
     } else {
         let mut client = async_imap::Client::new(tcp);
@@ -59,6 +60,7 @@ pub(super) async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), Bac
             .map_err(|e| BackendError::validation(e.message))?;
         eprintln!("[imap] logging in as {}...", draft.username.trim());
         let mut session = imap_authenticate_client(client, draft).await?;
+        send_client_id(&mut session).await?;
         let _ = session.logout().await;
     }
 
@@ -120,6 +122,8 @@ pub(super) async fn imap_connect(
                 .map_err(|(e, _)| BackendError::internal(format!("IMAP OAuth login failed: {e}")))?
         }
     };
+    let mut session = session;
+    send_client_id(&mut session).await?;
 
     eprintln!(
         "[imap] connected to {host}:{port} ({:.1?})",
@@ -319,4 +323,40 @@ where
                 .map_err(|(e, _)| BackendError::validation(format!("IMAP OAuth login failed: {e}")))
         }
     }
+}
+
+async fn send_client_id<T>(session: &mut async_imap::Session<T>) -> Result<(), BackendError>
+where
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + std::fmt::Debug + Send,
+{
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    let os_version = format!("{os}/{arch}");
+    let support_url = option_env!("CARGO_PKG_HOMEPAGE")
+        .or(option_env!("CARGO_PKG_REPOSITORY"))
+        .unwrap_or("https://github.com/Cccc-owo/MailYou");
+
+    let server_identification = session
+        .id([
+            ("name", Some("MailYou")),
+            ("version", Some(env!("CARGO_PKG_VERSION"))),
+            ("vendor", Some("MailYou")),
+            ("support-url", Some(support_url)),
+            ("os", Some(os)),
+            ("os-version", Some(os_version.as_str())),
+            ("environment", Some("desktop")),
+        ])
+        .await
+        .map_err(|error| BackendError::internal(format!("IMAP ID command failed: {error}")))?;
+
+    match server_identification {
+        Some(server_identification) => {
+            eprintln!("[imap] server accepted ID: {server_identification:?}");
+        }
+        None => {
+            eprintln!("[imap] server accepted ID without returning server identification");
+        }
+    }
+
+    Ok(())
 }

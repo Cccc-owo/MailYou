@@ -13,6 +13,7 @@ use crate::storage::memory;
 #[derive(Clone, Default)]
 pub struct RealtimeController {
     tasks: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
+    idle_unsupported_accounts: Arc<Mutex<HashSet<String>>>,
 }
 
 #[derive(Clone, Copy)]
@@ -40,6 +41,15 @@ impl RealtimeController {
             .into_iter()
             .filter(|account| account.incoming_protocol == "imap")
         {
+            if self
+                .idle_unsupported_accounts
+                .lock()
+                .unwrap()
+                .contains(&account.id)
+            {
+                continue;
+            }
+
             let profile = realtime_profile(&account.provider);
             for mailbox_name in resolve_watched_mailboxes(&account.id, profile.watch_junk) {
                 let task_key = format!("{}\n{}", account.id, mailbox_name);
@@ -67,8 +77,16 @@ impl RealtimeController {
             }
 
             let tx = tx.clone();
+            let idle_unsupported_accounts = self.idle_unsupported_accounts.clone();
             let handle = tokio::spawn(async move {
-                run_realtime_loop(account_id, mailbox_name, profile, tx).await;
+                run_realtime_loop(
+                    account_id,
+                    mailbox_name,
+                    profile,
+                    tx,
+                    idle_unsupported_accounts,
+                )
+                .await;
             });
             tasks.insert(task_key, handle);
         }
@@ -87,6 +105,7 @@ async fn run_realtime_loop(
     mailbox_name: String,
     profile: RealtimeProfile,
     tx: mpsc::UnboundedSender<BackendMessage>,
+    idle_unsupported_accounts: Arc<Mutex<HashSet<String>>>,
 ) {
     let mut backoff = profile.base_backoff;
 
@@ -135,6 +154,18 @@ async fn run_realtime_loop(
                 backoff = profile.base_backoff;
             }
             Err(error) => {
+                if error_indicates_unsupported_idle(&error.message) {
+                    eprintln!(
+                        "[idle] disabling realtime watcher for {account_id}: {}",
+                        error.message
+                    );
+                    idle_unsupported_accounts
+                        .lock()
+                        .unwrap()
+                        .insert(account_id.clone());
+                    break;
+                }
+
                 eprintln!(
                     "[idle] watcher failed for {account_id} {mailbox_name}: {}",
                     error.message
@@ -239,4 +270,15 @@ fn realtime_profile(provider: &str) -> RealtimeProfile {
         base_backoff: Duration::from_secs(5),
         max_backoff: Duration::from_secs(120),
     }
+}
+
+fn error_indicates_unsupported_idle(message: &str) -> bool {
+    let normalized = message.trim().to_lowercase();
+
+    normalized.contains("idle init failed")
+        && (normalized.contains("command not support")
+            || normalized.contains("not supported")
+            || normalized.contains("unknown command")
+            || normalized.contains("idle not supported")
+            || normalized.contains("bad idle"))
 }
