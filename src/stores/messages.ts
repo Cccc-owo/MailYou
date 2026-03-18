@@ -31,6 +31,7 @@ const getMessagesForFolder = (
 export const useMessagesStore = defineStore('messages', () => {
   const messages = ref<MailMessage[]>([])
   const selectedMessageId = ref<string | null>(null)
+  const selectionAnchorId = ref<string | null>(null)
   const isLoading = ref(false)
   const query = ref('')
   const syncStatus = ref<SyncStatus | null>(null)
@@ -280,6 +281,33 @@ export const useMessagesStore = defineStore('messages', () => {
 
   const selectMessage = (messageId: string) => {
     selectedMessageId.value = messageId
+    selectionAnchorId.value = messageId
+  }
+
+  const getSelectionRangeIds = (targetMessageId: string) => {
+    const anchorId = selectionAnchorId.value ?? selectedMessageId.value
+    if (!anchorId) {
+      return [targetMessageId]
+    }
+
+    const orderedIds = filteredMessages.value.map((message) => message.id)
+    const anchorIndex = orderedIds.indexOf(anchorId)
+    const targetIndex = orderedIds.indexOf(targetMessageId)
+
+    if (anchorIndex === -1 || targetIndex === -1) {
+      return [targetMessageId]
+    }
+
+    const start = Math.min(anchorIndex, targetIndex)
+    const end = Math.max(anchorIndex, targetIndex)
+    return orderedIds.slice(start, end + 1)
+  }
+
+  const selectMessageRange = (messageId: string) => {
+    for (const id of getSelectionRangeIds(messageId)) {
+      selectedIds.add(id)
+    }
+    selectedMessageId.value = messageId
   }
 
   const toggleStar = async (accountId: string, messageId: string) => {
@@ -350,22 +378,31 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   // --- Batch selection ---
-  const toggleSelection = (messageId: string) => {
+  const toggleSelection = (messageId: string, options?: { shiftKey?: boolean }) => {
+    if (options?.shiftKey) {
+      selectMessageRange(messageId)
+      return
+    }
+
     if (selectedIds.has(messageId)) {
       selectedIds.delete(messageId)
     } else {
       selectedIds.add(messageId)
     }
+
+    selectionAnchorId.value = messageId
   }
 
   const selectAll = () => {
     for (const message of filteredMessages.value) {
       selectedIds.add(message.id)
     }
+    selectionAnchorId.value = filteredMessages.value[0]?.id ?? null
   }
 
   const clearSelection = () => {
     selectedIds.clear()
+    selectionAnchorId.value = null
   }
 
   const batchDelete = async (accountId: string) => {
@@ -564,6 +601,7 @@ export const useMessagesStore = defineStore('messages', () => {
     error.value = null
     query.value = ''
     selectedIds.clear()
+    selectionAnchorId.value = null
   }
 
   return {
@@ -587,6 +625,7 @@ export const useMessagesStore = defineStore('messages', () => {
     loadMessages,
     searchMessages,
     selectMessage,
+    selectMessageRange,
     toggleStar,
     toggleRead,
     deleteMessage,

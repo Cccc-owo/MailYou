@@ -6,6 +6,7 @@
           v-if="threads.length > 0"
           :model-value="allSelected"
           :indeterminate="someSelected && !allSelected"
+          :disabled="batchBusy"
           hide-details
           density="compact"
           class="mail-list__select-all"
@@ -19,6 +20,7 @@
           size="small"
           variant="tonal"
           prepend-icon="mdi-email-check-outline"
+          :disabled="batchBusy"
           @click="$emit('mark-all-read')"
         >
           {{ t('mailList.markAllRead') }}
@@ -29,23 +31,27 @@
     </div>
 
     <!-- Batch toolbar -->
-    <div v-if="selectedIds.size > 0" class="mail-list__batch-toolbar d-flex align-center ga-2 flex-wrap mb-3">
+    <div
+      v-if="selectedIds.size > 0"
+      class="mail-list__batch-toolbar d-flex align-center ga-2 flex-wrap mb-3"
+      :class="{ 'mail-list__batch-toolbar--busy': batchBusy }"
+    >
       <v-chip size="small" color="primary">{{ t('mailList.selectedCount', { count: selectedIds.size }) }}</v-chip>
-      <v-btn size="small" variant="tonal" prepend-icon="mdi-delete-outline" color="error" @click="$emit('batch-delete')">
+      <v-btn size="small" variant="tonal" prepend-icon="mdi-delete-outline" color="error" :disabled="batchBusy" @click="$emit('batch-delete')">
         {{ t('common.delete') }}
       </v-btn>
-      <v-btn size="small" variant="tonal" prepend-icon="mdi-archive-outline" @click="$emit('batch-archive')">
+      <v-btn size="small" variant="tonal" prepend-icon="mdi-archive-outline" :disabled="batchBusy" @click="$emit('batch-archive')">
         {{ t('mailList.archive') }}
       </v-btn>
-      <v-btn size="small" variant="tonal" prepend-icon="mdi-email-open-outline" @click="$emit('batch-mark-read')">
+      <v-btn size="small" variant="tonal" prepend-icon="mdi-email-open-outline" :disabled="batchBusy" @click="$emit('batch-mark-read')">
         {{ t('mailList.markRead') }}
       </v-btn>
-      <v-btn size="small" variant="tonal" prepend-icon="mdi-email-outline" @click="$emit('batch-mark-unread')">
+      <v-btn size="small" variant="tonal" prepend-icon="mdi-email-outline" :disabled="batchBusy" @click="$emit('batch-mark-unread')">
         {{ t('mailList.markUnread') }}
       </v-btn>
       <v-menu v-if="moveTargetFolders.length > 0">
         <template #activator="{ props: menuProps }">
-          <v-btn size="small" variant="tonal" prepend-icon="mdi-folder-move-outline" v-bind="menuProps">
+          <v-btn size="small" variant="tonal" prepend-icon="mdi-folder-move-outline" :disabled="batchBusy" v-bind="menuProps">
             {{ t('mailList.moveTo') }}
           </v-btn>
         </template>
@@ -64,6 +70,7 @@
         size="small"
         variant="tonal"
         prepend-icon="mdi-label-multiple-outline"
+        :disabled="batchBusy"
         @click="$emit('batch-manage-labels')"
       >
         {{ t('labels.manageTitle') }}
@@ -99,17 +106,19 @@
             { 'mail-list__item--unread': item.thread.unreadCount > 0 },
             { 'mail-list__item--checked': selectedIds.has(item.thread.message.id) },
           ]"
-          @click="$emit('select-message', item.thread.message.id)"
+          @mousedown="onItemPointerDown($event)"
+          @click="onSelectMessage(item.thread.message.id, $event)"
           @contextmenu="ctxMenu.open($event, item.thread.message)"
         >
           <template #prepend>
             <v-checkbox
               :model-value="selectedIds.has(item.thread.message.id)"
+              :disabled="batchBusy"
               hide-details
               density="compact"
               class="mail-list__checkbox"
-              @click.stop
-              @update:model-value="$emit('toggle-selection', item.thread.message.id)"
+              @mousedown.stop="onItemPointerDown($event)"
+              @click.stop.prevent="onToggleSelection(item.thread.message.id, $event)"
             />
           </template>
 
@@ -226,6 +235,7 @@ const props = defineProps<{
   selectedMessageId: string | null
   selectedThreadId?: string | null
   isPop3?: boolean
+  batchBusy?: boolean
   selectedIds: Set<string>
   title: string
   folders?: MailboxFolder[]
@@ -234,9 +244,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'select-message': [messageId: string]
+  'select-message': [payload: { messageId: string; shiftKey: boolean; accelKey: boolean }]
   'toggle-star': [messageId: string]
-  'toggle-selection': [messageId: string]
+  'toggle-selection': [payload: { messageId: string; shiftKey: boolean; accelKey: boolean }]
   'select-all': []
   'clear-selection': []
   'mark-all-read': []
@@ -274,6 +284,7 @@ const allSelected = computed(() =>
 )
 
 const someSelected = computed(() => props.selectedIds.size > 0)
+const batchBusy = computed(() => Boolean(props.batchBusy))
 
 const onToggleSelectAll = (val: boolean | null) => {
   if (val) {
@@ -281,6 +292,28 @@ const onToggleSelectAll = (val: boolean | null) => {
   } else {
     emit('clear-selection')
   }
+}
+
+const onItemPointerDown = (event: MouseEvent) => {
+  if (event.shiftKey || event.ctrlKey || event.metaKey) {
+    event.preventDefault()
+  }
+}
+
+const onSelectMessage = (messageId: string, event: MouseEvent | KeyboardEvent) => {
+  emit('select-message', {
+    messageId,
+    shiftKey: 'shiftKey' in event ? event.shiftKey : false,
+    accelKey: 'metaKey' in event ? event.metaKey || event.ctrlKey : false,
+  })
+}
+
+const onToggleSelection = (messageId: string, event: MouseEvent | KeyboardEvent) => {
+  emit('toggle-selection', {
+    messageId,
+    shiftKey: 'shiftKey' in event ? event.shiftKey : false,
+    accelKey: 'metaKey' in event ? event.metaKey || event.ctrlKey : false,
+  })
 }
 
 const moveTargetFolders = computed(() =>
@@ -383,6 +416,10 @@ const formatDate = (value: string) =>
   padding: 8px 12px;
   border-radius: 12px;
   background: rgba(var(--v-theme-primary), 0.08);
+}
+
+.mail-list__batch-toolbar--busy {
+  opacity: 0.72;
 }
 
 .mail-list__items {

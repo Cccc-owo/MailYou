@@ -1,33 +1,36 @@
 <template>
   <div class="mail-shell-layout">
-    <AppTitleBar
-      :hide-search="hideSearch"
-      :search="search"
-      :search-placeholder="t('shell.searchPlaceholder')"
-      @update:search="$emit('update:search', $event)"
-    >
-      <template #actions>
-        <slot name="actions" />
-      </template>
-    </AppTitleBar>
+    <div class="mail-shell-layout__header">
+      <AppTitleBar
+        :hide-search="hideSearch"
+        :search="search"
+        :search-placeholder="t('shell.searchPlaceholder')"
+        @update:search="$emit('update:search', $event)"
+      >
+        <template #actions>
+          <slot name="actions" />
+        </template>
+      </AppTitleBar>
 
-    <div
-      class="mail-shell-layout__progress"
-      :class="{
-        'mail-shell-layout__progress--active': loadingActive,
-        'mail-shell-layout__progress--indeterminate': loadingActive && loadingProgress === null,
-      }"
-      :aria-hidden="!loadingActive"
-    >
-      <div v-if="loadingActive && loadingLabel" class="mail-shell-layout__progress-label">
-        {{ loadingLabel }}
+      <div
+        class="mail-shell-layout__progress"
+        :class="{
+          'mail-shell-layout__progress--active': loadingActive,
+          'mail-shell-layout__progress--indeterminate': loadingActive && loadingProgress === null,
+        }"
+        :aria-hidden="!loadingActive"
+      >
+        <div v-if="loadingActive && loadingLabel" class="mail-shell-layout__progress-label">
+          {{ loadingLabel }}
+        </div>
+        <v-progress-linear
+          :model-value="loadingActive ? loadingProgress ?? undefined : 0"
+          :indeterminate="loadingActive && loadingProgress === null"
+          color="primary"
+          height="4"
+          rounded
+        />
       </div>
-      <v-progress-linear
-        :model-value="loadingActive ? loadingProgress ?? undefined : 0"
-        :indeterminate="loadingActive && loadingProgress === null"
-        color="primary"
-        height="4"
-      />
     </div>
 
     <main
@@ -160,42 +163,81 @@ onUnmounted(() => {
 <style scoped>
 .mail-shell-layout {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
   background: rgb(var(--v-theme-background));
 }
 
+.mail-shell-layout__header {
+  position: relative;
+  z-index: 10;
+}
+
 .mail-shell-layout__progress {
-  grid-row: 2;
-  max-height: 0;
-  min-height: 0;
-  border-bottom: 1px solid transparent;
-  background: transparent;
-  overflow: hidden;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  opacity: 0;
+  transform: translateY(-3px);
+  pointer-events: none;
   visibility: hidden;
-  transition: max-height 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    visibility 0.18s ease;
 }
 
 .mail-shell-layout__progress--active {
-  max-height: 64px;
-  border-bottom-color: rgba(var(--v-theme-on-surface), 0.06);
   visibility: visible;
-  background: rgba(var(--v-theme-primary), 0.03);
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .mail-shell-layout__progress--indeterminate {
-  background: rgba(var(--v-theme-primary), 0.02);
+  opacity: 1;
 }
 
 .mail-shell-layout__progress-label {
-  padding: 6px 12px 4px;
-  font-size: 0.75rem;
-  color: rgba(var(--v-theme-on-surface), 0.65);
+  width: fit-content;
+  max-width: min(40vw, 320px);
+  margin-right: 16px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(var(--v-theme-surface), 0.78);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.06);
+  font-size: 0.6875rem;
+  line-height: 1.25;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mail-shell-layout__progress :deep(.v-progress-linear) {
+  width: 100%;
+  border-radius: 0;
+  background: transparent;
+  opacity: 0.88;
+}
+
+.mail-shell-layout__progress :deep(.v-progress-linear__background) {
+  opacity: 0.14 !important;
+}
+
+.mail-shell-layout__progress :deep(.v-progress-linear__determinate),
+.mail-shell-layout__progress :deep(.v-progress-linear__indeterminate .long),
+.mail-shell-layout__progress :deep(.v-progress-linear__indeterminate .short) {
+  border-radius: 0 !important;
 }
 
 .mail-shell-layout__content {
-  grid-row: 3;
+  grid-row: 2;
   display: grid;
   grid-template-columns: var(--sidebar-w, 260px) auto var(--list-w, 340px) auto minmax(0, 1fr);
   height: 100%;
@@ -303,6 +345,17 @@ onUnmounted(() => {
 /* ── ≤840px: tighten defaults ── */
 
 @media (max-width: 840px) {
+  .mail-shell-layout__progress {
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  .mail-shell-layout__progress-label {
+    max-width: min(52vw, 220px);
+    margin-right: 12px;
+  }
+
   .mail-shell-layout__gutter-pill,
   .mail-shell-layout__gutter {
     display: none;

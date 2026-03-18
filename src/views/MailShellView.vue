@@ -67,6 +67,7 @@
         :selected-message-id="messagesStore.selectedMessageId"
         :selected-thread-id="messagesStore.selectedMessage?.threadId ?? null"
         :is-pop3="accountsStore.isCurrentAccountPop3"
+        :batch-busy="Boolean(messagesStore.batchAction?.active)"
         :selected-ids="messagesStore.selectedIds"
         :title="currentFolderDisplayName"
         :folders="mailboxesStore.folders"
@@ -74,7 +75,7 @@
         :current-folder-kind="mailboxesStore.currentFolder?.kind ?? null"
         @select-message="handleSelectMessage"
         @toggle-star="toggleStar"
-        @toggle-selection="messagesStore.toggleSelection"
+        @toggle-selection="({ messageId, shiftKey }) => messagesStore.toggleSelection(messageId, { shiftKey })"
         @select-all="messagesStore.selectAll"
         @clear-selection="messagesStore.clearSelection"
         @mark-all-read="handleMarkAllRead"
@@ -123,7 +124,7 @@
         @view-contact="handleViewContact"
         @toggle-star="toggleStarCurrentMessage"
         @export-pdf="exportCurrentMessagePdf"
-        @select-thread-message="handleSelectMessage"
+        @select-thread-message="(messageId) => handleSelectMessage({ messageId, shiftKey: false, accelKey: false })"
       />
     </template>
   </MailShellLayout>
@@ -517,10 +518,29 @@ const {
   getFallbackCopyText: () => messagesStore.error || composerStore.error || '',
 })
 
-const handleSelectMessage = async (messageId: string) => {
-  messagesStore.selectMessage(messageId)
+const handleSelectMessage = async ({
+  messageId,
+  shiftKey,
+  accelKey,
+}: {
+  messageId: string
+  shiftKey: boolean
+  accelKey: boolean
+}) => {
+  if (shiftKey) {
+    messagesStore.selectMessageRange(messageId)
+  } else if (accelKey) {
+    messagesStore.toggleSelection(messageId)
+    messagesStore.selectMessage(messageId)
+  } else {
+    messagesStore.selectMessage(messageId)
+  }
 
   if (!accountsStore.currentAccountId) {
+    return
+  }
+
+  if (shiftKey || accelKey) {
     return
   }
 
@@ -978,16 +998,35 @@ const handleKeyboard = (event: KeyboardEvent) => {
 
   const threads = messagesStore.threadSummaries
   const currentIdx = threads.findIndex((thread) => thread.message.id === messagesStore.selectedMessageId)
+  const isAccel = event.ctrlKey || event.metaKey
+
+  if (isAccel && event.key.toLowerCase() === 'a') {
+    event.preventDefault()
+    messagesStore.selectAll()
+    return
+  }
 
   switch (event.key) {
     case 'j':
       if (currentIdx < threads.length - 1) {
-        handleSelectMessage(threads[currentIdx + 1].message.id)
+        handleSelectMessage({ messageId: threads[currentIdx + 1].message.id, shiftKey: event.shiftKey, accelKey: false })
       }
       break
     case 'k':
       if (currentIdx > 0) {
-        handleSelectMessage(threads[currentIdx - 1].message.id)
+        handleSelectMessage({ messageId: threads[currentIdx - 1].message.id, shiftKey: event.shiftKey, accelKey: false })
+      }
+      break
+    case 'ArrowDown':
+      if (currentIdx < threads.length - 1) {
+        event.preventDefault()
+        handleSelectMessage({ messageId: threads[currentIdx + 1].message.id, shiftKey: event.shiftKey, accelKey: false })
+      }
+      break
+    case 'ArrowUp':
+      if (currentIdx > 0) {
+        event.preventDefault()
+        handleSelectMessage({ messageId: threads[currentIdx - 1].message.id, shiftKey: event.shiftKey, accelKey: false })
       }
       break
     case 'r':
