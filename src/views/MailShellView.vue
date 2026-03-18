@@ -8,8 +8,10 @@
   >
     <template #actions>
       <ToolbarActionButton
+        class="mail-shell__sync-button"
         :tooltip="t('shell.sync')"
         prepend-icon="mdi-sync"
+        size="default"
         :disabled="!accountsStore.currentAccountId"
         :loading="isSyncing"
         @click="syncCurrentAccount"
@@ -1212,6 +1214,24 @@ watch(
 </script>
 
 <style>
+.mail-shell__sync-button {
+  min-width: 0;
+}
+
+.mail-shell__sync-button.v-btn {
+  min-height: 38px;
+  padding-inline: 15px 17px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: rgba(var(--v-theme-surface-variant), 0.72);
+  border: 1px solid rgba(var(--v-theme-outline), 0.16);
+  box-shadow: 0 1px 0 rgba(var(--v-theme-on-surface), 0.04);
+}
+
+.mail-shell__sync-button:deep(.v-btn__content) {
+  gap: 9px;
+}
+
 .mail-shell__snackbar .v-snackbar__wrapper {
   max-width: min(480px, calc(100vw - 48px));
   color: rgb(var(--v-theme-on-surface));
