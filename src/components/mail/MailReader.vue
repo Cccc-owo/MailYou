@@ -651,26 +651,119 @@ const emptyStateDescription = computed(() => {
 
 const emptyStateIcon = computed(() => (props.hasSearchQuery && !props.hasMessages ? 'mdi-magnify' : 'mdi-email-outline'))
 
+const EMAIL_BODY_SCOPE = '.mail-reader__body'
+
+const sanitizeEmailCss = (css: string) =>
+  css
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/@import[\s\S]*?;/gi, '')
+    .replace(/expression\s*\([^)]*\)/gi, '')
+    .replace(/behavior\s*:[^;]+;?/gi, '')
+    .replace(/-moz-binding\s*:[^;]+;?/gi, '')
+    .replace(/javascript\s*:/gi, '')
+    .trim()
+
+const scopeEmailCssSelectors = (selectors: string) =>
+  selectors
+    .split(',')
+    .map((selector) => selector.trim())
+    .filter(Boolean)
+    .map((selector) => {
+      if (
+        selector.startsWith(EMAIL_BODY_SCOPE)
+        || selector.startsWith('@')
+        || selector.startsWith('from')
+        || selector.startsWith('to')
+        || selector.startsWith(`${EMAIL_BODY_SCOPE} `)
+      ) {
+        return selector
+      }
+
+      if (selector.includes('html') || selector.includes('body')) {
+        return selector
+          .replace(/\bhtml\b/gi, EMAIL_BODY_SCOPE)
+          .replace(/\bbody\b/gi, EMAIL_BODY_SCOPE)
+      }
+
+      return `${EMAIL_BODY_SCOPE} ${selector}`
+    })
+    .join(', ')
+
+const scopeEmailCss = (css: string): string => {
+  let scoped = ''
+  let cursor = 0
+
+  while (cursor < css.length) {
+    const openBrace = css.indexOf('{', cursor)
+    if (openBrace === -1) {
+      scoped += css.slice(cursor)
+      break
+    }
+
+    const selector = css.slice(cursor, openBrace).trim()
+    let depth = 1
+    let bodyEnd = openBrace + 1
+
+    while (bodyEnd < css.length && depth > 0) {
+      const char = css[bodyEnd]
+      if (char === '{') depth += 1
+      if (char === '}') depth -= 1
+      bodyEnd += 1
+    }
+
+    const body = css.slice(openBrace + 1, bodyEnd - 1)
+
+    if (selector.startsWith('@media') || selector.startsWith('@supports')) {
+      scoped += `${selector}{${scopeEmailCss(body)}}`
+    } else if (selector.startsWith('@')) {
+      scoped += `${selector}{${body}}`
+    } else {
+      scoped += `${scopeEmailCssSelectors(selector)}{${body}}`
+    }
+
+    cursor = bodyEnd
+  }
+
+  return scoped
+}
+
+const preserveEmailStyleBlocks = (html: string) => {
+  if (!html.includes('<style')) {
+    return html
+  }
+
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  for (const style of [...doc.querySelectorAll('style')]) {
+    const sanitizedCss = scopeEmailCss(sanitizeEmailCss(style.textContent ?? ''))
+    if (sanitizedCss) {
+      style.textContent = sanitizedCss
+    } else {
+      style.remove()
+    }
+  }
+
+  return doc.body.innerHTML
+}
+
 const sanitizedBody = computed(() => {
   if (!props.message) {
     return ''
   }
 
   let html = DOMPurify.sanitize(props.message.body, {
-    ALLOWED_TAGS: [
-      'p', 'br', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'td', 'th',
-      'div', 'span', 'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li',
-      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code',
-      'hr', 'sub', 'sup', 'caption', 'col', 'colgroup', 'dd', 'dl', 'dt',
-      'center', 'font', 'small', 'big', 'abbr', 'cite',
+    ADD_TAGS: ['style'],
+    ADD_ATTR: [
+      'style', 'class', 'dir', 'bgcolor', 'align', 'valign',
+      'cellpadding', 'cellspacing', 'target',
     ],
-    ALLOWED_ATTR: [
-      'href', 'src', 'alt', 'title', 'width', 'height', 'style', 'class',
-      'align', 'valign', 'border', 'cellpadding', 'cellspacing', 'bgcolor',
-      'color', 'size', 'face', 'target', 'colspan', 'rowspan',
+    FORBID_TAGS: [
+      'script', 'iframe', 'object', 'embed', 'form', 'input', 'button',
+      'textarea', 'select', 'option', 'base', 'meta', 'link',
     ],
+    FORBID_ATTR: ['srcdoc'],
     ALLOW_DATA_ATTR: false,
   })
+  html = preserveEmailStyleBlocks(html)
 
   const policy = allowImagesForMessage.value ? 'all' : uiStore.imageLoadPolicy
   if (policy === 'noRemote') {
