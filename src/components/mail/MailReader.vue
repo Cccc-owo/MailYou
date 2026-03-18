@@ -208,7 +208,15 @@
         </template>
       </v-alert>
 
-      <div class="mail-reader__body text-body-1" v-html="sanitizedBody" @click="handleBodyClick" />
+      <iframe
+        v-if="useDocumentEmailRenderer"
+        ref="emailDocumentFrame"
+        class="mail-reader__body mail-reader__body-frame"
+        :srcdoc="sanitizedDocumentBody"
+        scrolling="no"
+        @load="handleEmailFrameLoad"
+      />
+      <div v-else class="mail-reader__body text-body-1" v-html="sanitizedBody" @click="handleBodyClick" />
 
       <div v-if="message.attachments.length" class="mail-reader__attachment-actions">
         <v-btn
@@ -313,10 +321,13 @@ const allowImagesForMessage = ref(false)
 const hasSelection = ref(false)
 const targetHref = ref<string | null>(null)
 const targetImgSrc = ref<string | null>(null)
+const emailDocumentFrame = ref<HTMLIFrameElement | null>(null)
 const downloadingId = ref<string | null>(null)
 const isDownloadingAll = ref(false)
 const downloadError = ref<string | null>(null)
 const downloadProgress = ref({ active: false, value: 0, current: 0, total: 0 })
+let emailFrameResizeObserver: ResizeObserver | null = null
+let removeEmailFrameListeners: (() => void) | null = null
 
 // --- Collapsible subject ---
 const subjectEl = ref<HTMLElement | null>(null)
@@ -436,6 +447,12 @@ const openReaderMenu = (event: MouseEvent) => {
   ctxMenu.open(event)
 }
 
+const openReaderMenuAt = (clientX: number, clientY: number) => {
+  ctxMenu.x.value = clientX
+  ctxMenu.y.value = clientY
+  ctxMenu.isOpen.value = true
+}
+
 const copySelection = () => {
   const sel = window.getSelection()
   if (sel) {
@@ -472,6 +489,92 @@ const handleBodyClick = (event: MouseEvent) => {
   }
 }
 
+const cleanupEmailFrameBindings = () => {
+  emailFrameResizeObserver?.disconnect()
+  emailFrameResizeObserver = null
+  removeEmailFrameListeners?.()
+  removeEmailFrameListeners = null
+}
+
+const syncEmailFrameHeight = () => {
+  const frame = emailDocumentFrame.value
+  const doc = frame?.contentDocument
+  if (!frame || !doc) {
+    return
+  }
+
+  const height = Math.max(
+    doc.documentElement?.scrollHeight ?? 0,
+    doc.body?.scrollHeight ?? 0,
+    doc.documentElement?.offsetHeight ?? 0,
+    doc.body?.offsetHeight ?? 0,
+  )
+
+  frame.style.height = `${Math.max(1, height)}px`
+}
+
+const handleEmailFrameLoad = () => {
+  cleanupEmailFrameBindings()
+
+  const frame = emailDocumentFrame.value
+  const doc = frame?.contentDocument
+  const frameWindow = frame?.contentWindow
+  if (!frame || !doc || !frameWindow) {
+    return
+  }
+
+  const getFrameSelection = () => frameWindow.getSelection?.() ?? null
+
+  const clickListener = (event: MouseEvent) => {
+    const anchor = findAncestor(event.target as HTMLElement, 'A') as HTMLAnchorElement | null
+    if (anchor?.href) {
+      event.preventDefault()
+      openUrlExternal(anchor.href)
+    }
+  }
+
+  const contextMenuListener = (event: MouseEvent) => {
+    const selection = getFrameSelection()
+    hasSelection.value = Boolean(selection && selection.toString().trim().length > 0)
+
+    const anchor = findAncestor(event.target as HTMLElement, 'A') as HTMLAnchorElement | null
+    targetHref.value = anchor?.href ?? null
+
+    const image = findAncestor(event.target as HTMLElement, 'IMG') as HTMLImageElement | null
+    targetImgSrc.value = image?.src ?? null
+
+    const rect = frame.getBoundingClientRect()
+    openReaderMenuAt(rect.left + event.clientX, rect.top + event.clientY)
+    event.preventDefault()
+  }
+
+  doc.addEventListener('click', clickListener)
+  doc.addEventListener('contextmenu', contextMenuListener)
+
+  removeEmailFrameListeners = () => {
+    doc.removeEventListener('click', clickListener)
+    doc.removeEventListener('contextmenu', contextMenuListener)
+  }
+
+  emailFrameResizeObserver = new ResizeObserver(() => {
+    syncEmailFrameHeight()
+  })
+
+  if (doc.documentElement) {
+    emailFrameResizeObserver.observe(doc.documentElement)
+  }
+  if (doc.body) {
+    emailFrameResizeObserver.observe(doc.body)
+  }
+
+  for (const image of [...doc.images]) {
+    image.addEventListener('load', syncEmailFrameHeight, { passive: true })
+    image.addEventListener('error', syncEmailFrameHeight, { passive: true })
+  }
+
+  syncEmailFrameHeight()
+}
+
 const copyImage = async () => {
   if (!targetImgSrc.value) return
   try {
@@ -491,6 +594,19 @@ const copyImageAddress = () => {
 }
 
 const selectAllBody = () => {
+  if (useDocumentEmailRenderer.value) {
+    const doc = emailDocumentFrame.value?.contentDocument
+    if (!doc?.body) return
+    const range = doc.createRange()
+    range.selectNodeContents(doc.body)
+    const sel = emailDocumentFrame.value?.contentWindow?.getSelection?.()
+    if (sel) {
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+    return
+  }
+
   const el = document.querySelector('.mail-reader__body')
   if (!el) return
   const range = document.createRange()
@@ -592,6 +708,7 @@ watch(
   () => {
     subjectCollapsed.value = false
     allowImagesForMessage.value = false
+    cleanupEmailFrameBindings()
     nextTick(checkSubjectOverflow)
   },
 )
@@ -601,7 +718,10 @@ onMounted(() => {
   resizeObserver = new ResizeObserver(() => checkSubjectOverflow())
   if (subjectEl.value) resizeObserver.observe(subjectEl.value)
 })
-onUnmounted(() => resizeObserver?.disconnect())
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+  cleanupEmailFrameBindings()
+})
 
 const formattedDate = computed(() => {
   if (!props.message) {
@@ -653,6 +773,8 @@ const emptyStateDescription = computed(() => {
 const emptyStateIcon = computed(() => (props.hasSearchQuery && !props.hasMessages ? 'mdi-magnify' : 'mdi-email-outline'))
 
 const EMAIL_BODY_SCOPE = '.mail-reader__body'
+const EMAIL_BODY_ROOT_CLASS = 'mail-reader__body-root'
+const EMAIL_BODY_ROOT_SCOPE = `${EMAIL_BODY_SCOPE} .${EMAIL_BODY_ROOT_CLASS}`
 
 const sanitizeEmailCss = (css: string) =>
   css
@@ -664,6 +786,62 @@ const sanitizeEmailCss = (css: string) =>
     .replace(/javascript\s*:/gi, '')
     .trim()
 
+const sanitizeUnscopedEmailCss = (html: string) => {
+  if (!html.includes('<style')) {
+    return html
+  }
+
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  for (const style of [...doc.querySelectorAll('style')]) {
+    const sanitizedCss = sanitizeEmailCss(style.textContent ?? '')
+    if (sanitizedCss) {
+      style.textContent = sanitizedCss
+    } else {
+      style.remove()
+    }
+  }
+
+  return doc.documentElement.outerHTML
+}
+
+const sanitizeEmailHtml = (html: string) =>
+  DOMPurify.sanitize(html, {
+    ADD_TAGS: ['style'],
+    ADD_ATTR: [
+      'style', 'class', 'dir', 'bgcolor', 'align', 'valign', 'background',
+      'cellpadding', 'cellspacing', 'target',
+    ],
+    FORBID_TAGS: [
+      'script', 'iframe', 'object', 'embed', 'form', 'input', 'button',
+      'textarea', 'select', 'option', 'base', 'meta', 'link',
+    ],
+    FORBID_ATTR: ['srcdoc'],
+    ALLOW_DATA_ATTR: false,
+  })
+
+const filterEmailImages = (html: string, policy: 'all' | 'noRemote' | 'noHttp') => {
+  if (policy === 'all') {
+    return html
+  }
+
+  const allowsSrc = (src: string) => {
+    if (policy === 'noRemote') {
+      return src.startsWith('data:') || src.startsWith('cid:') || src.startsWith('mailyou-avatar:')
+    }
+
+    return !src.startsWith('http://')
+  }
+
+  return html.replace(/<img\b([^>]*)>/gi, (_match, attrs: string) => {
+    const srcMatch = attrs.match(/src\s*=\s*["']([^"']*)["']/i)
+    if (srcMatch && allowsSrc(srcMatch[1])) {
+      return `<img${attrs}>`
+    }
+
+    return srcMatch ? '' : `<img${attrs}>`
+  })
+}
+
 const scopeEmailCssSelectors = (selectors: string) =>
   selectors
     .split(',')
@@ -671,22 +849,22 @@ const scopeEmailCssSelectors = (selectors: string) =>
     .filter(Boolean)
     .map((selector) => {
       if (
-        selector.startsWith(EMAIL_BODY_SCOPE)
+        selector.startsWith(EMAIL_BODY_ROOT_SCOPE)
         || selector.startsWith('@')
         || selector.startsWith('from')
         || selector.startsWith('to')
-        || selector.startsWith(`${EMAIL_BODY_SCOPE} `)
+        || selector.startsWith(`${EMAIL_BODY_ROOT_SCOPE} `)
       ) {
         return selector
       }
 
       if (selector.includes('html') || selector.includes('body')) {
         return selector
-          .replace(/\bhtml\b/gi, EMAIL_BODY_SCOPE)
-          .replace(/\bbody\b/gi, EMAIL_BODY_SCOPE)
+          .replace(/\bhtml\b/gi, EMAIL_BODY_ROOT_SCOPE)
+          .replace(/\bbody\b/gi, EMAIL_BODY_ROOT_SCOPE)
       }
 
-      return `${EMAIL_BODY_SCOPE} ${selector}`
+      return `${EMAIL_BODY_ROOT_SCOPE} ${selector}`
     })
     .join(', ')
 
@@ -728,11 +906,7 @@ const scopeEmailCss = (css: string): string => {
   return scoped
 }
 
-const preserveEmailStyleBlocks = (html: string) => {
-  if (!html.includes('<style')) {
-    return html
-  }
-
+const preserveEmailDocumentLayout = (html: string) => {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   for (const style of [...doc.querySelectorAll('style')]) {
     const sanitizedCss = scopeEmailCss(sanitizeEmailCss(style.textContent ?? ''))
@@ -743,12 +917,28 @@ const preserveEmailStyleBlocks = (html: string) => {
     }
   }
 
-  return doc.body.innerHTML
+  const wrapped = doc.createElement('div')
+  const bodyClassName = doc.body.className.trim()
+  wrapped.className = bodyClassName ? `${EMAIL_BODY_ROOT_CLASS} ${bodyClassName}` : EMAIL_BODY_ROOT_CLASS
+
+  for (const attr of ['style', 'dir', 'bgcolor', 'align', 'valign', 'background']) {
+    const value = doc.body.getAttribute(attr)
+    if (value) {
+      wrapped.setAttribute(attr, value)
+    }
+  }
+
+  wrapped.innerHTML = doc.body.innerHTML
+  return wrapped.outerHTML
 }
 
 const hasExplicitBackground = (html: string) => {
   const doc = new DOMParser().parseFromString(html, 'text/html')
-  return [...doc.body.querySelectorAll('*')].some((node) => {
+  const hasNodeBackground = (node: Element | null) => {
+    if (!node) {
+      return false
+    }
+
     const style = node.getAttribute('style')?.toLowerCase() ?? ''
     const bgcolor = node.getAttribute('bgcolor')?.trim()
     if (bgcolor) {
@@ -756,26 +946,86 @@ const hasExplicitBackground = (html: string) => {
     }
 
     return /background(?:-color)?\s*:/.test(style) && !/background(?:-color)?\s*:\s*transparent/.test(style)
-  })
+  }
+
+  if (hasNodeBackground(doc.documentElement) || hasNodeBackground(doc.body)) {
+    return true
+  }
+
+  if (/<style[\s\S]*?\b(?:html|body)\b[\s\S]*?\{[\s\S]*?background(?:-color)?\s*:/i.test(html)) {
+    return true
+  }
+
+  return [...doc.body.querySelectorAll('*')].some((node) => hasNodeBackground(node))
 }
 
+const hasStructuredEmailStyling = (html: string) => {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const hasStyleTag = doc.querySelector('style') !== null
+  const hasBodyPresentation =
+    Boolean(doc.body.getAttribute('bgcolor')?.trim())
+    || Boolean(doc.body.getAttribute('background')?.trim())
+    || /\b(?:background|background-color|font-family|width|margin|padding)\s*:/.test(
+      doc.body.getAttribute('style')?.toLowerCase() ?? '',
+    )
+
+  const tableLikeCount = doc.body.querySelectorAll('table, td, tr').length
+  const richStyledNodeCount = [...doc.body.querySelectorAll('*')].filter((node) => {
+    const style = node.getAttribute('style')?.toLowerCase() ?? ''
+    const hasPresentationAttrs =
+      Boolean(node.getAttribute('bgcolor')?.trim())
+      || Boolean(node.getAttribute('background')?.trim())
+      || Boolean(node.getAttribute('align')?.trim())
+      || Boolean(node.getAttribute('valign')?.trim())
+
+    return hasPresentationAttrs || /\b(?:background|background-color|font-family|width|margin|padding|border)\s*:/.test(style)
+  }).length
+
+  return hasStyleTag || hasBodyPresentation || tableLikeCount >= 6 || richStyledNodeCount >= 6
+}
+
+const useDocumentEmailRenderer = computed(() => {
+  if (!props.message) {
+    return false
+  }
+
+  return hasStructuredEmailStyling(props.message.body)
+})
+
+const sanitizedDocumentBody = computed(() => {
+  if (!props.message) {
+    return ''
+  }
+
+  const policy = allowImagesForMessage.value ? 'all' : uiStore.imageLoadPolicy
+  const html = filterEmailImages(sanitizeEmailHtml(props.message.body), policy)
+
+  const documentHtml = sanitizeUnscopedEmailCss(html)
+  return documentHtml.includes('<html')
+    ? documentHtml.replace(
+        /<head([^>]*)>/i,
+        `<head$1><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{background:#fff;color:#111827;}body{margin:0;}</style>`,
+      )
+    : `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{background:#fff;color:#111827;}body{margin:0;}</style></head><body>${html}</body></html>`
+})
+
 const applyDarkModeAutoContrast = (html: string) => {
-  if (hasExplicitBackground(html)) {
+  if (hasExplicitBackground(html) || hasStructuredEmailStyling(html)) {
     return html
   }
 
   return `
     <style>
-      ${EMAIL_BODY_SCOPE} .mail-reader__auto-contrast,
-      ${EMAIL_BODY_SCOPE} .mail-reader__auto-contrast * {
+      ${EMAIL_BODY_ROOT_SCOPE} .mail-reader__auto-contrast,
+      ${EMAIL_BODY_ROOT_SCOPE} .mail-reader__auto-contrast * {
         color: rgba(var(--v-theme-on-surface), 0.92) !important;
       }
 
-      ${EMAIL_BODY_SCOPE} .mail-reader__auto-contrast a {
+      ${EMAIL_BODY_ROOT_SCOPE} .mail-reader__auto-contrast a {
         color: rgb(var(--v-theme-primary)) !important;
       }
 
-      ${EMAIL_BODY_SCOPE} .mail-reader__auto-contrast blockquote {
+      ${EMAIL_BODY_ROOT_SCOPE} .mail-reader__auto-contrast blockquote {
         color: rgba(var(--v-theme-on-surface), 0.8) !important;
         border-inline-start: 3px solid rgba(var(--v-theme-on-surface), 0.18);
         padding-inline-start: 12px;
@@ -790,47 +1040,12 @@ const sanitizedBody = computed(() => {
     return ''
   }
 
-  let html = DOMPurify.sanitize(props.message.body, {
-    ADD_TAGS: ['style'],
-    ADD_ATTR: [
-      'style', 'class', 'dir', 'bgcolor', 'align', 'valign',
-      'cellpadding', 'cellspacing', 'target',
-    ],
-    FORBID_TAGS: [
-      'script', 'iframe', 'object', 'embed', 'form', 'input', 'button',
-      'textarea', 'select', 'option', 'base', 'meta', 'link',
-    ],
-    FORBID_ATTR: ['srcdoc'],
-    ALLOW_DATA_ATTR: false,
-  })
-  html = preserveEmailStyleBlocks(html)
-
   const policy = allowImagesForMessage.value ? 'all' : uiStore.imageLoadPolicy
-  if (policy === 'noRemote') {
-    html = html.replace(/<img\b([^>]*)>/gi, (_match, attrs: string) => {
-      const srcMatch = attrs.match(/src\s*=\s*["']([^"']*)["']/i)
-      if (srcMatch) {
-        const src = srcMatch[1]
-        if (src.startsWith('data:') || src.startsWith('mailyou-avatar:')) {
-          return `<img${attrs}>`
-        }
-      }
-      return ''
-    })
-  } else if (policy === 'noHttp') {
-    html = html.replace(/<img\b([^>]*)>/gi, (_match, attrs: string) => {
-      const srcMatch = attrs.match(/src\s*=\s*["']([^"']*)["']/i)
-      if (srcMatch) {
-        const src = srcMatch[1]
-        if (src.startsWith('http://')) {
-          return ''
-        }
-      }
-      return `<img${attrs}>`
-    })
-  }
+  let html = sanitizeEmailHtml(props.message.body)
+  html = preserveEmailDocumentLayout(html)
+  html = filterEmailImages(html, policy)
 
-  if (uiStore.appearance === 'dark') {
+  if (uiStore.appearance === 'dark' && !hasExplicitBackground(html)) {
     html = applyDarkModeAutoContrast(html)
   }
 
@@ -1013,6 +1228,14 @@ const parseAddr = (addr: string): { name: string; email: string } => {
 
 .mail-reader__body {
   line-height: 1.7;
+}
+
+.mail-reader__body-frame {
+  display: block;
+  width: 100%;
+  min-height: 240px;
+  border: 0;
+  background: #ffffff;
 }
 
 .mail-reader__attachments {
