@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::models::{
-    AccountQuota, AccountSetupDraft, AttachmentContent, Contact, ContactGroup, DraftMessage, MailAccount,
-    MailMessage, MailboxBundle, MailboxFolder, OAuthProviderAvailability, SyncStatus,
+    AccountQuota, AccountSetupDraft, AccountUnreadSnapshot, AttachmentContent, Contact,
+    ContactGroup, DraftMessage, MailAccount, MailMessage, MailboxBundle, MailboxFolder,
+    OAuthProviderAvailability, SyncStatus,
 };
 
 #[derive(Debug, Deserialize)]
@@ -148,6 +149,10 @@ pub enum BackendRequest {
         account_id: String,
     },
     #[serde(rename_all = "camelCase")]
+    GetAccountUnreadSnapshot {
+        account_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
     GetAttachmentContent {
         account_id: String,
         message_id: String,
@@ -266,6 +271,7 @@ impl BackendRequest {
             Self::MarkAllRead { .. } => "markAllRead",
             Self::SyncAccount { .. } => "syncAccount",
             Self::GetMailboxBundle { .. } => "getMailboxBundle",
+            Self::GetAccountUnreadSnapshot { .. } => "getAccountUnreadSnapshot",
             Self::GetAttachmentContent { .. } => "getAttachmentContent",
             Self::GetAccountConfig { .. } => "getAccountConfig",
             Self::UpdateAccount { .. } => "updateAccount",
@@ -459,6 +465,8 @@ pub type GetAccountQuotaResult = Option<AccountQuota>;
 pub type SyncAccountResult = SyncStatus;
 #[allow(dead_code)]
 pub type GetMailboxBundleResult = MailboxBundle;
+#[allow(dead_code)]
+pub type GetAccountUnreadSnapshotResult = AccountUnreadSnapshot;
 #[allow(dead_code)]
 pub type GetAttachmentContentResult = AttachmentContent;
 #[allow(dead_code)]

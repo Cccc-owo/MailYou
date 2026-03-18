@@ -18,9 +18,9 @@ use tokio::net::TcpStream;
 use tokio_native_tls::TlsStream;
 
 use crate::models::{
-    AccountQuota, AccountSetupDraft, AttachmentContent, AttachmentMeta, DraftMessage, MailAccount,
-    MailLabel, MailMessage, MailThread, MailboxBundle, MailboxFolder, StoredAccountState,
-    SyncStatus,
+    AccountQuota, AccountSetupDraft, AccountUnreadSnapshot, AttachmentContent, AttachmentMeta,
+    DraftMessage, MailAccount, MailLabel, MailMessage, MailThread, MailboxBundle, MailboxFolder,
+    StoredAccountState, SyncStatus,
 };
 use crate::protocol::BackendError;
 use crate::provider::common::{
@@ -446,6 +446,13 @@ impl SyncProvider for ImapSmtpProvider {
 
     async fn get_mailbox_bundle_cap(&self, account_id: &str) -> Result<MailboxBundle, BackendError> {
         memory::store().mail().get_mailbox_bundle(account_id)
+    }
+
+    async fn get_account_unread_snapshot_cap(
+        &self,
+        account_id: &str,
+    ) -> Result<AccountUnreadSnapshot, BackendError> {
+        memory::store().mail().get_account_unread_snapshot(account_id)
     }
 }
 

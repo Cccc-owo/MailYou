@@ -8,9 +8,9 @@ mod message_ops;
 mod security;
 
 use crate::models::{
-    AccountSetupDraft, AttachmentContent, AttachmentMeta, Contact, ContactGroup, DraftMessage,
-    MailAccount, MailFolderKind, MailLabel, MailMessage, MailThread, MailboxBundle, MailboxFolder,
-    StoredAccountState, SyncStatus,
+    AccountSetupDraft, AccountUnreadSnapshot, AttachmentContent, AttachmentMeta, Contact,
+    ContactGroup, DraftMessage, MailAccount, MailFolderKind, MailLabel, MailMessage, MailThread,
+    MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
 };
 use crate::protocol::{BackendError, StorageSecurityStatus};
 use crate::storage::persisted;
@@ -303,6 +303,13 @@ impl MailStore {
 
     pub fn get_mailbox_bundle(self, account_id: &str) -> Result<MailboxBundle, BackendError> {
         message_ops::get_mailbox_bundle(account_id)
+    }
+
+    pub fn get_account_unread_snapshot(
+        self,
+        account_id: &str,
+    ) -> Result<AccountUnreadSnapshot, BackendError> {
+        message_ops::get_account_unread_snapshot(account_id)
     }
 
     pub fn merge_remote_mailbox(

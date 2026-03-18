@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::models::{
-    AttachmentContent, AttachmentMeta, DraftMessage, MailLabel, MailMessage, MailThread,
-    MailboxBundle, MailFolderKind,
+    AccountUnreadMessageSummary, AccountUnreadSnapshot, AttachmentContent, AttachmentMeta,
+    DraftMessage, MailLabel, MailMessage, MailThread, MailboxBundle, MailFolderKind,
 };
 use crate::protocol::BackendError;
 use crate::storage::{memory, sync};
@@ -560,6 +560,30 @@ pub(crate) fn get_mailbox_bundle(account_id: &str) -> Result<MailboxBundle, Back
             .get(account_id)
             .cloned()
             .unwrap_or_else(|| sync::initial_sync_status(account_id, &memory::current_timestamp())),
+    })
+}
+
+pub(crate) fn get_account_unread_snapshot(
+    account_id: &str,
+) -> Result<AccountUnreadSnapshot, BackendError> {
+    let state = memory::lock_state();
+    let mut unread_messages = state
+        .messages
+        .iter()
+        .filter(|message| message.account_id == account_id && !message.is_read)
+        .map(|message| AccountUnreadMessageSummary {
+            id: message.id.clone(),
+            subject: message.subject.clone(),
+            from: message.from.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    unread_messages.sort_by(|left, right| left.id.cmp(&right.id));
+
+    Ok(AccountUnreadSnapshot {
+        account_id: account_id.to_string(),
+        unread_messages,
+        updated_at: memory::current_timestamp(),
     })
 }
 

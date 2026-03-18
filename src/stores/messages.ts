@@ -29,6 +29,7 @@ const getMessagesForFolder = (
 }
 
 export const useMessagesStore = defineStore('messages', () => {
+  const BATCH_MUTATION_CHUNK_SIZE = 96
   const messages = ref<MailMessage[]>([])
   const selectedMessageId = ref<string | null>(null)
   const selectionAnchorId = ref<string | null>(null)
@@ -406,6 +407,10 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const batchDelete = async (accountId: string) => {
+    if (batchAction.value.active) {
+      return
+    }
+
     const ids = [...selectedIds]
     if (ids.length === 0) {
       return
@@ -421,7 +426,7 @@ export const useMessagesStore = defineStore('messages', () => {
     selectedMessageId.value = selectedIds.has(selectedMessageId.value ?? '') ? nextId : selectedMessageId.value
     selectedIds.clear()
     const failures: unknown[] = []
-    for (const batchIds of chunkItems(ids, 24)) {
+    for (const batchIds of chunkItems(ids, BATCH_MUTATION_CHUNK_SIZE)) {
       try {
         await mailRepository.batchDeleteMessages(accountId, batchIds)
         batchIds.forEach((id) => {
@@ -447,6 +452,10 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const batchArchive = async (accountId: string) => {
+    if (batchAction.value.active) {
+      return
+    }
+
     const ids = [...selectedIds]
     if (ids.length === 0) {
       return
@@ -481,6 +490,10 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const batchToggleRead = async (accountId: string, markRead: boolean) => {
+    if (batchAction.value.active) {
+      return
+    }
+
     const ids = [...selectedIds]
     if (ids.length === 0) {
       return
@@ -500,7 +513,7 @@ export const useMessagesStore = defineStore('messages', () => {
     const failures: unknown[] = []
     for (const batchIds of chunkItems(
       ids.filter((id) => originalStates.get(id) !== undefined),
-      48,
+      BATCH_MUTATION_CHUNK_SIZE,
     )) {
       try {
         const actionableIds = batchIds.filter((id) => originalStates.get(id) !== markRead)
@@ -533,6 +546,10 @@ export const useMessagesStore = defineStore('messages', () => {
   }
 
   const batchMove = async (accountId: string, folderId: string) => {
+    if (batchAction.value.active) {
+      return
+    }
+
     const ids = [...selectedIds]
     if (ids.length === 0) {
       return
@@ -548,7 +565,7 @@ export const useMessagesStore = defineStore('messages', () => {
     selectedMessageId.value = selectedIds.has(selectedMessageId.value ?? '') ? nextId : selectedMessageId.value
     selectedIds.clear()
     const failures: unknown[] = []
-    for (const batchIds of chunkItems(ids, 24)) {
+    for (const batchIds of chunkItems(ids, BATCH_MUTATION_CHUNK_SIZE)) {
       try {
         await mailRepository.batchMoveMessages(accountId, batchIds, folderId)
         batchIds.forEach((id) => {

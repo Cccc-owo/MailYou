@@ -212,6 +212,10 @@ impl<'a> MailService<'a> {
                 let provider = self.sync_provider_for_account(&account_id);
                 serialize(provider.get_mailbox_bundle_cap(&account_id).await?)
             }
+            BackendRequest::GetAccountUnreadSnapshot { account_id } => {
+                let provider = self.sync_provider_for_account(&account_id);
+                serialize(provider.get_account_unread_snapshot_cap(&account_id).await?)
+            }
             BackendRequest::GetAttachmentContent {
                 account_id,
                 message_id,

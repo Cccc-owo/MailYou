@@ -141,6 +141,18 @@ export interface RustBackendMethodMap {
     params: { accountId: string }
     result: MailboxBundle
   }
+  getAccountUnreadSnapshot: {
+    params: { accountId: string }
+    result: {
+      accountId: string
+      unreadMessages: Array<{
+        id: string
+        subject: string
+        from: string
+      }>
+      updatedAt: string
+    }
+  }
   getAttachmentContent: {
     params: { accountId: string; messageId: string; attachmentId: string }
     result: AttachmentContent

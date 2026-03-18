@@ -4,8 +4,8 @@ mod mail_ops;
 use async_trait::async_trait;
 
 use crate::models::{
-    AccountQuota, AccountSetupDraft, AttachmentContent, DraftMessage, MailAccount, MailLabel,
-    MailMessage, MailboxBundle, MailboxFolder, SyncStatus,
+    AccountQuota, AccountSetupDraft, AccountUnreadSnapshot, AttachmentContent, DraftMessage,
+    MailAccount, MailLabel, MailMessage, MailboxBundle, MailboxFolder, SyncStatus,
 };
 use crate::protocol::BackendError;
 use crate::provider::common::validate_draft;
@@ -321,5 +321,12 @@ impl SyncProvider for Pop3SmtpProvider {
 
     async fn get_mailbox_bundle_cap(&self, account_id: &str) -> Result<MailboxBundle, BackendError> {
         memory::store().mail().get_mailbox_bundle(account_id)
+    }
+
+    async fn get_account_unread_snapshot_cap(
+        &self,
+        account_id: &str,
+    ) -> Result<AccountUnreadSnapshot, BackendError> {
+        memory::store().mail().get_account_unread_snapshot(account_id)
     }
 }

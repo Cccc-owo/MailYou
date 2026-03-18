@@ -6,8 +6,8 @@ pub mod registry;
 use async_trait::async_trait;
 
 use crate::models::{
-    AccountQuota, AccountSetupDraft, AttachmentContent, DraftMessage, MailAccount, MailLabel, MailMessage,
-    MailboxBundle, MailboxFolder, SyncStatus,
+    AccountQuota, AccountSetupDraft, AccountUnreadSnapshot, AttachmentContent, DraftMessage,
+    MailAccount, MailLabel, MailMessage, MailboxBundle, MailboxFolder, SyncStatus,
 };
 use crate::protocol::BackendError;
 
@@ -183,4 +183,8 @@ pub trait SyncProvider: Send + Sync {
         &self,
         account_id: &str,
     ) -> Result<MailboxBundle, BackendError>;
+    async fn get_account_unread_snapshot_cap(
+        &self,
+        account_id: &str,
+    ) -> Result<AccountUnreadSnapshot, BackendError>;
 }

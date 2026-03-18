@@ -235,22 +235,42 @@ const sendBackgroundSyncComplete = (accountId: string) => {
   }
 }
 
+const unreadSetsEqual = (left: Set<string> | undefined, right: Set<string>) => {
+  if (!left) {
+    return false
+  }
+
+  if (left.size !== right.size) {
+    return false
+  }
+
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false
+    }
+  }
+
+  return true
+}
+
 const publishUnreadChanges = (
   accountId: string,
-  messages: Awaited<ReturnType<typeof mailBackend.getMailboxBundle>>['messages'],
+  unreadMessages: Awaited<ReturnType<typeof mailBackend.getAccountUnreadSnapshot>>['unreadMessages'],
 ) => {
   const unreadIds = new Set(
-    messages
-      .filter((message) => !message.isRead)
-      .map((message) => message.id),
+    unreadMessages.map((message) => message.id),
   )
   const previousUnread = knownUnreadIdsByAccount.get(accountId)
-  const newUnread = messages.filter(
-    (message) => !message.isRead && previousUnread && !previousUnread.has(message.id),
+  const newUnread = unreadMessages.filter(
+    (message) => previousUnread && !previousUnread.has(message.id),
   )
+  const unreadChanged = !unreadSetsEqual(previousUnread, unreadIds)
 
   knownUnreadIdsByAccount.set(accountId, unreadIds)
-  sendBackgroundSyncComplete(accountId)
+
+  if (unreadChanged) {
+    sendBackgroundSyncComplete(accountId)
+  }
 
   if (newUnread.length === 0 || !Notification.isSupported()) {
     return
@@ -269,8 +289,8 @@ const publishUnreadChanges = (
 }
 
 const syncSingleAccountInBackground = async (accountId: string) => {
-  const bundle = await mailBackend.getMailboxBundle(accountId)
-  publishUnreadChanges(accountId, bundle.messages)
+  const snapshot = await mailBackend.getAccountUnreadSnapshot(accountId)
+  publishUnreadChanges(accountId, snapshot.unreadMessages)
 }
 
 const syncAccountsInBackground = async () => {

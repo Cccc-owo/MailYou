@@ -19,3 +19,19 @@ pub struct AccountQuota {
     pub usage_percent: Option<u64>,
     pub updated_at: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountUnreadMessageSummary {
+    pub id: String,
+    pub subject: String,
+    pub from: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountUnreadSnapshot {
+    pub account_id: String,
+    pub unread_messages: Vec<AccountUnreadMessageSummary>,
+    pub updated_at: String,
+}
