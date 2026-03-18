@@ -7,6 +7,7 @@ import {
   isMailYouDevProtocolClientEnabled,
   isMailYouDevServerEnabled,
 } from '@/config/runtime'
+import { initializeMainProcessLogging } from './logging'
 import { handleOAuthCallbackUrl } from './backend/oauth'
 import { ensureRustBackendReady, onRustBackendEvent, shutdownRustBackend } from './backend/rust/process'
 import { registerMailIpc } from './ipc/mail'
@@ -55,6 +56,7 @@ const configureLinuxWindowSystem = () => {
 }
 
 configureLinuxWindowSystem()
+initializeMainProcessLogging()
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'mailyou-avatar', privileges: { secure: true, supportFetchAPI: true } },
