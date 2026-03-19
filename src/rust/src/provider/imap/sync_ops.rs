@@ -4,6 +4,7 @@ use crate::models::{
     MailFolderKind, MailMessage, MailThread, MailboxFolder, StoredAccountState, SyncStatus,
 };
 use crate::protocol::BackendError;
+use crate::provider::common::{redact_account_id_for_log, redact_mailbox_name_for_log};
 use crate::storage::{memory, persisted};
 
 pub(super) async fn wait_for_mailbox_change(
@@ -168,9 +169,10 @@ pub(super) async fn sync_account_full(
 ) -> Result<SyncStatus, BackendError> {
     let mail = memory::store().mail();
     let accounts = memory::store().accounts();
+    let redacted_account_id = redact_account_id_for_log(account_id);
     eprintln!(
         "[imap] syncing account {} ({}:{})...",
-        account_id, account_state.config.incoming_host, account_state.config.incoming_port
+        redacted_account_id, account_state.config.incoming_host, account_state.config.incoming_port
     );
     let start = std::time::Instant::now();
     let (folders, messages, threads) = imap_fetch_mailbox(account_state).await?;
@@ -349,7 +351,8 @@ async fn fetch_idle_folder_status(
 
     eprintln!(
         "[imap] STATUS shortcut for empty mailbox account={} mailbox={}",
-        previous_folder.account_id, folder_id
+        redact_account_id_for_log(&previous_folder.account_id),
+        redact_mailbox_name_for_log(folder_id)
     );
     Ok(Some(status))
 }
@@ -803,9 +806,11 @@ async fn select_mailbox_for_incremental_sync(
         .map_err(|error| BackendError::internal(format!("IMAP CAPABILITY failed: {error}")))?;
     let has_qresync = capabilities.has_str("QRESYNC");
     let has_condstore = has_qresync || capabilities.has_str("CONDSTORE");
+    let redacted_account_id = redact_account_id_for_log(account_id);
+    let redacted_mailbox_name = redact_mailbox_name_for_log(mailbox_name);
     eprintln!(
         "[imap] mailbox sync capabilities account={} mailbox={} qresync={} condstore={}",
-        account_id, mailbox_name, has_qresync, has_condstore
+        redacted_account_id, redacted_mailbox_name, has_qresync, has_condstore
     );
 
     if has_qresync {
@@ -813,13 +818,13 @@ async fn select_mailbox_for_incremental_sync(
             Ok(()) => {
                 eprintln!(
                     "[imap] enabled QRESYNC account={} mailbox={}",
-                    account_id, mailbox_name
+                    redacted_account_id, redacted_mailbox_name
                 );
             }
             Err(error) => {
                 eprintln!(
                     "[imap] ENABLE QRESYNC failed account={} mailbox={}: {}",
-                    account_id, mailbox_name, error
+                    redacted_account_id, redacted_mailbox_name, error
                 );
             }
         }
@@ -836,8 +841,8 @@ async fn select_mailbox_for_incremental_sync(
                 if !known_uids.is_empty() {
                     eprintln!(
                         "[imap] attempting QRESYNC SELECT account={} mailbox={} uidValidity={} modseq={} knownUids={}",
-                        account_id,
-                        mailbox_name,
+                        redacted_account_id,
+                        redacted_mailbox_name,
                         uid_validity,
                         highest_modseq,
                         known_uids.len()
@@ -854,8 +859,8 @@ async fn select_mailbox_for_incremental_sync(
                         Ok(result) => {
                             eprintln!(
                                 "[imap] QRESYNC SELECT ok account={} mailbox={} vanished={}",
-                                account_id,
-                                mailbox_name,
+                                redacted_account_id,
+                                redacted_mailbox_name,
                                 result.vanished_uids.len()
                             );
                             return Ok(result);
@@ -863,8 +868,8 @@ async fn select_mailbox_for_incremental_sync(
                         Err(error) => {
                             eprintln!(
                                 "[imap] QRESYNC SELECT failed, falling back account={} mailbox={}: {}",
-                                account_id,
-                                mailbox_name,
+                                redacted_account_id,
+                                redacted_mailbox_name,
                                 error.message
                             );
                         }
@@ -872,14 +877,14 @@ async fn select_mailbox_for_incremental_sync(
                 } else {
                     eprintln!(
                         "[imap] skipping QRESYNC SELECT account={} mailbox={} reason=no-known-uids",
-                        account_id, mailbox_name
+                        redacted_account_id, redacted_mailbox_name
                     );
                 }
             } else {
                 eprintln!(
                     "[imap] skipping QRESYNC SELECT account={} mailbox={} reason=missing-baseline uidValidity={:?} modseq={:?}",
-                    account_id,
-                    mailbox_name,
+                    redacted_account_id,
+                    redacted_mailbox_name,
                     folder.imap_uid_validity,
                     folder.imap_highest_modseq
                 );
@@ -887,7 +892,7 @@ async fn select_mailbox_for_incremental_sync(
         } else {
             eprintln!(
                 "[imap] skipping QRESYNC SELECT account={} mailbox={} reason=no-local-folder-state",
-                account_id, mailbox_name
+                redacted_account_id, redacted_mailbox_name
             );
         }
     }
@@ -895,7 +900,7 @@ async fn select_mailbox_for_incremental_sync(
     if has_condstore {
         eprintln!(
             "[imap] falling back to CONDSTORE SELECT account={} mailbox={}",
-            account_id, mailbox_name
+            redacted_account_id, redacted_mailbox_name
         );
         let mailbox = session
             .select_condstore(mailbox_name)
@@ -913,7 +918,7 @@ async fn select_mailbox_for_incremental_sync(
 
     eprintln!(
         "[imap] falling back to EXAMINE account={} mailbox={}",
-        account_id, mailbox_name
+        redacted_account_id, redacted_mailbox_name
     );
     let mailbox = session.examine(mailbox_name).await.map_err(|error| {
         BackendError::internal(format!("IMAP EXAMINE '{mailbox_name}' failed: {error}"))

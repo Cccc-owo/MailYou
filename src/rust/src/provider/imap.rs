@@ -24,7 +24,8 @@ use crate::models::{
 };
 use crate::protocol::BackendError;
 use crate::provider::common::{
-    extract_attachments_from_mime, extract_body_from_mime, make_preview, validate_draft,
+    extract_attachments_from_mime, extract_body_from_mime, make_preview,
+    redact_account_id_for_log, redact_email_for_log, validate_draft,
 };
 use crate::provider::{
     AccountProvider, DraftProvider, FolderProvider, LabelProvider, MessageMutationProvider,
@@ -147,7 +148,7 @@ impl AccountProvider for ImapSmtpProvider {
     async fn create_account_cap(&self, draft: AccountSetupDraft) -> Result<MailAccount, BackendError> {
         eprintln!(
             "[imap] testing connection for new account {}...",
-            draft.email
+            redact_email_for_log(&draft.email)
         );
         self.test_account_connection_cap(draft.clone()).await?;
         eprintln!("[imap] connection test passed, creating account");
@@ -174,7 +175,10 @@ impl AccountProvider for ImapSmtpProvider {
     }
 
     async fn delete_account_cap(&self, account_id: &str) -> Result<(), BackendError> {
-        eprintln!("[store] deleting account {account_id}");
+        eprintln!(
+            "[store] deleting account {}",
+            redact_account_id_for_log(account_id)
+        );
         memory::store().accounts().delete_account(account_id)
     }
 
@@ -204,7 +208,10 @@ impl AccountProvider for ImapSmtpProvider {
         let (_quota_roots, quotas) = match quota_result {
             Ok(result) => result,
             Err(error) => {
-                eprintln!("[imap] quota unavailable for {account_id}: {error}");
+                eprintln!(
+                    "[imap] quota unavailable for {}: {error}",
+                    redact_account_id_for_log(account_id)
+                );
                 return Ok(None);
             }
         };

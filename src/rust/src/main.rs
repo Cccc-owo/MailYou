@@ -62,7 +62,10 @@ async fn main() {
             Ok(request) => request,
             Err(error) => {
                 eprintln!("[backend] parse error: {error}");
-                eprintln!("[backend] raw input: {line}");
+                eprintln!(
+                    "[backend] dropped invalid request payload ({} bytes)",
+                    line.len()
+                );
                 let response = BackendResponse::error(
                     0,
                     protocol::BackendError::internal(format!("Invalid request: {error}")),

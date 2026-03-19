@@ -549,7 +549,7 @@ app.whenReady().then(async () => {
 
     void syncSingleAccountInBackground(event.payload.accountId).catch((error) => {
       const message = error instanceof Error ? error.message : String(error)
-      console.error(`[realtime-sync] failed for ${event.payload.accountId}: ${message}`)
+      console.error(`[realtime-sync] failed: ${message}`)
     })
   })
 

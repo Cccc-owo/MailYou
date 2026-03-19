@@ -59,6 +59,72 @@ pub fn validate_draft(draft: &AccountSetupDraft) -> Result<(), BackendError> {
     Ok(())
 }
 
+pub fn redact_email_for_log(value: &str) -> String {
+    let trimmed = value.trim();
+    let Some((local, domain)) = trimmed.split_once('@') else {
+        if trimmed.is_empty() {
+            return "***".into();
+        }
+
+        let visible = trimmed.chars().take(2).collect::<String>();
+        return format!("{visible}***");
+    };
+
+    let visible = local.chars().take(2).collect::<String>();
+    let masked = if local.chars().count() > 2 {
+        format!("{visible}***")
+    } else {
+        visible
+    };
+
+    format!("{masked}@{domain}")
+}
+
+pub fn redact_account_id_for_log(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "***".into();
+    }
+
+    if trimmed.starts_with("acc-") {
+        let visible = trimmed.chars().take(8).collect::<String>();
+        return format!("{visible}***");
+    }
+
+    let visible = trimmed.chars().take(6).collect::<String>();
+    format!("{visible}***")
+}
+
+pub fn redact_mailbox_name_for_log(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "***".into();
+    }
+
+    let lower = trimmed.to_lowercase();
+    let is_common_system_mailbox =
+        lower == "inbox"
+            || lower == "sent"
+            || lower == "drafts"
+            || lower == "trash"
+            || lower == "junk"
+            || lower == "spam"
+            || lower == "archive"
+            || lower == "starred"
+            || lower == "已发送"
+            || lower == "草稿"
+            || lower == "已删除"
+            || lower == "垃圾邮件"
+            || lower == "收件箱"
+            || lower.contains("all mail");
+    if is_common_system_mailbox {
+        return trimmed.to_string();
+    }
+
+    let visible = trimmed.chars().take(4).collect::<String>();
+    format!("{visible}***")
+}
+
 // ---------------------------------------------------------------------------
 // MIME parsing helpers
 // ---------------------------------------------------------------------------

@@ -32,6 +32,8 @@ const timestamp = () => new Date().toISOString()
 
 const currentLogFileName = () => `app-${timestamp().slice(0, 10)}.log`
 
+const REDACTED = '[REDACTED]'
+
 const normalizeLevel = (method: ConsoleMethod): LogLevel => (method === 'log' ? 'info' : method)
 
 const resolveMinimumLogLevel = (): LogLevel => {
@@ -121,6 +123,48 @@ const rotateLogFileIfNeeded = (filePath: string, nextEntrySize: number) => {
 const formatArgs = (args: unknown[]) =>
   formatWithOptions({ colors: false, depth: 6, breakLength: 120 }, ...args)
 
+const redactUrlSecrets = (value: string) => {
+  try {
+    const url = new URL(value)
+    let changed = false
+    for (const key of ['code', 'state', 'access_token', 'refresh_token', 'id_token', 'token']) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.set(key, REDACTED)
+        changed = true
+      }
+    }
+
+    return changed ? url.toString() : value
+  } catch {
+    return value
+  }
+}
+
+const redactSensitiveText = (value: string) =>
+  redactUrlSecrets(value)
+    .replace(
+      /\b(authorization|proxy-authorization)\s*:\s*(bearer|basic)\s+([^\s,;]+)/gi,
+      (_match, key: string, scheme: string) => `${key}: ${scheme} ${REDACTED}`,
+    )
+    .replace(
+      /(["']?)(password|currentPassword|newPassword|passphrase|secret|accessToken|refreshToken|idToken|token|code|authorization)\1\s*[:=]\s*(['"]?)([^'",\s}]+)\3/gi,
+      (_match, quote: string, key: string) => `${quote}${key}${quote}: ${REDACTED}`,
+    )
+    .replace(/\b(code|state|access_token|refresh_token|id_token|token)=([^&\s]+)/gi, `$1=${REDACTED}`)
+    .replace(/\bBearer\s+([A-Za-z0-9\-._~+/]+=*)/gi, `Bearer ${REDACTED}`)
+    .replace(
+      /\b([A-Z0-9._%+-]{1,64})@([A-Z0-9.-]+\.[A-Z]{2,})\b/gi,
+      (_match, local: string, domain: string) => {
+        const prefix = local.slice(0, Math.min(2, local.length))
+        return `${prefix}${local.length > prefix.length ? '***' : ''}@${domain}`
+      },
+    )
+    .replace(/\bacc-[a-z0-9-]{6,}\b/gi, (match) => `${match.slice(0, 8)}***`)
+    .replace(/\b(account|accountId)\s*[:=]\s*([^\s,;]+)/gi, (_match, key: string) => `${key}=${REDACTED}`)
+    .replace(/\b(user|username|email)\s*[:=]\s*([^\s,;]+)/gi, (_match, key: string) => `${key}=${REDACTED}`)
+
+const sanitizeLogMessage = (message: string) => redactSensitiveText(message)
+
 const formatLevel = (method: ConsoleMethod) => normalizeLevel(method).toUpperCase().padEnd(5, ' ')
 
 const writeLog = (method: ConsoleMethod, args: unknown[]) => {
@@ -128,7 +172,7 @@ const writeLog = (method: ConsoleMethod, args: unknown[]) => {
     return
   }
 
-  const message = formatArgs(args)
+  const message = sanitizeLogMessage(formatArgs(args))
   const lines = message.split(/\r?\n/)
   const prefix = `[${timestamp()}] [${formatLevel(method)}]`
   const output = lines.map((line) => `${prefix} ${line}`).join('\n')

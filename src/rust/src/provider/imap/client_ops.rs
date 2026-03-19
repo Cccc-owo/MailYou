@@ -8,6 +8,7 @@ use tokio_native_tls::TlsStream;
 use crate::models::{AccountAuthMode, AccountConfig, AccountSetupDraft, StoredAccountState};
 use crate::oauth::{ensure_account_access_token, ensure_config_access_token, xoauth2_payload};
 use crate::protocol::BackendError;
+use crate::provider::common::redact_email_for_log;
 use crate::storage::memory;
 
 pub(super) async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), BackendError> {
@@ -49,7 +50,10 @@ pub(super) async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), Bac
                 })?
             }
         };
-        eprintln!("[imap] logging in as {}...", draft.username.trim());
+        eprintln!(
+            "[imap] logging in as {}...",
+            redact_email_for_log(draft.username.trim())
+        );
         let mut session = imap_authenticate_client(client, draft).await?;
         send_client_id(&mut session).await?;
         let _ = session.logout().await;
@@ -58,7 +62,10 @@ pub(super) async fn imap_login_test(draft: &AccountSetupDraft) -> Result<(), Bac
         imap_read_greeting(&mut client)
             .await
             .map_err(|e| BackendError::validation(e.message))?;
-        eprintln!("[imap] logging in as {}...", draft.username.trim());
+        eprintln!(
+            "[imap] logging in as {}...",
+            redact_email_for_log(draft.username.trim())
+        );
         let mut session = imap_authenticate_client(client, draft).await?;
         send_client_id(&mut session).await?;
         let _ = session.logout().await;

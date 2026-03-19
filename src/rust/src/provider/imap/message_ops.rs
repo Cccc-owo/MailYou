@@ -1,7 +1,7 @@
 use crate::models::{AttachmentContent, DraftMessage, MailFolderKind, MailMessage};
 use crate::provider::common::{
     finalize_smtp_send, get_attachment_content_from_storage, log_smtp_send_start,
-    prepare_smtp_send,
+    prepare_smtp_send, redact_mailbox_name_for_log,
 };
 use crate::provider::SyncProvider;
 use crate::protocol::BackendError;
@@ -85,7 +85,9 @@ pub(super) async fn toggle_star(
         if let Some(uid) = msg.imap_uid {
             eprintln!(
                 "[imap] pushing star={} for uid {} in {}",
-                !msg.is_starred, uid, msg.folder_id
+                !msg.is_starred,
+                uid,
+                redact_mailbox_name_for_log(&msg.folder_id)
             );
             if let Err(error) =
                 super::client_ops::imap_store_flag(account_id, &msg.folder_id, uid, "\\Flagged", !msg.is_starred)
@@ -108,7 +110,9 @@ pub(super) async fn toggle_read(
         if let Some(uid) = msg.imap_uid {
             eprintln!(
                 "[imap] pushing read={} for uid {} in {}",
-                !msg.is_read, uid, msg.folder_id
+                !msg.is_read,
+                uid,
+                redact_mailbox_name_for_log(&msg.folder_id)
             );
             if let Err(error) =
                 super::client_ops::imap_store_flag(account_id, &msg.folder_id, uid, "\\Seen", !msg.is_read).await
@@ -154,7 +158,7 @@ pub(super) async fn batch_toggle_read(
             "[imap] pushing read={} for {} messages in {}",
             is_read,
             uids.len(),
-            folder_id
+            redact_mailbox_name_for_log(&folder_id)
         );
         if let Err(error) =
             super::client_ops::imap_store_flags(account_id, &folder_id, &uids, "\\Seen", is_read).await
@@ -169,10 +173,11 @@ pub(super) async fn batch_toggle_read(
                 )
                 .await
                 {
-                    eprintln!(
-                        "[imap] batch push read revert failed for {}: {}",
-                        pushed_folder_id, revert_error.message
-                    );
+                        eprintln!(
+                            "[imap] batch push read revert failed for {}: {}",
+                            redact_mailbox_name_for_log(pushed_folder_id),
+                            revert_error.message
+                        );
                 }
             }
             eprintln!("[imap] batch push read failed: {}", error.message);
@@ -277,7 +282,7 @@ pub(super) async fn batch_delete_messages(
             eprintln!(
                 "[imap] moving {} messages from {} to trash",
                 uids.len(),
-                folder_id
+                redact_mailbox_name_for_log(&folder_id)
             );
             if let Err(error) =
                 super::folder_ops::imap_move_messages(account_id, &folder_id, &trash_folder.id, &uids).await
@@ -293,7 +298,8 @@ pub(super) async fn batch_delete_messages(
                     {
                         eprintln!(
                             "[imap] batch push delete revert failed for {}: {}",
-                            moved_folder_id, revert_error.message
+                            redact_mailbox_name_for_log(moved_folder_id),
+                            revert_error.message
                         );
                     }
                 }
@@ -306,7 +312,11 @@ pub(super) async fn batch_delete_messages(
     }
 
     for (folder_id, uids) in delete_from_trash {
-        eprintln!("[imap] permanently deleting {} messages from {}", uids.len(), folder_id);
+        eprintln!(
+            "[imap] permanently deleting {} messages from {}",
+            uids.len(),
+            redact_mailbox_name_for_log(&folder_id)
+        );
         if let Err(error) =
             super::folder_ops::imap_delete_messages_by_uid(account_id, &folder_id, &uids).await
         {
@@ -325,7 +335,8 @@ pub(super) async fn batch_delete_messages(
                     {
                         eprintln!(
                             "[imap] batch push delete revert failed for {}: {}",
-                            moved_folder_id, revert_error.message
+                            redact_mailbox_name_for_log(moved_folder_id),
+                            revert_error.message
                         );
                     }
                 }
@@ -357,7 +368,9 @@ pub(super) async fn archive_message(
                 .ok_or_else(|| BackendError::internal("Archive folder is missing"))?;
             eprintln!(
                 "[imap] archiving uid {} from {} to {}",
-                uid, orig.folder_id, archive_folder_id
+                uid,
+                redact_mailbox_name_for_log(&orig.folder_id),
+                redact_mailbox_name_for_log(&archive_folder_id)
             );
             if let Err(error) =
                 super::folder_ops::imap_move_message(account_id, &orig.folder_id, &archive_folder_id, uid).await
@@ -390,7 +403,9 @@ pub(super) async fn restore_message(
             };
             eprintln!(
                 "[imap] restoring uid {} from {} to {}",
-                uid, orig.folder_id, restore_folder_id
+                uid,
+                redact_mailbox_name_for_log(&orig.folder_id),
+                redact_mailbox_name_for_log(&restore_folder_id)
             );
             if let Err(error) =
                 super::folder_ops::imap_move_message(account_id, &orig.folder_id, &restore_folder_id, uid).await
@@ -415,7 +430,9 @@ pub(super) async fn move_message(
         if let Some(uid) = orig.imap_uid {
             eprintln!(
                 "[imap] moving uid {} from {} to {}",
-                uid, orig.folder_id, folder_id
+                uid,
+                redact_mailbox_name_for_log(&orig.folder_id),
+                redact_mailbox_name_for_log(folder_id)
             );
             if let Err(error) = super::folder_ops::imap_move_message(account_id, &orig.folder_id, folder_id, uid).await
             {
@@ -454,8 +471,8 @@ pub(super) async fn batch_move_messages(
         eprintln!(
             "[imap] moving {} messages from {} to {}",
             uids.len(),
-            source_folder_id,
-            folder_id
+            redact_mailbox_name_for_log(&source_folder_id),
+            redact_mailbox_name_for_log(folder_id)
         );
         if let Err(error) =
             super::folder_ops::imap_move_messages(account_id, &source_folder_id, folder_id, &uids).await
@@ -467,7 +484,8 @@ pub(super) async fn batch_move_messages(
                 {
                     eprintln!(
                         "[imap] batch push move revert failed for {}: {}",
-                        moved_source_folder_id, revert_error.message
+                        redact_mailbox_name_for_log(moved_source_folder_id),
+                        revert_error.message
                     );
                 }
             }
@@ -492,8 +510,9 @@ pub(super) async fn mark_all_read(account_id: &str, folder_id: &str) -> Result<(
     };
 
     eprintln!(
-        "[store] marking {} messages read in {folder_id}",
-        unread_message_ids.len()
+        "[store] marking {} messages read in {}",
+        unread_message_ids.len(),
+        redact_mailbox_name_for_log(folder_id)
     );
     batch_toggle_read(account_id, &unread_message_ids, true).await
 }

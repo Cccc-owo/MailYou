@@ -8,7 +8,7 @@ use crate::models::{
     MailAccount, MailLabel, MailMessage, MailboxBundle, MailboxFolder, SyncStatus,
 };
 use crate::protocol::BackendError;
-use crate::provider::common::validate_draft;
+use crate::provider::common::{redact_account_id_for_log, redact_email_for_log, validate_draft};
 use crate::provider::{
     AccountProvider, DraftProvider, FolderProvider, LabelProvider, MessageMutationProvider,
     MessageQueryProvider, SyncProvider,
@@ -28,7 +28,7 @@ impl AccountProvider for Pop3SmtpProvider {
     async fn create_account_cap(&self, draft: AccountSetupDraft) -> Result<MailAccount, BackendError> {
         eprintln!(
             "[pop3] testing connection for new account {}...",
-            draft.email
+            redact_email_for_log(&draft.email)
         );
         self.test_account_connection_cap(draft.clone()).await?;
         eprintln!("[pop3] connection test passed, creating account");
@@ -48,7 +48,10 @@ impl AccountProvider for Pop3SmtpProvider {
     }
 
     async fn delete_account_cap(&self, account_id: &str) -> Result<(), BackendError> {
-        eprintln!("[store] deleting account {account_id}");
+        eprintln!(
+            "[store] deleting account {}",
+            redact_account_id_for_log(account_id)
+        );
         memory::store().accounts().delete_account(account_id)
     }
 

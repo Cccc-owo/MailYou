@@ -8,13 +8,50 @@ let registered = false
 
 type IpcArgs = unknown[]
 
+const summarizeArg = (value: unknown) => {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.length}]`
+  }
+
+  if (value && typeof value === 'object') {
+    return '{...}'
+  }
+
+  return String(value)
+}
+
+const summarizeIpcArgs = (channel: string, args: IpcArgs) => {
+  switch (channel) {
+    case 'mail:handleOAuthCallbackUrl':
+      return '(oauth-callback-url redacted)'
+    case 'mail:unlockStorage':
+    case 'mail:clearMasterPassword':
+      return '(redacted)'
+    case 'mail:setMasterPassword':
+      return '(redacted, redacted)'
+    case 'mail:createAccount':
+    case 'mail:updateAccount':
+    case 'mail:testAccountConnection':
+    case 'mail:authorizeOAuth':
+    case 'mail:saveDraft':
+    case 'mail:sendMessage':
+    case 'mail:createContact':
+    case 'mail:updateContact':
+    case 'mail:uploadContactAvatar':
+      return '({...})'
+    default:
+      return `(${args.map(summarizeArg).join(', ')})`
+  }
+}
+
 const handle = (channel: string, fn: (...args: IpcArgs) => Promise<unknown>) => {
   ipcMain.handle(channel, async (_event, ...args: IpcArgs) => {
     const tag = channel.replace('mail:', '')
-    const argSummary = args
-      .map((a) => (typeof a === 'string' ? a : typeof a === 'object' ? '{...}' : String(a)))
-      .join(', ')
-    console.debug(`[ipc] ${tag}(${argSummary})`)
+    console.debug(`[ipc] ${tag}${summarizeIpcArgs(channel, args)}`)
 
     const start = Date.now()
     try {

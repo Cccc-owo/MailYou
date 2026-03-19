@@ -6,6 +6,7 @@ use tokio_native_tls::TlsStream;
 
 use crate::models::{AccountAuthMode, AccountSetupDraft, StoredAccountState};
 use crate::protocol::BackendError;
+use crate::provider::common::redact_email_for_log;
 
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -93,7 +94,10 @@ impl Pop3Client {
             Self::connect_plain(host, port).await?
         };
 
-        eprintln!("[pop3] logging in as {}...", draft.username.trim());
+        eprintln!(
+            "[pop3] logging in as {}...",
+            redact_email_for_log(draft.username.trim())
+        );
         client
             .login(draft.username.trim(), draft.password.trim())
             .await?;

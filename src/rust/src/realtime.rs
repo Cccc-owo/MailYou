@@ -8,6 +8,7 @@ use tokio::task::JoinHandle;
 use crate::models::MailFolderKind;
 use crate::protocol::BackendMessage;
 use crate::provider::imap::{sync_mailbox_incremental, wait_for_mailbox_change, IdleMailboxChange};
+use crate::provider::common::redact_account_id_for_log;
 use crate::storage::memory;
 
 #[derive(Clone, Default)]
@@ -121,8 +122,9 @@ async fn run_realtime_loop(
         match change_result {
             Ok(IdleMailboxChange::Changed) => {
                 if let Err(error) = sync_mailbox_incremental(&account_id, &mailbox_name).await {
+                    let redacted_account_id = redact_account_id_for_log(&account_id);
                     eprintln!(
-                        "[idle] incremental sync failed for {account_id} {mailbox_name}: {}",
+                        "[idle] incremental sync failed for {redacted_account_id} {mailbox_name}: {}",
                         error.message
                     );
                 } else if let Ok(event) =
@@ -139,16 +141,18 @@ async fn run_realtime_loop(
                             .mail()
                             .remove_messages_by_imap_uids(&account_id, &folder_id, &uids)
                     {
+                        let redacted_account_id = redact_account_id_for_log(&account_id);
                         eprintln!(
-                            "[idle] vanished prune failed for {account_id} {mailbox_name}: {}",
+                            "[idle] vanished prune failed for {redacted_account_id} {mailbox_name}: {}",
                             error.message
                         );
                     }
                 }
 
                 if let Err(error) = sync_mailbox_incremental(&account_id, &mailbox_name).await {
+                    let redacted_account_id = redact_account_id_for_log(&account_id);
                     eprintln!(
-                        "[idle] incremental sync after vanished failed for {account_id} {mailbox_name}: {}",
+                        "[idle] incremental sync after vanished failed for {redacted_account_id} {mailbox_name}: {}",
                         error.message
                     );
                 } else if let Ok(event) =
@@ -163,8 +167,9 @@ async fn run_realtime_loop(
             }
             Err(error) => {
                 if error_indicates_unsupported_idle(&error.message) {
+                    let redacted_account_id = redact_account_id_for_log(&account_id);
                     eprintln!(
-                        "[idle] switching realtime watcher to NOOP polling for {account_id}: {}",
+                        "[idle] switching realtime watcher to NOOP polling for {redacted_account_id}: {}",
                         error.message
                     );
                     idle_unsupported_accounts
@@ -175,8 +180,9 @@ async fn run_realtime_loop(
                     continue;
                 }
 
+                let redacted_account_id = redact_account_id_for_log(&account_id);
                 eprintln!(
-                    "[idle] watcher failed for {account_id} {mailbox_name}: {}",
+                    "[idle] watcher failed for {redacted_account_id} {mailbox_name}: {}",
                     error.message
                 );
                 tokio::time::sleep(backoff).await;
