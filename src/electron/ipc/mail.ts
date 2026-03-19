@@ -14,12 +14,12 @@ const handle = (channel: string, fn: (...args: IpcArgs) => Promise<unknown>) => 
     const argSummary = args
       .map((a) => (typeof a === 'string' ? a : typeof a === 'object' ? '{...}' : String(a)))
       .join(', ')
-    console.log(`[ipc] ${tag}(${argSummary})`)
+    console.debug(`[ipc] ${tag}(${argSummary})`)
 
     const start = Date.now()
     try {
       const result = await fn(...args)
-      console.log(`[ipc] ${tag} → ok (${Date.now() - start}ms)`)
+      console.info(`[ipc] ${tag} → ok (${Date.now() - start}ms)`)
       return result
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

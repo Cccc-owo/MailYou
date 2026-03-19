@@ -62,17 +62,17 @@ class RustBackendClient {
       this.pending.set(id, {
         resolve: (value: unknown) => {
           clearTimeout(timer)
-          console.log(`[rpc] #${id} ${method} → ok (${Date.now() - startTime}ms)`)
+          console.info(`[rpc] #${id} ${method} → ok (${Date.now() - startTime}ms)`)
           ;(resolve as (v: unknown) => void)(value)
         },
         reject: (reason: Error) => {
           clearTimeout(timer)
-          console.log(`[rpc] #${id} ${method} → error (${Date.now() - startTime}ms): ${reason.message}`)
+          console.error(`[rpc] #${id} ${method} → error (${Date.now() - startTime}ms): ${reason.message}`)
           reject(reason)
         },
       })
 
-      console.log(`[rpc] #${id} ${method}`)
+      console.debug(`[rpc] #${id} ${method}`)
 
       child.stdin.write(`${JSON.stringify(payload)}\n`, (error) => {
         if (!error) {
@@ -163,9 +163,23 @@ class RustBackendClient {
       const text = chunk.toString('utf8')
       // Forward Rust backend stderr to console for visibility
       for (const line of text.split('\n')) {
-        if (line.trim()) {
-          console.log(`[rust] ${line}`)
+        const trimmed = line.trim()
+        if (!trimmed) {
+          continue
         }
+
+        const normalized = trimmed.toLowerCase()
+        if (normalized.includes(' error') || normalized.startsWith('error') || normalized.includes(' panicked')) {
+          console.error(`[rust] ${trimmed}`)
+          continue
+        }
+
+        if (normalized.includes(' warn') || normalized.startsWith('warn')) {
+          console.warn(`[rust] ${trimmed}`)
+          continue
+        }
+
+        console.info(`[rust] ${trimmed}`)
       }
       recentStderr = `${recentStderr}${text}`.slice(-4000)
     })
