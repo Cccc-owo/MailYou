@@ -3,6 +3,7 @@ import type { AccountSetupDraft } from '@/types/account'
 import type { DraftMessage } from '@/types/mail'
 import type { Contact } from '@/types/contact'
 import { mailBackend } from '../backend/mailBackend'
+import { logEvent } from '../logging'
 
 let registered = false
 
@@ -51,16 +52,28 @@ const summarizeIpcArgs = (channel: string, args: IpcArgs) => {
 const handle = (channel: string, fn: (...args: IpcArgs) => Promise<unknown>) => {
   ipcMain.handle(channel, async (_event, ...args: IpcArgs) => {
     const tag = channel.replace('mail:', '')
-    console.debug(`[ipc] ${tag}${summarizeIpcArgs(channel, args)}`)
+    logEvent('debug', 'ipc.request', {
+      channel: tag,
+      args: summarizeIpcArgs(channel, args),
+    })
 
     const start = Date.now()
     try {
       const result = await fn(...args)
-      console.info(`[ipc] ${tag} → ok (${Date.now() - start}ms)`)
+      logEvent('info', 'ipc.response', {
+        channel: tag,
+        status: 'ok',
+        elapsed_ms: Date.now() - start,
+      })
       return result
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error(`[ipc] ${tag} → error (${Date.now() - start}ms): ${msg}`)
+      logEvent('error', 'ipc.response', {
+        channel: tag,
+        status: 'error',
+        elapsed_ms: Date.now() - start,
+        error: msg,
+      })
       throw err
     }
   })

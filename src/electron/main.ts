@@ -8,7 +8,7 @@ import {
   isMailYouDevProtocolClientEnabled,
   isMailYouDevServerEnabled,
 } from '@/config/runtime'
-import { initializeMainProcessLogging } from './logging'
+import { initializeMainProcessLogging, logEvent } from './logging'
 import { handleOAuthCallbackUrl } from './backend/oauth'
 import { ensureRustBackendReady, onRustBackendEvent, shutdownRustBackend } from './backend/rust/process'
 import { registerMailIpc } from './ipc/mail'
@@ -461,7 +461,7 @@ const syncAccountsInBackground = async () => {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      console.error(`[background-sync] failed: ${message}`)
+      logEvent('error', 'sync.background_failed', { error: message })
     }
   })().finally(() => {
     backgroundSyncRunPromise = null
@@ -549,7 +549,7 @@ app.whenReady().then(async () => {
 
     void syncSingleAccountInBackground(event.payload.accountId).catch((error) => {
       const message = error instanceof Error ? error.message : String(error)
-      console.error(`[realtime-sync] failed: ${message}`)
+      logEvent('error', 'sync.realtime_failed', { error: message })
     })
   })
 

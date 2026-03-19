@@ -2,9 +2,31 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface, type Interface } from 'node:readline'
 import type { RustBackendEvent, RustBackendMessage, RustBackendMethod, RustBackendMethodMap, RustBackendResponse } from './protocol'
 import { getRustSidecarLaunchSpec } from './paths'
+import { logEvent, type LogFields } from '../../logging'
 
 const formatExitReason = (details: string, code: number | null, signal: NodeJS.Signals | null) =>
   details || `Rust mail backend exited (code: ${code ?? 'null'}, signal: ${signal ?? 'null'})`
+
+const parseRustStderrLine = (line: string): { event: string, fields: LogFields } => {
+  const match = line.match(/^\[([^\]]+)\]\s*(.*)$/)
+  if (!match) {
+    return {
+      event: 'rust.stderr',
+      fields: {
+        line,
+      },
+    }
+  }
+
+  const [, component, message] = match
+  return {
+    event: `rust.${component}.stderr`,
+    fields: {
+      component,
+      message,
+    },
+  }
+}
 
 class RustBackendClient {
   private process: ChildProcessWithoutNullStreams | null = null
@@ -54,7 +76,7 @@ class RustBackendClient {
         if (this.pending.has(id)) {
           this.pending.delete(id)
           const elapsed = Date.now() - startTime
-          console.warn(`[rpc] #${id} ${method} timed out (${elapsed}ms)`)
+          logEvent('warn', 'rpc.timeout', { id, method, elapsed_ms: elapsed })
           reject(new Error(`Rust backend request '${method}' (id=${id}) timed out after ${timeoutMs / 1000}s`))
         }
       }, timeoutMs)
@@ -62,17 +84,28 @@ class RustBackendClient {
       this.pending.set(id, {
         resolve: (value: unknown) => {
           clearTimeout(timer)
-          console.info(`[rpc] #${id} ${method} → ok (${Date.now() - startTime}ms)`)
+          logEvent('info', 'rpc.response', {
+            id,
+            method,
+            status: 'ok',
+            elapsed_ms: Date.now() - startTime,
+          })
           ;(resolve as (v: unknown) => void)(value)
         },
         reject: (reason: Error) => {
           clearTimeout(timer)
-          console.error(`[rpc] #${id} ${method} → error (${Date.now() - startTime}ms): ${reason.message}`)
+          logEvent('error', 'rpc.response', {
+            id,
+            method,
+            status: 'error',
+            elapsed_ms: Date.now() - startTime,
+            error: reason.message,
+          })
           reject(reason)
         },
       })
 
-      console.debug(`[rpc] #${id} ${method}`)
+      logEvent('debug', 'rpc.request', { id, method })
 
       child.stdin.write(`${JSON.stringify(payload)}\n`, (error) => {
         if (!error) {
@@ -81,7 +114,11 @@ class RustBackendClient {
 
         clearTimeout(timer)
         this.pending.delete(id)
-        console.error(`[rpc] #${id} ${method} stdin write failed: ${error.message}`)
+        logEvent('error', 'rpc.stdin_write_failed', {
+          id,
+          method,
+          error: error.message,
+        })
         reject(new Error(`Failed to send request to Rust mail backend: ${error.message}`))
       })
     })
@@ -145,6 +182,11 @@ class RustBackendClient {
 
   private async start() {
     const launchSpec = getRustSidecarLaunchSpec()
+    logEvent('info', 'rust.process_starting', {
+      command: launchSpec.command,
+      args: launchSpec.args,
+      description: launchSpec.description,
+    })
     const child = spawn(launchSpec.command, launchSpec.args, {
       stdio: 'pipe',
       env: {
@@ -168,18 +210,19 @@ class RustBackendClient {
           continue
         }
 
+        const parsed = parseRustStderrLine(trimmed)
         const normalized = trimmed.toLowerCase()
         if (normalized.includes(' error') || normalized.startsWith('error') || normalized.includes(' panicked')) {
-          console.error(`[rust] ${trimmed}`)
+          logEvent('error', parsed.event, parsed.fields)
           continue
         }
 
         if (normalized.includes(' warn') || normalized.startsWith('warn')) {
-          console.warn(`[rust] ${trimmed}`)
+          logEvent('warn', parsed.event, parsed.fields)
           continue
         }
 
-        console.info(`[rust] ${trimmed}`)
+        logEvent('info', parsed.event, parsed.fields)
       }
       recentStderr = `${recentStderr}${text}`.slice(-4000)
     })
@@ -190,11 +233,22 @@ class RustBackendClient {
       this.expectedExit = false
 
       if (wasExpected || this.isShuttingDown) {
+        logEvent('info', 'rust.process_exit', {
+          expected: true,
+          code,
+          signal: signal ?? null,
+        })
         this.lastStartError = null
         return
       }
 
       const error = new Error(formatExitReason(recentStderr.trim(), code, signal))
+      logEvent('error', 'rust.process_exit', {
+        expected: false,
+        code,
+        signal: signal ?? null,
+        error: error.message,
+      })
       this.lastStartError = error
       this.rejectPending(error)
     }
@@ -206,6 +260,9 @@ class RustBackendClient {
 
       child.once('spawn', () => {
         settled = true
+        logEvent('info', 'rust.process_started', {
+          pid: child.pid ?? null,
+        })
         resolve()
       })
 
@@ -217,6 +274,10 @@ class RustBackendClient {
         settled = true
         this.process = null
         const startupError = new Error(`Failed to start Rust mail backend (${launchSpec.description}): ${error.message}`)
+        logEvent('error', 'rust.process_start_failed', {
+          description: launchSpec.description,
+          error: startupError.message,
+        })
         this.lastStartError = startupError
         reject(startupError)
       })
@@ -229,6 +290,12 @@ class RustBackendClient {
         settled = true
         this.process = null
         const startupError = new Error(formatExitReason(recentStderr.trim(), code, signal))
+        logEvent('error', 'rust.process_start_failed', {
+          description: launchSpec.description,
+          code,
+          signal: signal ?? null,
+          error: startupError.message,
+        })
         this.lastStartError = startupError
         reject(startupError)
       })
@@ -245,7 +312,7 @@ class RustBackendClient {
     try {
       message = JSON.parse(line) as RustBackendMessage
     } catch {
-      console.warn(`[rpc] ignoring non-JSON line from backend: ${line.slice(0, 200)}`)
+      logEvent('warn', 'rpc.non_json_line', { preview: line.slice(0, 200) })
       return
     }
 
