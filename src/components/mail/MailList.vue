@@ -44,23 +44,73 @@
       </div>
 
       <div class="mail-list__batch-actions">
-        <v-btn size="small" variant="tonal" prepend-icon="mdi-delete-outline" color="error" :disabled="batchBusy" @click="$emit('batch-delete')">
-          {{ t('common.delete') }}
-        </v-btn>
-        <v-btn size="small" variant="tonal" prepend-icon="mdi-archive-outline" :disabled="batchBusy" @click="$emit('batch-archive')">
-          {{ t('mailList.archive') }}
-        </v-btn>
-        <v-btn size="small" variant="tonal" prepend-icon="mdi-email-open-outline" :disabled="batchBusy" @click="$emit('batch-mark-read')">
-          {{ t('mailList.markRead') }}
-        </v-btn>
-        <v-btn size="small" variant="tonal" prepend-icon="mdi-email-outline" :disabled="batchBusy" @click="$emit('batch-mark-unread')">
-          {{ t('mailList.markUnread') }}
-        </v-btn>
+        <v-tooltip :text="t('common.delete')" location="bottom">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              size="small"
+              variant="tonal"
+              icon="mdi-delete-outline"
+              color="error"
+              :disabled="batchBusy"
+              :aria-label="t('common.delete')"
+              @click="$emit('batch-delete')"
+            />
+          </template>
+        </v-tooltip>
+        <v-tooltip :text="t('mailList.archive')" location="bottom">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              size="small"
+              variant="tonal"
+              icon="mdi-archive-outline"
+              :disabled="batchBusy"
+              :aria-label="t('mailList.archive')"
+              @click="$emit('batch-archive')"
+            />
+          </template>
+        </v-tooltip>
+        <v-tooltip :text="t('mailList.markRead')" location="bottom">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              size="small"
+              variant="tonal"
+              icon="mdi-email-open-outline"
+              :disabled="batchBusy"
+              :aria-label="t('mailList.markRead')"
+              @click="$emit('batch-mark-read')"
+            />
+          </template>
+        </v-tooltip>
+        <v-tooltip :text="t('mailList.markUnread')" location="bottom">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              size="small"
+              variant="tonal"
+              icon="mdi-email-outline"
+              :disabled="batchBusy"
+              :aria-label="t('mailList.markUnread')"
+              @click="$emit('batch-mark-unread')"
+            />
+          </template>
+        </v-tooltip>
         <v-menu v-if="moveTargetFolders.length > 0">
           <template #activator="{ props: menuProps }">
-            <v-btn size="small" variant="tonal" prepend-icon="mdi-folder-move-outline" :disabled="batchBusy" v-bind="menuProps">
-              {{ t('mailList.moveTo') }}
-            </v-btn>
+            <v-tooltip :text="t('mailList.moveTo')" location="bottom">
+              <template #activator="{ props: tooltipProps }">
+                <v-btn
+                  v-bind="{ ...menuProps, ...tooltipProps }"
+                  size="small"
+                  variant="tonal"
+                  icon="mdi-folder-move-outline"
+                  :disabled="batchBusy"
+                  :aria-label="t('mailList.moveTo')"
+                />
+              </template>
+            </v-tooltip>
           </template>
           <v-list density="compact">
             <v-list-item
@@ -72,16 +122,19 @@
             />
           </v-list>
         </v-menu>
-        <v-btn
-          v-if="!props.isPop3"
-          size="small"
-          variant="tonal"
-          prepend-icon="mdi-label-multiple-outline"
-          :disabled="batchBusy"
-          @click="$emit('batch-manage-labels')"
-        >
-          {{ t('labels.manageTitle') }}
-        </v-btn>
+        <v-tooltip v-if="!props.isPop3" :text="t('labels.manageTitle')" location="bottom">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              size="small"
+              variant="tonal"
+              icon="mdi-label-multiple-outline"
+              :disabled="batchBusy"
+              :aria-label="t('labels.manageTitle')"
+              @click="$emit('batch-manage-labels')"
+            />
+          </template>
+        </v-tooltip>
       </div>
     </div>
 
@@ -511,11 +564,13 @@ const formatDate = (value: string, mode: 'full' | 'compact' = 'full') => {
 .mail-list__batch-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .mail-list__batch-actions :deep(.v-btn) {
   min-width: 0;
+  width: 38px;
+  height: 38px;
 }
 
 .mail-list__batch-cancel {
