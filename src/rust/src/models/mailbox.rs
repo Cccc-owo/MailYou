@@ -2,9 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::sync::SyncStatus;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum MailFolderKind {
+    #[default]
     Inbox,
     Sent,
     Drafts,
@@ -15,8 +16,9 @@ pub enum MailFolderKind {
     Custom,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct MailboxFolder {
     pub id: String,
     pub account_id: String,
@@ -35,8 +37,9 @@ pub struct MailboxFolder {
     pub imap_highest_modseq: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct AttachmentMeta {
     pub id: String,
     pub file_name: String,
@@ -44,8 +47,9 @@ pub struct AttachmentMeta {
     pub size_bytes: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct MailMessage {
     pub id: String,
     pub account_id: String,
@@ -71,15 +75,17 @@ pub struct MailMessage {
     pub previous_folder_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct MailLabel {
     pub name: String,
     pub count: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct MailThread {
     pub id: String,
     pub account_id: String,
@@ -89,16 +95,18 @@ pub struct MailThread {
     pub unread_count: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct AttachmentContent {
     pub file_name: String,
     pub mime_type: String,
     pub data_base64: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct MailboxBundle {
     pub account_id: String,
     pub folders: Vec<MailboxFolder>,

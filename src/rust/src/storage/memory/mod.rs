@@ -567,25 +567,24 @@ impl MemoryState {
 
     pub(crate) fn persist(&self) -> Result<(), BackendError> {
         let start = std::time::Instant::now();
-        persisted::save_accounts(&self.account_states)
-            .and_then(|_| persisted::save_drafts(&self.drafts))
-            .and_then(|_| {
-                persisted::save_mailbox(&persisted::PersistedMailbox {
-                    folders: self.folders.clone(),
-                    messages: self.messages.clone(),
-                    threads: self.threads.clone(),
-                })
-            })
-            .and_then(|_| {
-                let statuses: Vec<SyncStatus> = self.sync_statuses.values().cloned().collect();
-                persisted::save_sync_statuses(&statuses)
-            })
-            .and_then(|_| {
-                persisted::save_contacts(&persisted::PersistedContacts {
-                    contacts: self.contacts.clone(),
-                    groups: self.contact_groups.clone(),
-                })
-            })
+        let mailbox = persisted::PersistedMailbox {
+            folders: self.folders.clone(),
+            messages: self.messages.clone(),
+            threads: self.threads.clone(),
+        };
+        let statuses: Vec<SyncStatus> = self.sync_statuses.values().cloned().collect();
+        let contacts = persisted::PersistedContacts {
+            contacts: self.contacts.clone(),
+            groups: self.contact_groups.clone(),
+        };
+
+        persisted::save_snapshot(
+            &self.account_states,
+            &self.drafts,
+            &mailbox,
+            &statuses,
+            &contacts,
+        )
             .map(|_| {
                 eprintln!(
                     "[store] persisted ({} accounts, {} folders, {} messages, {} drafts) in {:.1?}",
@@ -607,26 +606,37 @@ fn state() -> &'static Mutex<MemoryState> {
 
 fn initial_state() -> MemoryState {
     eprintln!("[store] loading initial state...");
-    let has_persisted = persisted::has_accounts_file();
-    let account_states = if has_persisted {
-        let loaded = persisted::load_accounts();
-        eprintln!("[store] loaded {} accounts from disk", loaded.len());
+    let account_states = match persisted::load_accounts() {
+        loaded if !loaded.is_empty() => {
+            eprintln!("[store] loaded {} accounts from disk", loaded.len());
+            loaded
+        }
+        loaded => {
+            if persisted::has_accounts_file() {
+                eprintln!("[store] persisted account state exists but loaded 0 accounts");
+            } else {
+                eprintln!("[store] no persisted account data found");
+            }
+            loaded
+        }
+    };
+
+    let mailbox_state = {
+        let loaded = persisted::load_mailbox();
+        if (loaded.folders.is_empty() && loaded.messages.is_empty() && loaded.threads.is_empty())
+            && persisted::has_mailbox_file()
+        {
+            eprintln!("[store] persisted mailbox state exists but loaded 0 folders/messages");
+        }
         loaded
-    } else {
-        eprintln!("[store] no persisted account data found");
-        Vec::new()
     };
 
-    let mailbox_state = if persisted::has_mailbox_file() {
-        persisted::load_mailbox()
-    } else {
-        persisted::PersistedMailbox::default()
-    };
-
-    let drafts = if persisted::has_drafts_file() {
-        persisted::load_drafts()
-    } else {
-        Vec::new()
+    let drafts = {
+        let loaded = persisted::load_drafts();
+        if loaded.is_empty() && persisted::has_drafts_file() {
+            eprintln!("[store] persisted drafts state exists but loaded 0 drafts");
+        }
+        loaded
     };
 
     let sync_statuses = {
@@ -654,20 +664,28 @@ fn initial_state() -> MemoryState {
     };
 
     // Load contacts
-    if persisted::has_contacts_file() {
-        let loaded = persisted::load_contacts();
+    let loaded_contacts = persisted::load_contacts();
+    if !loaded_contacts.contacts.is_empty() || !loaded_contacts.groups.is_empty() {
         eprintln!(
             "[store] loaded {} contacts, {} groups from disk",
-            loaded.contacts.len(),
-            loaded.groups.len()
+            loaded_contacts.contacts.len(),
+            loaded_contacts.groups.len()
         );
-        state.contacts = loaded.contacts;
-        state.contact_groups = loaded.groups;
+        state.contacts = loaded_contacts.contacts;
+        state.contact_groups = loaded_contacts.groups;
+    } else if persisted::has_contacts_file() {
+        eprintln!("[store] persisted contacts state exists but loaded 0 contacts/groups");
     }
 
     state.sync_drafts_into_mailbox();
     state.recalculate_counts();
-    let _ = state.persist();
+    if persisted::storage_reads_degraded() {
+        eprintln!(
+            "[store] WARNING: skipping automatic persist because persisted state could not be read cleanly"
+        );
+    } else {
+        let _ = state.persist();
+    }
     state
 }
 

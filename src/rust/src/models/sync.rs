@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct SyncStatus {
     pub account_id: String,
     pub state: String,
@@ -9,8 +10,9 @@ pub struct SyncStatus {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct AccountQuota {
     pub account_id: String,
     pub quota_root: Option<String>,
@@ -20,16 +22,18 @@ pub struct AccountQuota {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct AccountUnreadMessageSummary {
     pub id: String,
     pub subject: String,
     pub from: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct AccountUnreadSnapshot {
     pub account_id: String,
     pub unread_messages: Vec<AccountUnreadMessageSummary>,

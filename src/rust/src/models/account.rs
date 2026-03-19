@@ -1,29 +1,33 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum AccountStatus {
+    #[default]
     Connected,
     Syncing,
     Attention,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum AccountAuthMode {
+    #[default]
     Password,
     Oauth,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum OAuthSource {
+    #[default]
     Direct,
     Proxy,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct MailIdentity {
     pub id: String,
     pub name: String,
@@ -36,8 +40,9 @@ pub struct MailIdentity {
     pub is_default: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct MailAccount {
     pub id: String,
     pub name: String,
@@ -59,8 +64,9 @@ pub struct MailAccount {
     pub identities: Vec<MailIdentity>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct AccountSetupDraft {
     pub display_name: String,
     pub email: String,
@@ -90,8 +96,9 @@ pub struct AccountSetupDraft {
     pub identities: Vec<MailIdentity>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct AccountConfig {
     #[serde(default = "default_auth_mode")]
     pub auth_mode: AccountAuthMode,
@@ -116,8 +123,9 @@ pub struct AccountConfig {
     pub token_expires_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct OAuthProviderAvailability {
     pub id: String,
     pub label: String,
@@ -125,8 +133,9 @@ pub struct OAuthProviderAvailability {
     pub supports_proxy: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct StoredAccountState {
     pub account: MailAccount,
     pub config: AccountConfig,

@@ -3,13 +3,15 @@ use std::fs;
 use std::io;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use chrono::Utc;
 use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
 use ring::pbkdf2;
 use ring::rand::{SecureRandom, SystemRandom};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::models::{Contact, ContactGroup, DraftMessage, StoredAccountState, SyncStatus};
@@ -18,6 +20,8 @@ use crate::protocol::StorageSecurityStatus;
 const APP_DIR_NAME: &str = "MailYou";
 const STORAGE_DIR_NAME: &str = "mail";
 const DATABASE_FILE: &str = "storage.sqlite3";
+const BACKUP_DIR_NAME: &str = "backups";
+const MAX_DATABASE_BACKUPS: usize = 5;
 const LEGACY_ACCOUNTS_FILE: &str = "accounts.json";
 const LEGACY_DRAFTS_FILE: &str = "drafts.json";
 const LEGACY_MAILBOX_FILE: &str = "mailbox.json";
@@ -37,6 +41,8 @@ const META_SECURITY_MODE: &str = "securityMode";
 const META_WRAPPED_KEY_SALT: &str = "wrappedKeySalt";
 const META_WRAPPED_KEY_NONCE: &str = "wrappedKeyNonce";
 const META_WRAPPED_KEY_CIPHERTEXT: &str = "wrappedKeyCiphertext";
+const META_STORAGE_SCHEMA_VERSION: &str = "storageSchemaVersion";
+const CURRENT_STORAGE_SCHEMA_VERSION: u32 = 1;
 
 const MODE_KEYRING: &str = "keyring";
 const MODE_PASSWORD: &str = "password";
@@ -46,6 +52,7 @@ const STATE_DRAFTS: &str = "drafts";
 const STATE_MAILBOX: &str = "mailbox";
 const STATE_SYNC: &str = "sync";
 const STATE_CONTACTS: &str = "contacts";
+const STATE_FORMAT_VERSION: u32 = 1;
 
 #[derive(Debug, Clone)]
 struct EncryptedPayload {
@@ -53,9 +60,34 @@ struct EncryptedPayload {
     ciphertext: Vec<u8>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistedStateEnvelope<T> {
+    version: u32,
+    payload: T,
+}
+
 fn unlocked_storage_key() -> &'static Mutex<Option<[u8; 32]>> {
     static STORAGE_KEY: OnceLock<Mutex<Option<[u8; 32]>>> = OnceLock::new();
     STORAGE_KEY.get_or_init(|| Mutex::new(None))
+}
+
+fn degraded_storage_reads() -> &'static AtomicBool {
+    static FLAG: OnceLock<AtomicBool> = OnceLock::new();
+    FLAG.get_or_init(|| AtomicBool::new(false))
+}
+
+fn session_backup_created() -> &'static AtomicBool {
+    static FLAG: OnceLock<AtomicBool> = OnceLock::new();
+    FLAG.get_or_init(|| AtomicBool::new(false))
+}
+
+fn mark_degraded_storage_read() {
+    degraded_storage_reads().store(true, Ordering::Relaxed);
+}
+
+pub fn storage_reads_degraded() -> bool {
+    degraded_storage_reads().load(Ordering::Relaxed)
 }
 
 pub fn load_accounts() -> Vec<StoredAccountState> {
@@ -64,7 +96,11 @@ pub fn load_accounts() -> Vec<StoredAccountState> {
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             panic!("storage locked: {}", error)
         }
-        Err(_) => Vec::new(),
+        Err(error) => {
+            eprintln!("[store] WARNING: failed to load accounts state: {}", error);
+            mark_degraded_storage_read();
+            Vec::new()
+        }
     };
 
     for account_state in &mut accounts {
@@ -88,44 +124,18 @@ pub fn load_accounts() -> Vec<StoredAccountState> {
     accounts
 }
 
-pub fn save_accounts(accounts: &[StoredAccountState]) -> io::Result<()> {
-    let mut sanitized = accounts.to_vec();
-
-    for account_state in &mut sanitized {
-        let account_id = &account_state.account.id;
-        let password = &account_state.config.password;
-
-        if !password.is_empty()
-            && password != SECRET_PLACEHOLDER
-            && keyring_set(account_id, "password", password)
-        {
-            account_state.config.password = SECRET_PLACEHOLDER.into();
-        }
-
-        let refresh_token = &account_state.config.refresh_token;
-        if !refresh_token.is_empty()
-            && refresh_token != SECRET_PLACEHOLDER
-            && keyring_set(account_id, "refreshToken", refresh_token)
-        {
-            account_state.config.refresh_token = SECRET_PLACEHOLDER.into();
-        }
-    }
-
-    save_state_json(STATE_ACCOUNTS, &sanitized)
-}
-
 pub fn load_drafts() -> Vec<DraftMessage> {
     match load_state_json(STATE_DRAFTS) {
         Ok(drafts) => drafts,
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             panic!("storage locked: {}", error)
         }
-        Err(_) => Vec::new(),
+        Err(error) => {
+            eprintln!("[store] WARNING: failed to load drafts state: {}", error);
+            mark_degraded_storage_read();
+            Vec::new()
+        }
     }
-}
-
-pub fn save_drafts(drafts: &[DraftMessage]) -> io::Result<()> {
-    save_state_json(STATE_DRAFTS, drafts)
 }
 
 pub fn load_mailbox() -> PersistedMailbox {
@@ -134,12 +144,12 @@ pub fn load_mailbox() -> PersistedMailbox {
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             panic!("storage locked: {}", error)
         }
-        Err(_) => PersistedMailbox::default(),
+        Err(error) => {
+            eprintln!("[store] WARNING: failed to load mailbox state: {}", error);
+            mark_degraded_storage_read();
+            PersistedMailbox::default()
+        }
     }
-}
-
-pub fn save_mailbox(mailbox: &PersistedMailbox) -> io::Result<()> {
-    save_state_json(STATE_MAILBOX, mailbox)
 }
 
 pub fn load_sync_statuses() -> Vec<SyncStatus> {
@@ -148,12 +158,12 @@ pub fn load_sync_statuses() -> Vec<SyncStatus> {
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             panic!("storage locked: {}", error)
         }
-        Err(_) => Vec::new(),
+        Err(error) => {
+            eprintln!("[store] WARNING: failed to load sync state: {}", error);
+            mark_degraded_storage_read();
+            Vec::new()
+        }
     }
-}
-
-pub fn save_sync_statuses(statuses: &[SyncStatus]) -> io::Result<()> {
-    save_state_json(STATE_SYNC, statuses)
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -169,14 +179,36 @@ pub fn load_contacts() -> PersistedContacts {
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             panic!("storage locked: {}", error)
         }
-        Err(_) => PersistedContacts::default(),
+        Err(error) => {
+            eprintln!("[store] WARNING: failed to load contacts state: {}", error);
+            mark_degraded_storage_read();
+            PersistedContacts::default()
+        }
     };
     hydrate_contact_avatar_tokens(&mut data.contacts);
     data
 }
 
-pub fn save_contacts(data: &PersistedContacts) -> io::Result<()> {
-    save_state_json(STATE_CONTACTS, data)
+pub fn save_snapshot(
+    accounts: &[StoredAccountState],
+    drafts: &[DraftMessage],
+    mailbox: &PersistedMailbox,
+    sync_statuses: &[SyncStatus],
+    contacts: &PersistedContacts,
+) -> io::Result<()> {
+    ensure_initialized()?;
+    let mut connection = open_connection()?;
+    let transaction = connection.transaction().map_err(to_io_error)?;
+    let sanitized_accounts = sanitize_accounts_for_persistence(accounts);
+
+    write_state_json_with_connection(&transaction, STATE_ACCOUNTS, &sanitized_accounts)?;
+    write_state_json_with_connection(&transaction, STATE_DRAFTS, drafts)?;
+    write_state_json_with_connection(&transaction, STATE_MAILBOX, mailbox)?;
+    write_state_json_with_connection(&transaction, STATE_SYNC, sync_statuses)?;
+    write_state_json_with_connection(&transaction, STATE_CONTACTS, contacts)?;
+
+    transaction.commit().map_err(to_io_error)?;
+    Ok(())
 }
 
 pub fn has_contacts_file() -> bool {
@@ -335,21 +367,49 @@ fn load_state_json<T: DeserializeOwned>(key: &str) -> io::Result<T> {
         ));
     };
     let plaintext = decrypt_payload(&payload)?;
-    serde_json::from_slice(&plaintext)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
+
+    if let Ok(envelope) = serde_json::from_slice::<PersistedStateEnvelope<T>>(&plaintext) {
+        return Ok(envelope.payload);
+    }
+
+    match serde_json::from_slice::<T>(&plaintext) {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            eprintln!(
+                "[store] WARNING: failed to deserialize persisted state key={} error={}",
+                key, error
+            );
+            Err(io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
+        }
+    }
 }
 
-fn save_state_json<T: Serialize + ?Sized>(key: &str, value: &T) -> io::Result<()> {
-    let plaintext = serde_json::to_vec(value)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
+fn write_state_json_with_connection<T: Serialize + ?Sized>(
+    connection: &Connection,
+    key: &str,
+    value: &T,
+) -> io::Result<()> {
+    let plaintext = serde_json::to_vec(&PersistedStateEnvelope {
+        version: STATE_FORMAT_VERSION,
+        payload: value,
+    })
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
     let payload = encrypt_payload(&plaintext)?;
-    write_entry("state", key, None, &payload)
+    write_entry_with_connection(connection, "state", key, None, &payload)
 }
 
 fn has_state(key: &str) -> bool {
-    ensure_initialized()
-        .and_then(|_| read_entry("state", key).map(|entry| entry.is_some()))
-        .unwrap_or(false)
+    match ensure_initialized_for_read().and_then(|_| read_entry("state", key).map(|entry| entry.is_some())) {
+        Ok(result) => result,
+        Err(error) => {
+            mark_degraded_storage_read();
+            eprintln!(
+                "[store] WARNING: failed to probe persisted state key={} error={}",
+                key, error
+            );
+            false
+        }
+    }
 }
 
 fn save_binary(kind: &str, key: &str, mime_type: &str, payload: &[u8]) -> io::Result<()> {
@@ -392,6 +452,16 @@ fn write_entry(
 ) -> io::Result<()> {
     ensure_initialized()?;
     let connection = open_connection()?;
+    write_entry_with_connection(&connection, kind, key, mime_type, payload)
+}
+
+fn write_entry_with_connection(
+    connection: &Connection,
+    kind: &str,
+    key: &str,
+    mime_type: Option<&str>,
+    payload: &EncryptedPayload,
+) -> io::Result<()> {
     connection
         .execute(
             "INSERT INTO encrypted_entries (kind, entry_key, mime_type, nonce, ciphertext)
@@ -414,8 +484,8 @@ fn read_entry_with_mime(
     kind: &str,
     key: &str,
 ) -> io::Result<Option<(Option<String>, EncryptedPayload)>> {
-    ensure_initialized()?;
-    let connection = open_connection()?;
+    ensure_initialized_for_read()?;
+    let connection = open_connection_for_read()?;
     connection
         .query_row(
             "SELECT mime_type, nonce, ciphertext
@@ -439,10 +509,40 @@ fn read_entry_with_mime(
 fn ensure_initialized() -> io::Result<()> {
     let storage_dir = storage_dir()?;
     fs::create_dir_all(&storage_dir)?;
+    let database_exists = database_path()?.exists();
     let connection = open_connection()?;
     initialize_schema(&connection)?;
+    if database_exists {
+        ensure_database_backup(&connection)?;
+    }
     migrate_legacy_state_if_needed(&connection)?;
+    migrate_storage_schema_if_needed(&connection)?;
     Ok(())
+}
+
+fn ensure_initialized_for_read() -> io::Result<()> {
+    let storage_dir = storage_dir()?;
+    fs::create_dir_all(&storage_dir)?;
+
+    match open_connection() {
+        Ok(connection) => {
+            initialize_schema(&connection)?;
+            migrate_legacy_state_if_needed(&connection)?;
+            Ok(())
+        }
+        Err(error) => {
+            if database_path()?.exists() {
+                mark_degraded_storage_read();
+                eprintln!(
+                    "[store] WARNING: falling back to read-only persisted storage access: {}",
+                    error
+                );
+                Ok(())
+            } else {
+                Err(error)
+            }
+        }
+    }
 }
 
 fn open_connection() -> io::Result<Connection> {
@@ -456,6 +556,34 @@ fn open_connection() -> io::Result<Connection> {
         )
         .map_err(to_io_error)?;
     Ok(connection)
+}
+
+fn open_connection_for_read() -> io::Result<Connection> {
+    match open_connection() {
+        Ok(connection) => Ok(connection),
+        Err(error) => {
+            let db_path = database_path()?;
+            if !db_path.exists() {
+                return Err(error);
+            }
+
+            let uri = format!("file:{}?mode=ro&immutable=1", db_path.to_string_lossy());
+            if let Ok(connection) = Connection::open_with_flags(
+                uri,
+                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+            ) {
+                return Ok(connection);
+            }
+
+            let temp_db_path = env::temp_dir().join(format!(
+                "mailyou-storage-readonly-{}.sqlite3",
+                std::process::id()
+            ));
+            fs::copy(&db_path, &temp_db_path)?;
+            Connection::open_with_flags(temp_db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .map_err(to_io_error)
+        }
+    }
 }
 
 fn initialize_schema(connection: &Connection) -> io::Result<()> {
@@ -555,6 +683,38 @@ fn migrate_legacy_state_if_needed(connection: &Connection) -> io::Result<()> {
     Ok(())
 }
 
+fn migrate_storage_schema_if_needed(connection: &Connection) -> io::Result<()> {
+    let stored_version = get_metadata(connection, META_STORAGE_SCHEMA_VERSION)?
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or_else(|| infer_storage_schema_version(connection).unwrap_or(0));
+
+    if stored_version >= CURRENT_STORAGE_SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    let Some(storage_key) = active_storage_key(connection)? else {
+        eprintln!(
+            "[store] storage schema migration postponed because encrypted state is locked"
+        );
+        return Ok(());
+    };
+
+    if stored_version < 1 {
+        normalize_state_envelopes(connection, &storage_key)?;
+    }
+
+    set_metadata(
+        connection,
+        META_STORAGE_SCHEMA_VERSION,
+        &CURRENT_STORAGE_SCHEMA_VERSION.to_string(),
+    )?;
+    eprintln!(
+        "[store] migrated persisted storage schema from v{} to v{}",
+        stored_version, CURRENT_STORAGE_SCHEMA_VERSION
+    );
+    Ok(())
+}
+
 fn migrate_legacy_json_files(connection: &Connection) -> io::Result<()> {
     migrate_legacy_state_file::<Vec<StoredAccountState>, _>(
         connection,
@@ -619,6 +779,108 @@ where
             params![state_key, encrypted.nonce, encrypted.ciphertext],
         )
         .map_err(to_io_error)?;
+    Ok(())
+}
+
+fn infer_storage_schema_version(connection: &Connection) -> io::Result<u32> {
+    let state_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM encrypted_entries WHERE kind = 'state'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(to_io_error)?;
+
+    if state_count == 0 {
+        Ok(CURRENT_STORAGE_SCHEMA_VERSION)
+    } else {
+        Ok(0)
+    }
+}
+
+fn active_storage_key(connection: &Connection) -> io::Result<Option<[u8; 32]>> {
+    match current_security_mode(connection)? {
+        MODE_KEYRING => data_key_from_keyring().map(Some),
+        MODE_PASSWORD => Ok(unlocked_storage_key().lock().unwrap().as_ref().copied()),
+        _ => Err(io::Error::other("Unknown storage security mode")),
+    }
+}
+
+fn sanitize_accounts_for_persistence(accounts: &[StoredAccountState]) -> Vec<StoredAccountState> {
+    let mut sanitized = accounts.to_vec();
+
+    for account_state in &mut sanitized {
+        let account_id = &account_state.account.id;
+        let password = &account_state.config.password;
+
+        if !password.is_empty()
+            && password != SECRET_PLACEHOLDER
+            && keyring_set(account_id, "password", password)
+        {
+            account_state.config.password = SECRET_PLACEHOLDER.into();
+        }
+
+        let refresh_token = &account_state.config.refresh_token;
+        if !refresh_token.is_empty()
+            && refresh_token != SECRET_PLACEHOLDER
+            && keyring_set(account_id, "refreshToken", refresh_token)
+        {
+            account_state.config.refresh_token = SECRET_PLACEHOLDER.into();
+        }
+    }
+
+    sanitized
+}
+
+fn normalize_state_envelopes(connection: &Connection, storage_key: &[u8; 32]) -> io::Result<()> {
+    let mut statement = connection
+        .prepare(
+            "SELECT entry_key, nonce, ciphertext
+             FROM encrypted_entries
+             WHERE kind = 'state'",
+        )
+        .map_err(to_io_error)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                EncryptedPayload {
+                    nonce: row.get(1)?,
+                    ciphertext: row.get(2)?,
+                },
+            ))
+        })
+        .map_err(to_io_error)?;
+
+    for row in rows {
+        let (entry_key, encrypted_payload) = row.map_err(to_io_error)?;
+        let plaintext = decrypt_with_key(storage_key, &encrypted_payload)?;
+        if serde_json::from_slice::<PersistedStateEnvelope<serde_json::Value>>(&plaintext).is_ok() {
+            continue;
+        }
+
+        let legacy_payload: serde_json::Value = serde_json::from_slice(&plaintext).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to decode legacy persisted state key={entry_key}: {error}"),
+            )
+        })?;
+        let migrated_plaintext = serde_json::to_vec(&PersistedStateEnvelope {
+            version: STATE_FORMAT_VERSION,
+            payload: legacy_payload,
+        })
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
+        let migrated_payload = encrypt_with_key(storage_key, &migrated_plaintext)?;
+        connection
+            .execute(
+                "UPDATE encrypted_entries
+                 SET nonce = ?1, ciphertext = ?2
+                 WHERE kind = 'state' AND entry_key = ?3",
+                params![migrated_payload.nonce, migrated_payload.ciphertext, entry_key],
+            )
+            .map_err(to_io_error)?;
+    }
+
     Ok(())
 }
 
@@ -726,7 +988,7 @@ fn decrypt_with_key(key_material: &[u8; 32], payload: &EncryptedPayload) -> io::
 }
 
 fn storage_key() -> io::Result<[u8; 32]> {
-    let connection = open_connection()?;
+    let connection = open_connection_for_read()?;
     match current_security_mode(&connection)? {
         MODE_PASSWORD => unlocked_storage_key()
             .lock()
@@ -999,4 +1261,43 @@ fn probe_system_keyring() -> (bool, Option<String>) {
 
 fn to_io_error(error: rusqlite::Error) -> io::Error {
     io::Error::other(error.to_string())
+}
+
+fn ensure_database_backup(connection: &Connection) -> io::Result<()> {
+    if session_backup_created().load(Ordering::Relaxed) {
+        return Ok(());
+    }
+
+    let db_path = database_path()?;
+    if !db_path.exists() {
+        session_backup_created().store(true, Ordering::Relaxed);
+        return Ok(());
+    }
+
+    let backup_dir = storage_dir()?.join(BACKUP_DIR_NAME);
+    fs::create_dir_all(&backup_dir)?;
+    let timestamp = Utc::now().format("%Y%m%d-%H%M%S-%3f");
+    let backup_path = backup_dir.join(format!("storage-{timestamp}.sqlite3"));
+    let backup_sql = format!("VACUUM INTO '{}'", backup_path.to_string_lossy().replace('\'', "''"));
+    connection.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").map_err(to_io_error)?;
+    connection.execute_batch(&backup_sql).map_err(to_io_error)?;
+    prune_database_backups(&backup_dir)?;
+    session_backup_created().store(true, Ordering::Relaxed);
+    eprintln!("[store] created backup {}", backup_path.display());
+    Ok(())
+}
+
+fn prune_database_backups(backup_dir: &Path) -> io::Result<()> {
+    let mut backups = fs::read_dir(backup_dir)?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("sqlite3"))
+        .collect::<Vec<_>>();
+
+    backups.sort_by_key(|entry| entry.file_name());
+    let stale_count = backups.len().saturating_sub(MAX_DATABASE_BACKUPS);
+    for entry in backups.into_iter().take(stale_count) {
+        let _ = fs::remove_file(entry.path());
+    }
+
+    Ok(())
 }

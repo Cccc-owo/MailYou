@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct DraftMessage {
     pub id: String,
     pub account_id: String,
@@ -18,8 +19,9 @@ pub struct DraftMessage {
     pub attachments: Vec<DraftAttachment>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct DraftAttachment {
     pub file_name: String,
     pub mime_type: String,
