@@ -12,7 +12,7 @@ import { initializeMainProcessLogging, logEvent } from './logging'
 import { handleOAuthCallbackUrl } from './backend/oauth'
 import { ensureRustBackendReady, onRustBackendEvent, shutdownRustBackend } from './backend/rust/process'
 import { registerMailIpc } from './ipc/mail'
-import { registerWindowIpc, setWindowAutoLaunchHandlers, setWindowCloseBehaviorHandler, setWindowCloseResolveHandler, setWindowSyncIntervalHandler } from './ipc/window'
+import { registerWindowIpc, setWindowAutoLaunchHandlers, setWindowCloseBehaviorHandler, setWindowCloseCancelHandler, setWindowCloseResolveHandler, setWindowSyncIntervalHandler } from './ipc/window'
 import { mailBackend } from './backend/mailBackend'
 import type { AutoLaunchSettings, CloseBehaviorPreference, CloseRequestAction } from '@/shared/window/bridge'
 
@@ -369,6 +369,10 @@ const resolveWindowCloseRequest = (
   app.quit()
 }
 
+const cancelWindowCloseRequest = (_window: BrowserWindow | null) => {
+  isClosePromptVisible = false
+}
+
 const focusMainWindow = async () => {
   if (!mainWindow) {
     mainWindow = await createMainWindow()
@@ -559,6 +563,7 @@ app.whenReady().then(async () => {
   setWindowCloseBehaviorHandler((value) => {
     closeBehaviorPreference = value
   })
+  setWindowCloseCancelHandler(cancelWindowCloseRequest)
   setWindowCloseResolveHandler(resolveWindowCloseRequest)
   setWindowSyncIntervalHandler((minutes) => {
     backgroundSyncIntervalMinutes = minutes

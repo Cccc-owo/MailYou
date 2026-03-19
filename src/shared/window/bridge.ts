@@ -9,6 +9,7 @@ export interface WindowControlsBridge {
   minimize(): Promise<void>
   toggleMaximize(): Promise<boolean>
   close(): Promise<void>
+  cancelCloseRequest(): Promise<void>
   isMaximized(): Promise<boolean>
   openExternal(url: string): Promise<void>
   getAutoLaunchSettings(): Promise<AutoLaunchSettings>

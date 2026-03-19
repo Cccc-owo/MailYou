@@ -72,6 +72,7 @@ const windowControls: WindowControlsBridge = {
   minimize: () => ipcRenderer.invoke('window:minimize'),
   toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
   close: () => ipcRenderer.invoke('window:close'),
+  cancelCloseRequest: () => ipcRenderer.invoke('window:cancelCloseRequest'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
   openExternal: (url) => ipcRenderer.invoke('window:openExternal', url),
   getAutoLaunchSettings: () => ipcRenderer.invoke('window:getAutoLaunchSettings'),

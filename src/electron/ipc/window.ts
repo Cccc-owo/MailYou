@@ -8,6 +8,7 @@ let registered = false
 let setBackgroundSyncIntervalHandler: ((minutes: number) => void) | null = null
 let setCloseBehaviorPreferenceHandler: ((value: CloseBehaviorPreference) => void) | null = null
 let resolveCloseRequestHandler: ((window: BrowserWindow | null, action: CloseRequestAction, rememberBackground: boolean) => void) | null = null
+let cancelCloseRequestHandler: ((window: BrowserWindow | null) => void) | null = null
 let getAutoLaunchSettingsHandler: (() => Promise<AutoLaunchSettings> | AutoLaunchSettings) | null = null
 let setAutoLaunchEnabledHandler: ((enabled: boolean) => Promise<AutoLaunchSettings> | AutoLaunchSettings) | null = null
 
@@ -25,6 +26,12 @@ export const setWindowCloseResolveHandler = (
   handler: (window: BrowserWindow | null, action: CloseRequestAction, rememberBackground: boolean) => void,
 ) => {
   resolveCloseRequestHandler = handler
+}
+
+export const setWindowCloseCancelHandler = (
+  handler: (window: BrowserWindow | null) => void,
+) => {
+  cancelCloseRequestHandler = handler
 }
 
 export const setWindowAutoLaunchHandlers = (
@@ -64,6 +71,10 @@ export const registerWindowIpc = () => {
 
   ipcMain.handle('window:close', (event) => {
     getWindowFromEvent(event)?.close()
+  })
+
+  ipcMain.handle('window:cancelCloseRequest', (event) => {
+    cancelCloseRequestHandler?.(getWindowFromEvent(event) ?? null)
   })
 
   ipcMain.handle('window:isMaximized', (event) => getWindowFromEvent(event)?.isMaximized() ?? false)

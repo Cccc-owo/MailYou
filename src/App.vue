@@ -123,7 +123,8 @@ const submitUnlock = async () => {
   unlockPassword.value = ''
 }
 
-const cancelCloseRequest = () => {
+const cancelCloseRequest = async () => {
+  await window.windowControls?.cancelCloseRequest()
   closePromptOpen.value = false
   rememberCloseBehavior.value = false
 }
