@@ -21,7 +21,6 @@ export default defineConfig({
       { text: 'Download', link: '/release/' },
       { text: 'Legal', link: '/legal/privacy-policy' },
       { text: 'GitHub', link: githubLink },
-      { text: '中文', link: '/zh/' },
     ],
     socialLinks: [{ icon: 'github', link: githubLink }],
     footer: {
@@ -42,7 +41,6 @@ export default defineConfig({
           { text: 'Download', link: '/release/' },
           { text: 'Legal', link: '/legal/privacy-policy' },
           { text: 'GitHub', link: githubLink },
-          { text: '中文', link: '/zh/' },
         ],
         sidebar: [
           {
@@ -80,7 +78,6 @@ export default defineConfig({
           { text: '下载', link: '/zh/release/' },
           { text: '法律', link: '/zh/legal/privacy-policy' },
           { text: 'GitHub', link: githubLink },
-          { text: 'English', link: '/' },
         ],
         sidebar: [
           {
