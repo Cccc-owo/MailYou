@@ -184,6 +184,17 @@
               >
                 {{ securityStore.status.keyringError || t('security.keyringUnavailableGeneric') }}
               </v-alert>
+              <v-alert
+                v-else-if="securityStore.status?.masterPasswordRecommended"
+                type="warning"
+                variant="tonal"
+              >
+                {{
+                  securityStore.status?.hasRecoveryKeyBackup
+                    ? t('security.masterPasswordRecommendedWithRecovery')
+                    : t('security.masterPasswordRecommended')
+                }}
+              </v-alert>
               <v-text-field
                 v-if="securityStore.status?.hasMasterPassword"
                 v-model="currentPassword"
@@ -242,6 +253,46 @@
             </div>
           </div>
     </FormSectionCard>
+
+    <FormSectionCard :title="t('settings.recoveryBackupsTitle')" icon="mdi-lifebuoy">
+          <div class="settings-page__item ui-row settings-page__item--vertical">
+            <div class="settings-page__item-row ui-row">
+              <v-icon icon="mdi-content-save-outline" class="settings-page__item-icon" />
+              <div class="settings-page__item-body">
+                <div class="settings-page__item-label">{{ t('settings.recoveryBackupsTitle') }}</div>
+                <div class="text-body-2 text-medium-emphasis">
+                  {{ recoveryExportSummary }}
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-page__security-form">
+              <v-alert v-if="recoveryExportError" type="warning" variant="tonal">
+                {{ recoveryExportError }}
+              </v-alert>
+              <v-alert v-else type="info" variant="tonal">
+                {{ t('settings.recoveryBackupsDescription') }}
+              </v-alert>
+
+              <div class="settings-page__meta-list">
+                <div class="settings-page__meta-row">
+                  <span class="settings-page__meta-label">{{ t('settings.recoveryBackupsLatest') }}</span>
+                  <span class="settings-page__meta-value">{{ recoveryExportLatest }}</span>
+                </div>
+                <div class="settings-page__meta-row">
+                  <span class="settings-page__meta-label">{{ t('settings.recoveryBackupsCount') }}</span>
+                  <span class="settings-page__meta-value">{{ recoveryExportStatus?.snapshotCount ?? 0 }}</span>
+                </div>
+                <div class="settings-page__meta-row">
+                  <span class="settings-page__meta-label">{{ t('settings.recoveryBackupsPath') }}</span>
+                  <span class="settings-page__meta-value settings-page__meta-value--path">
+                    {{ recoveryExportStatus?.exportDir || '...' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+    </FormSectionCard>
   </AppScrollablePage>
 </template>
 
@@ -258,6 +309,7 @@ import { useUiStore, type AppearanceMode, type LocaleMode, type ImageLoadPolicy 
 import { useSecurityStore } from '@/stores/security'
 import type { AccountQuota } from '@/types/account'
 import type { AutoLaunchSettings, CloseBehaviorPreference } from '@/shared/window/bridge'
+import type { RecoveryExportStatus } from '@/types/security'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -275,6 +327,8 @@ const autoLaunchEnabled = ref(false)
 const autoLaunchSupported = ref(false)
 const autoLaunchLoading = ref(false)
 const autoLaunchError = ref<string | null>(null)
+const recoveryExportStatus = ref<RecoveryExportStatus | null>(null)
+const recoveryExportError = ref<string | null>(null)
 
 const seedOptions = computed(() => [
   { label: t('settings.violet'), value: '#6750A4' },
@@ -422,10 +476,46 @@ const loadQuota = async (accountId: string | null) => {
 const securitySummary = computed(() =>
   !securityStore.status?.hasMasterPassword && securityStore.status && !securityStore.status.keyringAvailable
     ? t('security.keyringUnavailableSummary')
+    : securityStore.status?.masterPasswordRecommended
+    ? t(
+      securityStore.status?.hasRecoveryKeyBackup
+        ? 'security.keyringOnlyWithRecoverySummary'
+        : 'security.keyringOnlySummary',
+    )
     : securityStore.status?.hasMasterPassword
     ? t('security.enabledSummary')
     : t('security.disabledSummary'),
 )
+
+const recoveryExportLatest = computed(() => {
+  const value = recoveryExportStatus.value?.latestExportedAt
+  if (!value) {
+    return t('settings.recoveryBackupsNever')
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value))
+})
+
+const recoveryExportSummary = computed(() => {
+  if (recoveryExportError.value) {
+    return recoveryExportError.value
+  }
+
+  if (!recoveryExportStatus.value?.latestExportedAt) {
+    return t('settings.recoveryBackupsEmpty')
+  }
+
+  return t('settings.recoveryBackupsSummary', {
+    count: recoveryExportStatus.value.snapshotCount,
+    latest: recoveryExportLatest.value,
+  })
+})
 
 const canSubmitPassword = computed(() =>
   newPassword.value.length >= 8 && newPassword.value === confirmPassword.value,
@@ -475,8 +565,18 @@ const lockCurrentSession = async () => {
   }
 }
 
+const loadRecoveryExportStatus = async () => {
+  recoveryExportError.value = null
+  try {
+    recoveryExportStatus.value = await mailRepository.getRecoveryExportStatus()
+  } catch (err) {
+    recoveryExportError.value = err instanceof Error ? err.message : t('settings.recoveryBackupsUnavailable')
+  }
+}
+
 watch(() => accountsStore.currentAccountId, loadQuota, { immediate: true })
 void loadAutoLaunchSettings()
+void loadRecoveryExportStatus()
 </script>
 
 <style scoped>
@@ -516,6 +616,33 @@ void loadAutoLaunchSettings()
   gap: 16px;
   width: 100%;
   padding-top: 4px;
+}
+
+.settings-page__meta-list {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-page__meta-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.settings-page__meta-label {
+  font-size: 0.875rem;
+  color: rgba(var(--v-theme-on-surface), 0.66);
+}
+
+.settings-page__meta-value {
+  min-width: 0;
+  font-size: 0.875rem;
+  color: rgba(var(--v-theme-on-surface), 0.9);
+}
+
+.settings-page__meta-value--path {
+  word-break: break-all;
 }
 
 .settings-page__item-icon {
@@ -640,6 +767,11 @@ void loadAutoLaunchSettings()
 
   .settings-page__divider {
     margin-inline: 16px;
+  }
+
+  .settings-page__meta-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .settings-page__color-row {

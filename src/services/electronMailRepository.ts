@@ -66,4 +66,7 @@ export const electronMailRepository: MailRepository = {
   clearMasterPassword: (currentPassword) => getBridge().clearMasterPassword(currentPassword),
   lockCurrentSession: () => getBridge().lockCurrentSession(),
   getStorageDir: () => getBridge().getStorageDir(),
+  getRecoveryExportStatus: () => getBridge().getRecoveryExportStatus(),
+  restoreLatestRecoveryExport: () => getBridge().restoreLatestRecoveryExport(),
+  resetLocalEncryptedStorage: () => getBridge().resetLocalEncryptedStorage(),
 }

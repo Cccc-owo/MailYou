@@ -8,12 +8,24 @@ export const useSecurityStore = defineStore('security', () => {
   const isReady = ref(false)
   const isBusy = ref(false)
   const error = ref<string | null>(null)
+  const missingStorageKeyMarker = 'Missing storage key in system keyring'
 
   const requiresUnlock = computed(() =>
     Boolean(status.value?.hasMasterPassword && !status.value?.isUnlocked),
   )
+  const hasMissingStorageKey = computed(() =>
+    Boolean(
+      status.value
+      && !status.value.hasMasterPassword
+      && status.value.keyringError?.includes(missingStorageKeyMarker),
+    ),
+  )
   const hasKeyringIssue = computed(() =>
-    Boolean(status.value && !status.value.hasMasterPassword && !status.value.keyringAvailable),
+    Boolean(
+      status.value
+      && !status.value.hasMasterPassword
+      && (!status.value.keyringAvailable || hasMissingStorageKey.value),
+    ),
   )
 
   const refreshStatus = async () => {
@@ -97,6 +109,7 @@ export const useSecurityStore = defineStore('security', () => {
     isBusy,
     error,
     requiresUnlock,
+    hasMissingStorageKey,
     hasKeyringIssue,
     initialize,
     refreshStatus,

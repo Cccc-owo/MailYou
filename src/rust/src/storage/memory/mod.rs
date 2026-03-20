@@ -12,7 +12,7 @@ use crate::models::{
     ContactGroup, DraftMessage, MailAccount, MailFolderKind, MailLabel, MailMessage, MailThread,
     MailboxBundle, MailboxFolder, StoredAccountState, SyncStatus,
 };
-use crate::protocol::{BackendError, StorageSecurityStatus};
+use crate::protocol::{BackendError, RecoveryExportStatus, StorageSecurityStatus};
 use crate::storage::persisted;
 
 #[derive(Clone, Copy)]
@@ -467,6 +467,18 @@ impl SecurityStore {
     pub fn get_storage_dir(self) -> Result<String, BackendError> {
         get_storage_dir()
     }
+
+    pub fn get_recovery_export_status(self) -> Result<RecoveryExportStatus, BackendError> {
+        get_recovery_export_status()
+    }
+
+    pub fn restore_latest_recovery_export(self) -> Result<(), BackendError> {
+        restore_latest_recovery_export()
+    }
+
+    pub fn reset_local_encrypted_storage(self) -> Result<(), BackendError> {
+        reset_local_encrypted_storage()
+    }
 }
 
 /// Lock the global state, recovering from a poisoned Mutex if necessary.
@@ -904,6 +916,18 @@ pub fn clear_master_password(
 
 pub fn get_storage_dir() -> Result<String, BackendError> {
     security::get_storage_dir()
+}
+
+pub fn get_recovery_export_status() -> Result<RecoveryExportStatus, BackendError> {
+    security::get_recovery_export_status()
+}
+
+pub fn restore_latest_recovery_export() -> Result<(), BackendError> {
+    security::restore_latest_recovery_export()
+}
+
+pub fn reset_local_encrypted_storage() -> Result<(), BackendError> {
+    security::reset_local_encrypted_storage()
 }
 
 pub(crate) fn base64_decode(input: &str) -> Result<Vec<u8>, String> {

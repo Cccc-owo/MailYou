@@ -61,4 +61,7 @@ export const webMailRepository: MailRepository = {
   clearMasterPassword: notAvailable,
   lockCurrentSession: notAvailable,
   getStorageDir: notAvailable,
+  getRecoveryExportStatus: notAvailable,
+  restoreLatestRecoveryExport: notAvailable,
+  resetLocalEncryptedStorage: notAvailable,
 }

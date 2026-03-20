@@ -15,13 +15,18 @@ use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::models::{Contact, ContactGroup, DraftMessage, StoredAccountState, SyncStatus};
-use crate::protocol::StorageSecurityStatus;
+use crate::protocol::{RecoveryExportStatus, StorageSecurityStatus};
 
 const APP_DIR_NAME: &str = "MailYou";
 const STORAGE_DIR_NAME: &str = "mail";
 const DATABASE_FILE: &str = "storage.sqlite3";
 const BACKUP_DIR_NAME: &str = "backups";
 const MAX_DATABASE_BACKUPS: usize = 5;
+const EXPORT_DIR_NAME: &str = "exports";
+const MAX_RECOVERY_EXPORTS: usize = 10;
+const RECOVERY_DIR_NAME: &str = "recovery";
+const RECOVERY_KEY_FILE: &str = "storage-key.b64";
+const RESET_ARCHIVE_DIR_NAME: &str = "resets";
 const LEGACY_ACCOUNTS_FILE: &str = "accounts.json";
 const LEGACY_DRAFTS_FILE: &str = "drafts.json";
 const LEGACY_MAILBOX_FILE: &str = "mailbox.json";
@@ -67,6 +72,25 @@ struct PersistedStateEnvelope<T> {
     payload: T,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct RecoveryExport {
+    #[serde(default = "default_recovery_export_version")]
+    version: u32,
+    #[serde(default)]
+    exported_at: String,
+    #[serde(default)]
+    accounts: Vec<StoredAccountState>,
+    #[serde(default)]
+    drafts: Vec<DraftMessage>,
+    #[serde(default)]
+    contacts: PersistedContacts,
+}
+
+fn default_recovery_export_version() -> u32 {
+    1
+}
+
 fn unlocked_storage_key() -> &'static Mutex<Option<[u8; 32]>> {
     static STORAGE_KEY: OnceLock<Mutex<Option<[u8; 32]>>> = OnceLock::new();
     STORAGE_KEY.get_or_init(|| Mutex::new(None))
@@ -75,6 +99,11 @@ fn unlocked_storage_key() -> &'static Mutex<Option<[u8; 32]>> {
 fn degraded_storage_reads() -> &'static AtomicBool {
     static FLAG: OnceLock<AtomicBool> = OnceLock::new();
     FLAG.get_or_init(|| AtomicBool::new(false))
+}
+
+fn degraded_storage_read_error() -> &'static Mutex<Option<String>> {
+    static ERROR: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    ERROR.get_or_init(|| Mutex::new(None))
 }
 
 fn session_backup_created() -> &'static AtomicBool {
@@ -86,40 +115,46 @@ fn mark_degraded_storage_read() {
     degraded_storage_reads().store(true, Ordering::Relaxed);
 }
 
+fn record_degraded_storage_read_error(error: &io::Error) {
+    if is_missing_persisted_state_error(error) {
+        return;
+    }
+    mark_degraded_storage_read();
+    let mut slot = degraded_storage_read_error().lock().unwrap();
+    if slot.is_none() {
+        *slot = Some(error.to_string());
+    }
+}
+
+fn is_missing_persisted_state_error(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::NotFound
+        && error
+            .to_string()
+            .starts_with("Missing persisted state:")
+}
+
 pub fn storage_reads_degraded() -> bool {
     degraded_storage_reads().load(Ordering::Relaxed)
+}
+
+pub fn degraded_storage_error_message() -> Option<String> {
+    degraded_storage_read_error().lock().unwrap().clone()
 }
 
 pub fn load_accounts() -> Vec<StoredAccountState> {
     let mut accounts: Vec<StoredAccountState> = match load_state_json(STATE_ACCOUNTS) {
         Ok(accounts) => accounts,
+        Err(error) if is_missing_persisted_state_error(&error) => Vec::new(),
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             panic!("storage locked: {}", error)
         }
         Err(error) => {
             eprintln!("[store] WARNING: failed to load accounts state: {}", error);
-            mark_degraded_storage_read();
+            record_degraded_storage_read_error(&error);
             Vec::new()
         }
     };
-
-    for account_state in &mut accounts {
-        if account_state.config.password == SECRET_PLACEHOLDER
-            || account_state.config.password.is_empty()
-        {
-            if let Some(password) = keyring_get(&account_state.account.id, "password") {
-                account_state.config.password = password;
-            }
-        }
-
-        if account_state.config.refresh_token == SECRET_PLACEHOLDER
-            || account_state.config.refresh_token.is_empty()
-        {
-            if let Some(refresh_token) = keyring_get(&account_state.account.id, "refreshToken") {
-                account_state.config.refresh_token = refresh_token;
-            }
-        }
-    }
+    hydrate_accounts_with_keyring_secrets(&mut accounts, false);
 
     accounts
 }
@@ -127,12 +162,13 @@ pub fn load_accounts() -> Vec<StoredAccountState> {
 pub fn load_drafts() -> Vec<DraftMessage> {
     match load_state_json(STATE_DRAFTS) {
         Ok(drafts) => drafts,
+        Err(error) if is_missing_persisted_state_error(&error) => Vec::new(),
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             panic!("storage locked: {}", error)
         }
         Err(error) => {
             eprintln!("[store] WARNING: failed to load drafts state: {}", error);
-            mark_degraded_storage_read();
+            record_degraded_storage_read_error(&error);
             Vec::new()
         }
     }
@@ -141,12 +177,13 @@ pub fn load_drafts() -> Vec<DraftMessage> {
 pub fn load_mailbox() -> PersistedMailbox {
     match load_state_json(STATE_MAILBOX) {
         Ok(mailbox) => mailbox,
+        Err(error) if is_missing_persisted_state_error(&error) => PersistedMailbox::default(),
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             panic!("storage locked: {}", error)
         }
         Err(error) => {
             eprintln!("[store] WARNING: failed to load mailbox state: {}", error);
-            mark_degraded_storage_read();
+            record_degraded_storage_read_error(&error);
             PersistedMailbox::default()
         }
     }
@@ -155,12 +192,13 @@ pub fn load_mailbox() -> PersistedMailbox {
 pub fn load_sync_statuses() -> Vec<SyncStatus> {
     match load_state_json(STATE_SYNC) {
         Ok(statuses) => statuses,
+        Err(error) if is_missing_persisted_state_error(&error) => Vec::new(),
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             panic!("storage locked: {}", error)
         }
         Err(error) => {
             eprintln!("[store] WARNING: failed to load sync state: {}", error);
-            mark_degraded_storage_read();
+            record_degraded_storage_read_error(&error);
             Vec::new()
         }
     }
@@ -176,12 +214,13 @@ pub struct PersistedContacts {
 pub fn load_contacts() -> PersistedContacts {
     let mut data: PersistedContacts = match load_state_json(STATE_CONTACTS) {
         Ok(data) => data,
+        Err(error) if is_missing_persisted_state_error(&error) => PersistedContacts::default(),
         Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
             panic!("storage locked: {}", error)
         }
         Err(error) => {
             eprintln!("[store] WARNING: failed to load contacts state: {}", error);
-            mark_degraded_storage_read();
+            record_degraded_storage_read_error(&error);
             PersistedContacts::default()
         }
     };
@@ -208,6 +247,7 @@ pub fn save_snapshot(
     write_state_json_with_connection(&transaction, STATE_CONTACTS, contacts)?;
 
     transaction.commit().map_err(to_io_error)?;
+    write_recovery_export(&sanitized_accounts, drafts, contacts)?;
     Ok(())
 }
 
@@ -237,6 +277,78 @@ pub fn has_drafts_file() -> bool {
 
 pub fn storage_dir_path() -> io::Result<PathBuf> {
     storage_dir()
+}
+
+pub fn get_recovery_export_status() -> io::Result<RecoveryExportStatus> {
+    let export_dir = export_dir()?;
+    fs::create_dir_all(&export_dir)?;
+    let latest_path = export_dir.join("latest.json");
+    let latest_exported_at = if latest_path.exists() {
+        fs::metadata(&latest_path)
+            .and_then(|meta| meta.modified())
+            .ok()
+            .map(|time| chrono::DateTime::<Utc>::from(time).to_rfc3339())
+    } else {
+        None
+    };
+
+    let snapshot_count = fs::read_dir(&export_dir)?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("recovery-"))
+        .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("json"))
+        .count() as u32;
+
+    Ok(RecoveryExportStatus {
+        export_dir: export_dir.to_string_lossy().to_string(),
+        latest_exported_at,
+        snapshot_count,
+    })
+}
+
+pub fn restore_latest_recovery_export() -> io::Result<()> {
+    let mut export = load_latest_recovery_export()?;
+    hydrate_accounts_with_keyring_secrets(&mut export.accounts, true);
+
+    archive_storage_dir("mail-recovery")?;
+
+    let storage_path = storage_dir()?;
+    fs::create_dir_all(&storage_path)?;
+    keyring_delete(STORAGE_KEY_ACCOUNT, STORAGE_KEY_KIND);
+    *unlocked_storage_key().lock().unwrap() = None;
+    degraded_storage_reads().store(false, Ordering::Relaxed);
+    *degraded_storage_read_error().lock().unwrap() = None;
+    session_backup_created().store(false, Ordering::Relaxed);
+
+    let mailbox = PersistedMailbox::default();
+    let sync_statuses: Vec<SyncStatus> = Vec::new();
+    save_snapshot(
+        &export.accounts,
+        &export.drafts,
+        &mailbox,
+        &sync_statuses,
+        &export.contacts,
+    )?;
+
+    eprintln!(
+        "[store] restored latest recovery export ({} accounts, {} drafts, {} contacts)",
+        export.accounts.len(),
+        export.drafts.len(),
+        export.contacts.contacts.len()
+    );
+    Ok(())
+}
+
+pub fn reset_local_encrypted_storage() -> io::Result<()> {
+    let storage_path = storage_dir()?;
+    archive_storage_dir("mail-reset")?;
+
+    fs::create_dir_all(&storage_path)?;
+    keyring_delete(STORAGE_KEY_ACCOUNT, STORAGE_KEY_KIND);
+    *unlocked_storage_key().lock().unwrap() = None;
+    degraded_storage_reads().store(false, Ordering::Relaxed);
+    *degraded_storage_read_error().lock().unwrap() = None;
+    session_backup_created().store(false, Ordering::Relaxed);
+    Ok(())
 }
 
 pub fn save_raw_email(message_id: &str, raw: &[u8]) -> io::Result<()> {
@@ -283,9 +395,24 @@ pub fn get_security_status() -> io::Result<StorageSecurityStatus> {
     ensure_initialized()?;
     let connection = open_connection()?;
     let mode = current_security_mode(&connection)?;
-    let is_unlocked =
-        matches!(mode, MODE_KEYRING) || unlocked_storage_key().lock().unwrap().is_some();
-    let (keyring_available, keyring_error) = probe_system_keyring();
+    let (keyring_available, probe_error) = probe_system_keyring();
+    let has_recovery_key_backup = recovery_key_path()?.exists();
+    let has_encrypted_data = persisted_storage_requires_existing_key().unwrap_or(false);
+    let startup_read_error = degraded_storage_error_message();
+    let storage_key_error = if matches!(mode, MODE_KEYRING) {
+        data_key_from_keyring()
+            .and_then(|storage_key| probe_existing_state_decryption(&connection, &storage_key))
+            .err()
+            .map(|error| error.to_string())
+    } else {
+        None
+    };
+    let keyring_error = startup_read_error.or(storage_key_error).or(probe_error);
+    let is_unlocked = match mode {
+        MODE_KEYRING => keyring_error.is_none(),
+        MODE_PASSWORD => unlocked_storage_key().lock().unwrap().is_some(),
+        _ => false,
+    };
 
     Ok(StorageSecurityStatus {
         has_master_password: matches!(mode, MODE_PASSWORD),
@@ -293,6 +420,8 @@ pub fn get_security_status() -> io::Result<StorageSecurityStatus> {
         mode,
         keyring_available,
         keyring_error,
+        has_recovery_key_backup,
+        master_password_recommended: matches!(mode, MODE_KEYRING) && has_encrypted_data,
     })
 }
 
@@ -402,7 +531,7 @@ fn has_state(key: &str) -> bool {
     match ensure_initialized_for_read().and_then(|_| read_entry("state", key).map(|entry| entry.is_some())) {
         Ok(result) => result,
         Err(error) => {
-            mark_degraded_storage_read();
+            record_degraded_storage_read_error(&error);
             eprintln!(
                 "[store] WARNING: failed to probe persisted state key={} error={}",
                 key, error
@@ -532,7 +661,7 @@ fn ensure_initialized_for_read() -> io::Result<()> {
         }
         Err(error) => {
             if database_path()?.exists() {
-                mark_degraded_storage_read();
+                record_degraded_storage_read_error(&error);
                 eprintln!(
                     "[store] WARNING: falling back to read-only persisted storage access: {}",
                     error
@@ -832,6 +961,37 @@ fn sanitize_accounts_for_persistence(accounts: &[StoredAccountState]) -> Vec<Sto
     sanitized
 }
 
+fn hydrate_accounts_with_keyring_secrets(
+    accounts: &mut [StoredAccountState],
+    clear_unresolved_placeholders: bool,
+) {
+    for account_state in accounts {
+        if account_state.config.password == SECRET_PLACEHOLDER
+            || account_state.config.password.is_empty()
+        {
+            if let Some(password) = keyring_get(&account_state.account.id, "password") {
+                account_state.config.password = password;
+            } else if clear_unresolved_placeholders
+                && account_state.config.password == SECRET_PLACEHOLDER
+            {
+                account_state.config.password.clear();
+            }
+        }
+
+        if account_state.config.refresh_token == SECRET_PLACEHOLDER
+            || account_state.config.refresh_token.is_empty()
+        {
+            if let Some(refresh_token) = keyring_get(&account_state.account.id, "refreshToken") {
+                account_state.config.refresh_token = refresh_token;
+            } else if clear_unresolved_placeholders
+                && account_state.config.refresh_token == SECRET_PLACEHOLDER
+            {
+                account_state.config.refresh_token.clear();
+            }
+        }
+    }
+}
+
 fn normalize_state_envelopes(connection: &Connection, storage_key: &[u8; 32]) -> io::Result<()> {
     let mut statement = connection
         .prepare(
@@ -1003,7 +1163,39 @@ fn storage_key() -> io::Result<[u8; 32]> {
 
 fn data_key_from_keyring() -> io::Result<[u8; 32]> {
     if let Some(encoded) = keyring_get(STORAGE_KEY_ACCOUNT, STORAGE_KEY_KIND) {
-        return decode_storage_key(&encoded);
+        let key = decode_storage_key(&encoded)?;
+        if !persisted_storage_requires_existing_key()? || validate_storage_key_against_existing_data(&key).is_ok()
+        {
+            let _ = persist_recovery_key_file(&key);
+            return Ok(key);
+        }
+
+        if let Some(recovery_key) = load_recovery_key_file()? {
+            if validate_storage_key_against_existing_data(&recovery_key).is_ok() {
+                let _ = store_data_key_in_keyring(&recovery_key);
+                return Ok(recovery_key);
+            }
+        }
+
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Stored system keyring key no longer matches existing encrypted data",
+        ));
+    }
+
+    if let Some(recovery_key) = load_recovery_key_file()? {
+        if !persisted_storage_requires_existing_key()? || validate_storage_key_against_existing_data(&recovery_key).is_ok()
+        {
+            let _ = store_data_key_in_keyring(&recovery_key);
+            return Ok(recovery_key);
+        }
+    }
+
+    if persisted_storage_requires_existing_key()? {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Missing storage key in system keyring; existing encrypted data cannot be decrypted",
+        ));
     }
 
     let mut key = [0_u8; 32];
@@ -1011,6 +1203,7 @@ fn data_key_from_keyring() -> io::Result<[u8; 32]> {
         .fill(&mut key)
         .map_err(|_| io::Error::other("Failed to generate storage key"))?;
     store_data_key_in_keyring(&key)?;
+    persist_recovery_key_file(&key)?;
     Ok(key)
 }
 
@@ -1033,6 +1226,7 @@ fn decode_storage_key(encoded: &str) -> io::Result<[u8; 32]> {
 fn store_data_key_in_keyring(key: &[u8; 32]) -> io::Result<()> {
     let encoded = BASE64.encode(key);
     if keyring_set(STORAGE_KEY_ACCOUNT, STORAGE_KEY_KIND, &encoded) {
+        let _ = persist_recovery_key_file(key);
         Ok(())
     } else {
         Err(io::Error::other(
@@ -1119,6 +1313,234 @@ fn database_path() -> io::Result<PathBuf> {
     Ok(storage_dir()?.join(DATABASE_FILE))
 }
 
+fn persisted_storage_requires_existing_key() -> io::Result<bool> {
+    let db_path = database_path()?;
+    if !db_path.exists() {
+        return Ok(false);
+    }
+
+    let connection = open_connection_for_read()?;
+    let encrypted_entry_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM encrypted_entries", [], |row| row.get(0))
+        .map_err(to_io_error)?;
+    if encrypted_entry_count > 0 {
+        return Ok(true);
+    }
+
+    let has_wrapped_key = get_metadata(&connection, META_WRAPPED_KEY_CIPHERTEXT)?.is_some();
+    Ok(has_wrapped_key)
+}
+
+fn validate_storage_key_against_existing_data(storage_key: &[u8; 32]) -> io::Result<()> {
+    let connection = open_connection_for_read()?;
+    probe_existing_entry_decryption(&connection, storage_key)
+}
+
+fn probe_existing_state_decryption(
+    connection: &Connection,
+    storage_key: &[u8; 32],
+) -> io::Result<()> {
+    let row = connection
+        .query_row(
+            "SELECT nonce, ciphertext
+             FROM encrypted_entries
+             LIMIT 1",
+            [],
+            |row| {
+                Ok(EncryptedPayload {
+                    nonce: row.get(0)?,
+                    ciphertext: row.get(1)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(to_io_error)?;
+
+    let Some(payload) = row else {
+        return Ok(());
+    };
+
+    decrypt_with_key(storage_key, &payload).map(|_| ())
+}
+
+fn probe_existing_entry_decryption(
+    connection: &Connection,
+    storage_key: &[u8; 32],
+) -> io::Result<()> {
+    let row = connection
+        .query_row(
+            "SELECT nonce, ciphertext
+             FROM encrypted_entries
+             LIMIT 1",
+            [],
+            |row| {
+                Ok(EncryptedPayload {
+                    nonce: row.get(0)?,
+                    ciphertext: row.get(1)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(to_io_error)?;
+
+    let Some(payload) = row else {
+        return Ok(());
+    };
+
+    decrypt_with_key(storage_key, &payload).map(|_| ())
+}
+
+fn recovery_dir() -> io::Result<PathBuf> {
+    Ok(storage_dir()?.join(RECOVERY_DIR_NAME))
+}
+
+fn export_dir() -> io::Result<PathBuf> {
+    Ok(storage_dir()?.join(BACKUP_DIR_NAME).join(EXPORT_DIR_NAME))
+}
+
+fn recovery_key_path() -> io::Result<PathBuf> {
+    Ok(recovery_dir()?.join(RECOVERY_KEY_FILE))
+}
+
+fn write_recovery_export(
+    accounts: &[StoredAccountState],
+    drafts: &[DraftMessage],
+    contacts: &PersistedContacts,
+) -> io::Result<()> {
+    let export_dir = export_dir()?;
+    fs::create_dir_all(&export_dir)?;
+
+    let mut export_accounts = accounts.to_vec();
+    hydrate_accounts_with_keyring_secrets(&mut export_accounts, false);
+
+    let export = RecoveryExport {
+        version: 1,
+        exported_at: Utc::now().to_rfc3339(),
+        accounts: export_accounts,
+        drafts: drafts.to_vec(),
+        contacts: contacts.clone(),
+    };
+    let payload = serde_json::to_vec_pretty(&export)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
+
+    let latest_path = export_dir.join("latest.json");
+    let temp_latest_path = export_dir.join("latest.json.tmp");
+    fs::write(&temp_latest_path, &payload)?;
+    apply_owner_only_permissions(&temp_latest_path)?;
+    fs::rename(&temp_latest_path, &latest_path)?;
+
+    let timestamp = Utc::now().format("%Y%m%d-%H%M%S-%3f");
+    let snapshot_path = export_dir.join(format!("recovery-{timestamp}.json"));
+    fs::write(&snapshot_path, &payload)?;
+    apply_owner_only_permissions(&snapshot_path)?;
+    prune_recovery_exports(&export_dir)?;
+    Ok(())
+}
+
+fn prune_recovery_exports(export_dir: &Path) -> io::Result<()> {
+    let mut exports = fs::read_dir(export_dir)?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("recovery-"))
+        .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("json"))
+        .collect::<Vec<_>>();
+
+    exports.sort_by_key(|entry| entry.file_name());
+    let stale_count = exports.len().saturating_sub(MAX_RECOVERY_EXPORTS);
+    for entry in exports.into_iter().take(stale_count) {
+        let _ = fs::remove_file(entry.path());
+    }
+
+    Ok(())
+}
+
+fn persist_recovery_key_file(key: &[u8; 32]) -> io::Result<()> {
+    let recovery_dir = recovery_dir()?;
+    fs::create_dir_all(&recovery_dir)?;
+    let path = recovery_key_path()?;
+    let temp_path = path.with_extension("tmp");
+    fs::write(&temp_path, BASE64.encode(key))?;
+    apply_owner_only_permissions(&temp_path)?;
+    fs::rename(temp_path, path)?;
+    Ok(())
+}
+
+fn load_recovery_key_file() -> io::Result<Option<[u8; 32]>> {
+    let path = recovery_key_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let encoded = fs::read_to_string(path)?;
+    decode_storage_key(encoded.trim()).map(Some)
+}
+
+fn load_latest_recovery_export() -> io::Result<RecoveryExport> {
+    let path = latest_recovery_export_path()?;
+    let contents = fs::read_to_string(&path)?;
+    serde_json::from_str::<RecoveryExport>(&contents).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "Failed to parse recovery export {}: {}",
+                path.display(),
+                error
+            ),
+        )
+    })
+}
+
+fn latest_recovery_export_path() -> io::Result<PathBuf> {
+    let export_dir = export_dir()?;
+    fs::create_dir_all(&export_dir)?;
+
+    let latest_path = export_dir.join("latest.json");
+    if latest_path.exists() {
+        return Ok(latest_path);
+    }
+
+    let mut snapshots = fs::read_dir(&export_dir)?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("recovery-"))
+        .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("json"))
+        .collect::<Vec<_>>();
+    snapshots.sort_by_key(|entry| entry.file_name());
+    snapshots
+        .pop()
+        .map(|entry| entry.path())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "No recovery export available"))
+}
+
+fn archive_storage_dir(prefix: &str) -> io::Result<()> {
+    let storage_path = storage_dir()?;
+    let archive_root = data_root()?.join(APP_DIR_NAME).join(RESET_ARCHIVE_DIR_NAME);
+    fs::create_dir_all(&archive_root)?;
+
+    if !storage_path.exists() {
+        return Ok(());
+    }
+
+    let timestamp = Utc::now().format("%Y%m%d-%H%M%S-%3f");
+    let archive_path = archive_root.join(format!("{prefix}-{timestamp}"));
+    fs::rename(&storage_path, &archive_path)?;
+    eprintln!(
+        "[store] archived local encrypted storage to {}",
+        archive_path.display()
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+fn apply_owner_only_permissions(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+}
+
+#[cfg(not(unix))]
+fn apply_owner_only_permissions(_path: &Path) -> io::Result<()> {
+    Ok(())
+}
+
 fn legacy_load_json<T: DeserializeOwned>(path: &Path) -> io::Result<T> {
     let contents = fs::read_to_string(path)?;
     serde_json::from_str(&contents)
@@ -1127,24 +1549,7 @@ fn legacy_load_json<T: DeserializeOwned>(path: &Path) -> io::Result<T> {
 
 fn legacy_load_accounts(path: &Path) -> io::Result<Vec<StoredAccountState>> {
     let mut accounts: Vec<StoredAccountState> = legacy_load_json(path)?;
-
-    for account_state in &mut accounts {
-        if account_state.config.password == SECRET_PLACEHOLDER
-            || account_state.config.password.is_empty()
-        {
-            if let Some(password) = keyring_get(&account_state.account.id, "password") {
-                account_state.config.password = password;
-            }
-        }
-
-        if account_state.config.refresh_token == SECRET_PLACEHOLDER
-            || account_state.config.refresh_token.is_empty()
-        {
-            if let Some(refresh_token) = keyring_get(&account_state.account.id, "refreshToken") {
-                account_state.config.refresh_token = refresh_token;
-            }
-        }
-    }
+    hydrate_accounts_with_keyring_secrets(&mut accounts, false);
 
     Ok(accounts)
 }

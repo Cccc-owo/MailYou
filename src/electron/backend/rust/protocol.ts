@@ -10,7 +10,7 @@ import type {
   MailboxFolder,
   SyncStatus,
 } from '@/types/mail'
-import type { StorageSecurityStatus } from '@/types/security'
+import type { RecoveryExportStatus, StorageSecurityStatus } from '@/types/security'
 
 export interface RustBackendMethodMap {
   healthCheck: {
@@ -240,6 +240,18 @@ export interface RustBackendMethodMap {
   getStorageDir: {
     params: undefined
     result: string
+  }
+  getRecoveryExportStatus: {
+    params: undefined
+    result: RecoveryExportStatus
+  }
+  restoreLatestRecoveryExport: {
+    params: undefined
+    result: void
+  }
+  resetLocalEncryptedStorage: {
+    params: undefined
+    result: void
   }
 }
 

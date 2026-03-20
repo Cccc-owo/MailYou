@@ -21,6 +21,9 @@ pub fn is_local_request(request: &BackendRequest) -> bool {
             | BackendRequest::SetMasterPassword { .. }
             | BackendRequest::ClearMasterPassword { .. }
             | BackendRequest::GetStorageDir
+            | BackendRequest::GetRecoveryExportStatus
+            | BackendRequest::RestoreLatestRecoveryExport
+            | BackendRequest::ResetLocalEncryptedStorage
     )
 }
 
@@ -80,6 +83,15 @@ pub fn handle_local_request(request: BackendRequest) -> Result<serde_json::Value
             serialize(security.clear_master_password(&current_password)?)
         }
         BackendRequest::GetStorageDir => serialize(security.get_storage_dir()?),
+        BackendRequest::GetRecoveryExportStatus => {
+            serialize(security.get_recovery_export_status()?)
+        }
+        BackendRequest::RestoreLatestRecoveryExport => {
+            serialize(security.restore_latest_recovery_export()?)
+        }
+        BackendRequest::ResetLocalEncryptedStorage => {
+            serialize(security.reset_local_encrypted_storage()?)
+        }
         other => Err(BackendError::internal(format!(
             "Unsupported local request: {}",
             other.method_name()

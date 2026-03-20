@@ -234,6 +234,9 @@ pub enum BackendRequest {
         current_password: String,
     },
     GetStorageDir,
+    GetRecoveryExportStatus,
+    RestoreLatestRecoveryExport,
+    ResetLocalEncryptedStorage,
 }
 
 impl BackendRequest {
@@ -294,6 +297,9 @@ impl BackendRequest {
             Self::SetMasterPassword { .. } => "setMasterPassword",
             Self::ClearMasterPassword { .. } => "clearMasterPassword",
             Self::GetStorageDir => "getStorageDir",
+            Self::GetRecoveryExportStatus => "getRecoveryExportStatus",
+            Self::RestoreLatestRecoveryExport => "restoreLatestRecoveryExport",
+            Self::ResetLocalEncryptedStorage => "resetLocalEncryptedStorage",
         }
     }
 }
@@ -439,6 +445,16 @@ pub struct StorageSecurityStatus {
     pub mode: &'static str,
     pub keyring_available: bool,
     pub keyring_error: Option<String>,
+    pub has_recovery_key_backup: bool,
+    pub master_password_recommended: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryExportStatus {
+    pub export_dir: String,
+    pub latest_exported_at: Option<String>,
+    pub snapshot_count: u32,
 }
 
 #[allow(dead_code)]

@@ -16,7 +16,7 @@ import type {
   MailboxFolder,
   SyncStatus,
 } from '@/types/mail'
-import type { StorageSecurityStatus } from '@/types/security'
+import type { RecoveryExportStatus, StorageSecurityStatus } from '@/types/security'
 
 export interface MailRepository {
   listAccounts(): Promise<MailAccount[]>
@@ -75,4 +75,7 @@ export interface MailRepository {
   clearMasterPassword(currentPassword: string): Promise<StorageSecurityStatus>
   lockCurrentSession(): Promise<StorageSecurityStatus>
   getStorageDir(): Promise<string>
+  getRecoveryExportStatus(): Promise<RecoveryExportStatus>
+  restoreLatestRecoveryExport(): Promise<void>
+  resetLocalEncryptedStorage(): Promise<void>
 }

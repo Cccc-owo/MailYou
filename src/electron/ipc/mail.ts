@@ -208,4 +208,7 @@ export const registerMailIpc = () => {
   )
   handle('mail:lockCurrentSession', () => mailBackend.lockCurrentSession())
   handle('mail:getStorageDir', () => mailBackend.getStorageDir())
+  handle('mail:getRecoveryExportStatus', () => mailBackend.getRecoveryExportStatus())
+  handle('mail:restoreLatestRecoveryExport', () => mailBackend.restoreLatestRecoveryExport())
+  handle('mail:resetLocalEncryptedStorage', () => mailBackend.resetLocalEncryptedStorage())
 }

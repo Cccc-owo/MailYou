@@ -17,14 +17,54 @@
     <div v-else-if="securityStore.hasKeyringIssue" class="app-shell app-shell--centered">
       <v-card class="app-shell__card pa-6">
         <div class="text-overline mb-2">{{ t('security.title') }}</div>
-        <div class="text-h5 mb-2">{{ t('security.keyringUnavailableTitle') }}</div>
+        <div class="text-h5 mb-2">
+          {{ securityStore.hasMissingStorageKey ? t('security.missingStorageKeyTitle') : t('security.keyringUnavailableTitle') }}
+        </div>
         <div class="text-body-2 text-medium-emphasis mb-4">
-          {{ t('security.keyringUnavailableDescription') }}
+          {{ securityStore.hasMissingStorageKey ? t('security.missingStorageKeyDescription') : t('security.keyringUnavailableDescription') }}
         </div>
         <v-alert type="warning" variant="tonal" class="mb-4">
-          {{ securityStore.status?.keyringError || t('security.keyringUnavailableGeneric') }}
+          {{
+            securityStore.hasMissingStorageKey
+              ? t('security.missingStorageKeyDetail')
+              : securityStore.status?.keyringError || t('security.keyringUnavailableGeneric')
+          }}
+        </v-alert>
+        <v-alert
+          v-if="canRestoreFromRecovery"
+          type="info"
+          variant="tonal"
+          class="mb-4"
+        >
+          {{ t('security.recoveryRestoreAvailable', { count: recoverySnapshotCount }) }}
+        </v-alert>
+        <v-alert
+          v-if="recoveryRestoreError"
+          type="error"
+          variant="tonal"
+          class="mb-4"
+        >
+          {{ recoveryRestoreError }}
         </v-alert>
         <div class="d-flex ga-3 flex-wrap">
+          <v-btn
+            v-if="canRestoreFromRecovery"
+            color="primary"
+            :loading="restoringRecovery"
+            @click="restoreLatestRecoveryExport"
+          >
+            {{ t('security.restoreLatestRecoveryAction') }}
+          </v-btn>
+          <v-btn
+            v-if="securityStore.hasMissingStorageKey"
+            color="error"
+            variant="tonal"
+            :loading="resettingLocalStorage"
+            :disabled="restoringRecovery"
+            @click="resetLocalEncryptedStorage"
+          >
+            {{ t('security.resetLocalStorageAction') }}
+          </v-btn>
           <v-btn color="primary" @click="goToSettings">
             {{ t('security.openSecuritySettings') }}
           </v-btn>
@@ -90,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useThemeController } from '@/composables/useThemeController'
@@ -107,7 +147,15 @@ const uiStore = useUiStore()
 const unlockPassword = ref('')
 const closePromptOpen = ref(false)
 const rememberCloseBehavior = ref(false)
+const resettingLocalStorage = ref(false)
+const restoringRecovery = ref(false)
+const recoverySnapshotCount = ref(0)
+const recoveryRestoreError = ref<string | null>(null)
 let closeRequestedUnsubscribe: (() => void) | undefined
+
+const canRestoreFromRecovery = computed(() =>
+  securityStore.hasMissingStorageKey && recoverySnapshotCount.value > 0,
+)
 
 const retryInitialize = async () => {
   await securityStore.initialize()
@@ -121,6 +169,51 @@ const submitUnlock = async () => {
   if (!unlockPassword.value) return
   await securityStore.unlock(unlockPassword.value)
   unlockPassword.value = ''
+}
+
+const resetLocalEncryptedStorage = async () => {
+  resettingLocalStorage.value = true
+  try {
+    await window.mailyou?.resetLocalEncryptedStorage()
+    closePromptOpen.value = false
+    rememberCloseBehavior.value = false
+    window.location.reload()
+  } finally {
+    resettingLocalStorage.value = false
+  }
+}
+
+const loadRecoveryExportAvailability = async () => {
+  recoveryRestoreError.value = null
+
+  if (!securityStore.hasMissingStorageKey) {
+    recoverySnapshotCount.value = 0
+    return
+  }
+
+  try {
+    const status = await window.mailyou?.getRecoveryExportStatus()
+    recoverySnapshotCount.value = status?.snapshotCount ?? 0
+  } catch {
+    recoverySnapshotCount.value = 0
+  }
+}
+
+const restoreLatestRecoveryExport = async () => {
+  restoringRecovery.value = true
+  recoveryRestoreError.value = null
+  try {
+    await window.mailyou?.restoreLatestRecoveryExport()
+    closePromptOpen.value = false
+    rememberCloseBehavior.value = false
+    window.location.reload()
+  } catch (err) {
+    recoveryRestoreError.value = err instanceof Error
+      ? err.message
+      : t('security.restoreLatestRecoveryFailed')
+  } finally {
+    restoringRecovery.value = false
+  }
 }
 
 const cancelCloseRequest = async () => {
@@ -140,6 +233,7 @@ const resolveCloseRequest = async (action: CloseRequestAction) => {
 
 onMounted(async () => {
   await securityStore.initialize()
+  await loadRecoveryExportAvailability()
   await window.windowControls?.setBackgroundSyncInterval(uiStore.syncIntervalMinutes)
   await window.windowControls?.setCloseBehaviorPreference(uiStore.closeBehavior)
   closeRequestedUnsubscribe = window.windowControls?.onCloseRequested(() => {
@@ -159,6 +253,13 @@ watch(
   () => uiStore.closeBehavior,
   (value) => {
     void window.windowControls?.setCloseBehaviorPreference(value)
+  },
+)
+
+watch(
+  () => securityStore.hasMissingStorageKey,
+  () => {
+    void loadRecoveryExportAvailability()
   },
 )
 

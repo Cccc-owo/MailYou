@@ -80,4 +80,13 @@ export const rustMailBackend: MailBackend = {
     return invokeRustBackend('getSecurityStatus')
   },
   getStorageDir: () => invokeRustBackend('getStorageDir'),
+  getRecoveryExportStatus: () => invokeRustBackend('getRecoveryExportStatus'),
+  restoreLatestRecoveryExport: async () => {
+    await invokeRustBackend('restoreLatestRecoveryExport')
+    await shutdownRustBackend()
+  },
+  resetLocalEncryptedStorage: async () => {
+    await invokeRustBackend('resetLocalEncryptedStorage')
+    await shutdownRustBackend()
+  },
 }

@@ -1,4 +1,4 @@
-use crate::protocol::{BackendError, StorageSecurityStatus};
+use crate::protocol::{BackendError, RecoveryExportStatus, StorageSecurityStatus};
 use crate::storage::persisted;
 
 pub(crate) fn get_security_status() -> Result<StorageSecurityStatus, BackendError> {
@@ -35,4 +35,16 @@ pub(crate) fn get_storage_dir() -> Result<String, BackendError> {
     dir.to_str()
         .map(|s| s.to_string())
         .ok_or_else(|| BackendError::internal("Non-UTF-8 storage path"))
+}
+
+pub(crate) fn get_recovery_export_status() -> Result<RecoveryExportStatus, BackendError> {
+    persisted::get_recovery_export_status().map_err(|e| BackendError::internal(e.to_string()))
+}
+
+pub(crate) fn restore_latest_recovery_export() -> Result<(), BackendError> {
+    persisted::restore_latest_recovery_export().map_err(|e| BackendError::internal(e.to_string()))
+}
+
+pub(crate) fn reset_local_encrypted_storage() -> Result<(), BackendError> {
+    persisted::reset_local_encrypted_storage().map_err(|e| BackendError::internal(e.to_string()))
 }

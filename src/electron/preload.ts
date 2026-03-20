@@ -59,6 +59,9 @@ const mailyou: MailyouBridge = {
   clearMasterPassword: (currentPassword) => ipcRenderer.invoke('mail:clearMasterPassword', currentPassword),
   lockCurrentSession: () => ipcRenderer.invoke('mail:lockCurrentSession'),
   getStorageDir: () => ipcRenderer.invoke('mail:getStorageDir'),
+  getRecoveryExportStatus: () => ipcRenderer.invoke('mail:getRecoveryExportStatus'),
+  restoreLatestRecoveryExport: () => ipcRenderer.invoke('mail:restoreLatestRecoveryExport'),
+  resetLocalEncryptedStorage: () => ipcRenderer.invoke('mail:resetLocalEncryptedStorage'),
   onBackgroundSync: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, accountId: string) => callback(accountId)
     ipcRenderer.on('mail:backgroundSyncComplete', listener)
